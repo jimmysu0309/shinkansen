@@ -5,6 +5,8 @@
   "description": "Shinkansen Chrome Extension 的 Playwright 自動化測試 harness",
   "type": "module",
   "scripts": {
+    "build:firefox": "bash tools/build-firefox-xpi.sh",
+    "build:firefox:show": "ls -lh dist/shinkansen-firefox-local-*.xpi",
     "test": "playwright test",
     "test:regression": "playwright test test/regression/",
     "test:unit": "playwright test test/unit/",

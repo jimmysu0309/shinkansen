@@ -47,6 +47,13 @@
 4. 選擇本專案的 `shinkansen/` 資料夾
 5. 擴充功能清單會出現 Shinkansen，可以固定到工具列
 
+**Firefox 本機安裝包（.xpi）**
+
+1. 在專案根目錄執行：`npm run build:firefox`
+2. 產物會輸出到 `dist/shinkansen-firefox-local-<git-describe-version>.xpi`
+3. Firefox 開啟 `about:debugging` → `This Firefox` → `Load Temporary Add-on`
+4. 選擇上一步產生的 `.xpi` 檔案即可載入
+
 ## 首次設定
 
 1. 申請 Gemini API Key — 詳細步驟見 [API Key 申請教學](API-KEY-SETUP.md)
