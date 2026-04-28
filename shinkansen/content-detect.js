@@ -576,4 +576,18 @@
     return units.slice().sort((a, b) => tierCache.get(a) - tierCache.get(b));
   };
 
+  SK.isUnitInViewport = function isUnitInViewport(unit) {
+    const el = unit?.el;
+    if (!el || typeof el.getClientRects !== 'function') return false;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (vw <= 0 || vh <= 0) return false;
+
+    for (const rect of el.getClientRects()) {
+      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+      if (rect.bottom > 0 && rect.right > 0 && rect.top < vh && rect.left < vw) return true;
+    }
+    return false;
+  };
+
 })(window.__SK);

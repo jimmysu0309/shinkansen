@@ -233,6 +233,7 @@ export const DEFAULT_SETTINGS = {
   partialMode: {
     enabled: false,
     maxUnits: 25,
+    viewportOnly: false,
   },
   // v1.0.17: Toast 透明度（0.1–1.0），讓使用者在無限捲動網站上降低 toast 干擾
   toastOpacity: 0.7,

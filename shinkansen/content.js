@@ -663,9 +663,22 @@
     // 即使使用者 toggle 仍開啟也走完整翻譯。toggle 本身不被改寫,下次翻新頁面仍走節省模式。
     const pmActive = !options.ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
-    STATE.partialModeActive = pmActive;
+    const viewportOnlyActive = !options.ignorePartialMode && pm?.viewportOnly === true;
+    STATE.partialModeActive = pmActive || viewportOnlyActive;
 
-    if (!pmActive) {
+    if (viewportOnlyActive) {
+      const before = units.length;
+      units = units.filter(SK.isUnitInViewport);
+      SK.sendLog('info', 'translate', 'viewportOnly: filter units', { total: before, kept: units.length, skipped: before - units.length });
+      if (units.length === 0) {
+        SK.showToast('error', '可視範圍內找不到可翻譯的內容', { autoHideMs: 3000 });
+        STATE.translating = false;
+        STATE.abortController = null;
+        return;
+      }
+    }
+
+    if (!pmActive && !viewportOnlyActive) {
       // v1.7.1: 把內文核心(main/article 後代、長段落)推到 array 前面,
       // 配合下方 translateUnits 的「序列 batch 0 + 並行 rest」,
       // 讓使用者最快看到的譯文是文章開頭而不是 nav / 短連結。
@@ -674,7 +687,7 @@
       units = SK.prioritizeUnits(units);
       SK.sendLog('info', 'translate', 'milestone:prioritize_done', { t: Date.now() - entryTime, dt: Date.now() - t_priority_start });
     } else {
-      SK.sendLog('info', 'translate', 'partialMode: skip prioritizeUnits, use DOM order', { totalUnits: units.length });
+      SK.sendLog('info', 'translate', viewportOnlyActive ? 'viewportOnly: skip prioritizeUnits, use DOM order' : 'partialMode: skip prioritizeUnits, use DOM order', { totalUnits: units.length });
     }
 
     // 超大頁面防護
@@ -694,7 +707,7 @@
     // v1.8.5: partialMode 啟用時 truncate units 到 maxUnits,讓 toast 顯示實際翻譯段數
     // (25 / 25 而非 25 / 227),且 packBatches 自然只切 1 批。
     let pmSkippedCount = 0;  // v1.8.7: 用於 success toast「翻譯剩餘段落」按鈕判斷
-    if (pmActive && units.length > pm.maxUnits) {
+    if (pmActive && !viewportOnlyActive && units.length > pm.maxUnits) {
       pmSkippedCount = units.length - pm.maxUnits;
       SK.sendLog('info', 'translate', 'partialMode: truncate units', { total: units.length, kept: pm.maxUnits, skipped: pmSkippedCount });
       units = units.slice(0, pm.maxUnits);
@@ -822,7 +835,7 @@
         // v1.5.7: engine='openai-compat' 走自訂 Provider 的 chat.completions endpoint
         engine: options.engine || 'gemini',
         // v1.8.8: 「翻譯剩餘段落」路徑要繞過 partialMode 的 skip batch 1+ 邏輯
-        ignorePartialMode: !!options.ignorePartialMode,
+        ignorePartialMode: !!options.ignorePartialMode || viewportOnlyActive,
         onProgress: (d, t, mismatch) => SK.showToast('loading', `${labelPrefix}翻譯中… ${d} / ${t}`, {
           progress: d / t,
           mismatch: !!mismatch,
@@ -1182,8 +1195,18 @@
     const pm = settings.partialMode;
     const pmActive = !gtOptions.ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
-    STATE.partialModeActive = pmActive;
-    if (!pmActive) {
+    const viewportOnlyActive = !gtOptions.ignorePartialMode && pm?.viewportOnly === true;
+    STATE.partialModeActive = pmActive || viewportOnlyActive;
+    if (viewportOnlyActive) {
+      units = units.filter(SK.isUnitInViewport);
+      if (units.length === 0) {
+        SK.showToast('error', '可視範圍內找不到可翻譯的內容', { autoHideMs: 3000 });
+        STATE.translating = false;
+        STATE.abortController = null;
+        return;
+      }
+    }
+    if (!pmActive && !viewportOnlyActive) {
       // v1.7.1: 與 translatePage 同樣的優先級排序(內文核心優先)
       units = SK.prioritizeUnits(units);
     }
@@ -1198,7 +1221,7 @@
       units = units.slice(0, maxTotalUnits);
     }
     // v1.8.5/8.6: partialMode 啟用時 truncate(同 Gemini 路徑)
-    if (pmActive && units.length > pm.maxUnits) {
+    if (pmActive && !viewportOnlyActive && units.length > pm.maxUnits) {
       units = units.slice(0, pm.maxUnits);
     }
     const total = units.length;
