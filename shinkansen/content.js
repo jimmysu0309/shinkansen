@@ -670,7 +670,7 @@
     if (viewportOnlyActive) {
       const before = units.length;
       units = units.filter(SK.isUnitInViewport);
-      SK.sendLog('info', 'translate', 'viewportOnly: filter units', { total: before, kept: units.length, skipped: before - units.length });
+      SK.sendLog('info', 'translate', 'viewportOnly: filter units', { total: before, kept: units.length });
       if (units.length === 0) {
         SK.showToast('error', '可視範圍內找不到可翻譯的內容', { autoHideMs: 3000 });
         STATE.translating = false;
@@ -688,7 +688,8 @@
       units = SK.prioritizeUnits(units);
       SK.sendLog('info', 'translate', 'milestone:prioritize_done', { t: Date.now() - entryTime, dt: Date.now() - t_priority_start });
     } else {
-      SK.sendLog('info', 'translate', viewportOnlyActive ? 'viewportOnly: skip prioritizeUnits, use DOM order' : 'partialMode: skip prioritizeUnits, use DOM order', { totalUnits: units.length });
+      const skipReason = viewportOnlyActive ? 'viewportOnly' : 'partialMode';
+      SK.sendLog('info', 'translate', `${skipReason}: skip prioritizeUnits, use DOM order`, { totalUnits: units.length });
     }
 
     // 超大頁面防護
