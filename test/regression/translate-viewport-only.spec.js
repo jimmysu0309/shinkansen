@@ -43,6 +43,12 @@ test('translate-viewport-only: 只翻可視範圍,且優先於只翻文章開頭
     window.__SK.BATCH0_CHARS = 100000;
     window.__batchCount = 0;
     window.__batchSizes = [];
+    window.__translateUnitsCallCount = 0;
+    const origTranslateUnits = window.__SK.translateUnits;
+    window.__SK.translateUnits = function(...args) {
+      window.__translateUnitsCallCount += 1;
+      return origTranslateUnits.apply(this, args);
+    };
 
     chrome.storage.sync.get = async function(keys) {
       return {
@@ -134,6 +140,12 @@ test('translate-viewport-only: viewport 變更後 debounce 翻譯新進可視範
     window.__SK.BATCH0_CHARS = 100000;
     window.__batchCount = 0;
     window.__batchSizes = [];
+    window.__translateUnitsCallCount = 0;
+    const origTranslateUnits = window.__SK.translateUnits;
+    window.__SK.translateUnits = function(...args) {
+      window.__translateUnitsCallCount += 1;
+      return origTranslateUnits.apply(this, args);
+    };
 
     chrome.storage.sync.get = async function(keys) {
       return {
@@ -181,10 +193,12 @@ test('translate-viewport-only: viewport 變更後 debounce 翻譯新進可視範
     belowTranslated: Array.from(document.querySelectorAll('[id^="below-"]')).filter(el => el.textContent.includes('[ZH]')).length,
     batchCount: window.__batchCount,
     batchSizes: window.__batchSizes.slice(),
+    translateUnitsCallCount: window.__translateUnitsCallCount,
   }))()`);
   expect(initial.visibleTranslated).toBe(8);
   expect(initial.belowTranslated).toBe(0);
   expect(initial.batchCount).toBe(3);
+  expect(initial.translateUnitsCallCount).toBe(1);
 
   await evaluate(`
     window.scrollTo(0, 1100);
@@ -206,11 +220,13 @@ test('translate-viewport-only: viewport 變更後 debounce 翻譯新進可視範
     belowTranslated: Array.from(document.querySelectorAll('[id^="below-"]')).filter(el => el.textContent.includes('[ZH]')).length,
     batchCount: window.__batchCount,
     batchSizes: window.__batchSizes.slice(),
+    translateUnitsCallCount: window.__translateUnitsCallCount,
   }))()`);
 
   expect(afterScroll.visibleTranslated, '既有 viewport 內已翻譯段落不應重複翻譯').toBe(8);
   expect(afterScroll.belowTranslated, 'scroll 後新進 viewport 的段落應自動翻譯').toBe(4);
-  expect(afterScroll.batchCount, '5 次 scroll event 應 debounce 成單次 viewport rescan,只新增 2 批').toBe(5);
+  expect(afterScroll.translateUnitsCallCount, '5 次 scroll event 應 debounce 成單次 viewport rescan').toBe(2);
+  expect(afterScroll.batchCount, '初次翻譯 3 批,debounce 後新可視範圍只新增 2 批').toBe(5);
   expect(afterScroll.batchSizes, '初次 8 段切 3/3/2,scroll 後 4 段切 3/1').toEqual([3, 3, 2, 3, 1]);
 
   await evaluate(`
@@ -218,8 +234,12 @@ test('translate-viewport-only: viewport 變更後 debounce 翻譯新進可視範
   `);
   await page.waitForTimeout(800);
 
-  const afterDuplicateScroll = await evaluate(`window.__batchCount`);
-  expect(afterDuplicateScroll, '同一 viewport 已翻譯完成後再次 scroll 不應重複翻譯').toBe(5);
+  const afterDuplicateScroll = await evaluate(`({
+    batchCount: window.__batchCount,
+    translateUnitsCallCount: window.__translateUnitsCallCount,
+  })`);
+  expect(afterDuplicateScroll.batchCount, '同一 viewport 已翻譯完成後再次 scroll 不應重複翻譯').toBe(5);
+  expect(afterDuplicateScroll.translateUnitsCallCount, '同一 viewport 無新段落時不應再次呼叫 translateUnits').toBe(2);
 
   await page.close();
 });

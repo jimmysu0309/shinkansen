@@ -579,8 +579,8 @@
   SK.isUnitInViewport = function isUnitInViewport(unit) {
     const el = unit?.el;
     if (!el || typeof el.getClientRects !== 'function') return false;
-    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
-    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    const vw = window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
     if (vw <= 0 || vh <= 0) return false;
 
     for (const rect of el.getClientRects()) {

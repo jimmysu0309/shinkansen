@@ -119,7 +119,12 @@
     if (!el) return true;
     if (el.hasAttribute?.('data-shinkansen-translated')) return true;
     if (el.hasAttribute?.('data-shinkansen-dual-source')) return true;
-    if (el.closest?.('[data-shinkansen-translated],[data-shinkansen-dual-source]')) return true;
+    let cur = el.parentElement;
+    while (cur && cur !== document.body) {
+      if (cur.hasAttribute?.('data-shinkansen-translated')) return true;
+      if (cur.hasAttribute?.('data-shinkansen-dual-source')) return true;
+      cur = cur.parentElement;
+    }
     return false;
   }
 
@@ -693,6 +698,7 @@
 
     if (STATE.translating) {
       SK.sendLog('info', 'translate', 'aborting in-progress translation');
+      SK.cancelViewportRescan();
       STATE.abortController?.abort();
       SK.showToast('loading', '正在取消翻譯⋯');
       return;
@@ -968,6 +974,9 @@
           STATE.originalHTML.clear();
         }
         STATE.translated = false;
+        SK.cancelViewportRescan();
+        STATE.viewportOnlyActive = false;
+        STATE.viewportTranslateOptions = null;
         SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
         return;
       }
@@ -1252,6 +1261,7 @@
 
     // 若正在翻譯中（任何引擎）→ 中止
     if (STATE.translating) {
+      SK.cancelViewportRescan();
       STATE.abortController?.abort();
       SK.showToast('loading', '正在取消翻譯⋯');
       return;
@@ -1367,6 +1377,9 @@
           STATE.originalHTML.clear();
         }
         STATE.translated = false;
+        SK.cancelViewportRescan();
+        STATE.viewportOnlyActive = false;
+        STATE.viewportTranslateOptions = null;
         SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
         return;
       }
