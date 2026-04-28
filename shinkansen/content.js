@@ -94,6 +94,7 @@
   let rescanTimer = null;
   let viewportRescanTimer = null;
   let viewportListenersAttached = false;
+  const viewportListenerOptions = { passive: true };
 
   SK.cancelRescan = function cancelRescan() {
     if (rescanTimer) {
@@ -117,7 +118,7 @@
 
   function isAlreadyTranslatedUnit(unit, memo) {
     const el = unit?.el;
-    // collectParagraphs 正常都會回傳 el；若遇到不完整 unit，保守略過，避免 viewport rescan 對未知 DOM 重複送翻譯。
+    // collectVisibleUntranslatedUnits 來源是 SK.collectParagraphs()，正常都會回傳 el；若遇到不完整 unit，保守略過。
     if (!el) return true;
     if (memo?.has(el)) return memo.get(el);
 
@@ -232,21 +233,21 @@
   function attachViewportChangeListeners() {
     if (viewportListenersAttached) return;
     viewportListenersAttached = true;
-    window.addEventListener('scroll', onViewportChanged, { passive: true });
-    window.addEventListener('resize', onViewportChanged, { passive: true });
-    window.addEventListener('orientationchange', onViewportChanged, { passive: true });
-    window.visualViewport?.addEventListener?.('scroll', onViewportChanged, { passive: true });
-    window.visualViewport?.addEventListener?.('resize', onViewportChanged, { passive: true });
+    window.addEventListener('scroll', onViewportChanged, viewportListenerOptions);
+    window.addEventListener('resize', onViewportChanged, viewportListenerOptions);
+    window.addEventListener('orientationchange', onViewportChanged, viewportListenerOptions);
+    window.visualViewport?.addEventListener?.('scroll', onViewportChanged, viewportListenerOptions);
+    window.visualViewport?.addEventListener?.('resize', onViewportChanged, viewportListenerOptions);
   }
 
   function detachViewportChangeListeners() {
     if (!viewportListenersAttached) return;
     viewportListenersAttached = false;
-    window.removeEventListener('scroll', onViewportChanged);
-    window.removeEventListener('resize', onViewportChanged);
-    window.removeEventListener('orientationchange', onViewportChanged);
-    window.visualViewport?.removeEventListener?.('scroll', onViewportChanged);
-    window.visualViewport?.removeEventListener?.('resize', onViewportChanged);
+    window.removeEventListener('scroll', onViewportChanged, viewportListenerOptions);
+    window.removeEventListener('resize', onViewportChanged, viewportListenerOptions);
+    window.removeEventListener('orientationchange', onViewportChanged, viewportListenerOptions);
+    window.visualViewport?.removeEventListener?.('scroll', onViewportChanged, viewportListenerOptions);
+    window.visualViewport?.removeEventListener?.('resize', onViewportChanged, viewportListenerOptions);
   }
 
   async function rescanTick() {
@@ -809,6 +810,8 @@
     const pmActive = !ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     const viewportOnlyActive = !ignorePartialMode && pm && pm.viewportOnly === true;
+    // partialModeActive 是既有「有限範圍翻譯」gate；viewportOnly 也要阻止 late/SPA rescan 走全頁掃描。
+    // partialModeActive 是既有「有限範圍翻譯」gate；viewportOnly 也要阻止 late/SPA rescan 走全頁掃描。
     STATE.partialModeActive = pmActive || viewportOnlyActive;
     STATE.viewportOnlyActive = viewportOnlyActive;
     STATE.viewportTranslateOptions = viewportOnlyActive
