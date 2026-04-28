@@ -17,7 +17,6 @@ test('translate-viewport-only: 只翻可視範圍,且優先於只翻文章開頭
   const page = await context.newPage();
   await page.setViewportSize({ width: 900, height: 700 });
   await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('main#content-main', { timeout: 10_000 });
 
   const { evaluate } = await getShinkansenEvaluator(page);
 
