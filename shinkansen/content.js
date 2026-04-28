@@ -664,7 +664,7 @@
     const ignorePartialMode = options.ignorePartialMode === true;
     const pmActive = !ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
-    const viewportOnlyActive = !ignorePartialMode && pm?.viewportOnly === true;
+    const viewportOnlyActive = !ignorePartialMode && pm && pm.viewportOnly === true;
     STATE.partialModeActive = pmActive || viewportOnlyActive;
 
     if (viewportOnlyActive) {
@@ -1198,7 +1198,7 @@
     const ignorePartialMode = gtOptions.ignorePartialMode === true;
     const pmActive = !ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
-    const viewportOnlyActive = !ignorePartialMode && pm?.viewportOnly === true;
+    const viewportOnlyActive = !ignorePartialMode && pm && pm.viewportOnly === true;
     STATE.partialModeActive = pmActive || viewportOnlyActive;
     if (viewportOnlyActive) {
       units = units.filter(SK.isUnitInViewport);

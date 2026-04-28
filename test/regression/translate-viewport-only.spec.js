@@ -95,7 +95,7 @@ test('translate-viewport-only: 只翻可視範圍,且優先於只翻文章開頭
 
   expect(result.visibleTranslated, 'viewport 內 8 段都應翻譯,不可被 partialMode.maxUnits=5 截斷').toBe(8);
   expect(result.belowTranslated, 'viewport 外段落不應被翻譯').toBe(0);
-  expect(result.batchCount, 'viewportOnly 應忽略 partialMode 內層 skipBatch1Plus,跑完所有可視範圍批次').toBeGreaterThanOrEqual(3);
+  expect(result.batchCount, 'viewportOnly 應忽略 partialMode 內層 skipBatch1Plus,跑完所有可視範圍批次').toBe(3);
   expect(result.batchSizes, '8 段、batch0=3、maxUnitsPerBatch=3 應切成 3/3/2').toEqual([3, 3, 2]);
 
   await page.close();
