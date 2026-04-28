@@ -661,9 +661,10 @@
     const pm = settings.partialMode;
     // v1.8.7: options.ignorePartialMode = true(從「翻譯剩餘段落」按鈕觸發)時忽略 toggle,
     // 即使使用者 toggle 仍開啟也走完整翻譯。toggle 本身不被改寫,下次翻新頁面仍走節省模式。
-    const pmActive = !options.ignorePartialMode
+    const ignorePartialMode = options.ignorePartialMode === true;
+    const pmActive = !ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
-    const viewportOnlyActive = !options.ignorePartialMode && pm?.viewportOnly === true;
+    const viewportOnlyActive = !ignorePartialMode && pm?.viewportOnly === true;
     STATE.partialModeActive = pmActive || viewportOnlyActive;
 
     if (viewportOnlyActive) {
@@ -835,7 +836,7 @@
         // v1.5.7: engine='openai-compat' 走自訂 Provider 的 chat.completions endpoint
         engine: options.engine || 'gemini',
         // v1.8.8: 「翻譯剩餘段落」路徑要繞過 partialMode 的 skip batch 1+ 邏輯
-        ignorePartialMode: !!options.ignorePartialMode || viewportOnlyActive,
+        ignorePartialMode: ignorePartialMode || viewportOnlyActive,
         onProgress: (d, t, mismatch) => SK.showToast('loading', `${labelPrefix}翻譯中… ${d} / ${t}`, {
           progress: d / t,
           mismatch: !!mismatch,
@@ -1193,9 +1194,10 @@
     // v1.8.6: partialMode 啟用時跳過 prioritizeUnits 走 DOM 順序(同 translatePage Gemini 路徑)
     // v1.8.7: ignorePartialMode 豁免
     const pm = settings.partialMode;
-    const pmActive = !gtOptions.ignorePartialMode
+    const ignorePartialMode = gtOptions.ignorePartialMode === true;
+    const pmActive = !ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
-    const viewportOnlyActive = !gtOptions.ignorePartialMode && pm?.viewportOnly === true;
+    const viewportOnlyActive = !ignorePartialMode && pm?.viewportOnly === true;
     STATE.partialModeActive = pmActive || viewportOnlyActive;
     if (viewportOnlyActive) {
       units = units.filter(SK.isUnitInViewport);

@@ -1,9 +1,9 @@
 // Regression:「僅翻譯可視範圍」節省模式
 //
-// 鎖兩件事:
+// 鎖定兩件事:
 //   1. partialMode.viewportOnly=true 時只翻目前 viewport 內的段落。
 //   2. 若同時 partialMode.enabled=true,viewportOnly 優先,不套用 maxUnits 截斷,
-//      且 translateUnits 內層不可因 partialMode.enabled 跳過 batch 1+。
+//      且 translateUnits 內部 batching 不可因 partialMode.enabled 跳過 batch 1+。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
