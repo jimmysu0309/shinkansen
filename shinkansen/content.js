@@ -117,6 +117,7 @@
 
   function isAlreadyTranslatedUnit(unit, memo) {
     const el = unit?.el;
+    // collectParagraphs 正常都會回傳 el；若遇到不完整 unit，保守略過，避免 viewport rescan 對未知 DOM 重複送翻譯。
     if (!el) return true;
     if (memo?.has(el)) return memo.get(el);
 
@@ -174,6 +175,11 @@
     SK.sendLog('info', 'translate', 'viewportOnly: translate newly visible units', { reason, units: units.length, engine });
     SK.showToast('loading', `翻譯可視範圍新內容… 0 / ${units.length}`, { progress: 0, startTimer: true });
 
+    const showFailures = (failures) => {
+      const failedSegs = failures.reduce((s, f) => s + f.count, 0);
+      SK.showToast('error', `可視範圍新內容部分失敗：${failedSegs} / ${units.length} 段失敗`, { stopTimer: true });
+    };
+
     try {
       if (engine === 'google') {
         const { done, failures } = await SK.translateUnitsGoogle(units, {
@@ -185,8 +191,7 @@
           return;
         }
         if (failures.length) {
-          const failedSegs = failures.reduce((s, f) => s + f.count, 0);
-          SK.showToast('error', `可視範圍新內容部分失敗：${failedSegs} / ${units.length} 段失敗`, { stopTimer: true });
+          showFailures(failures);
         } else if (done > 0) {
           SK.showToast('success', `已翻譯可視範圍新內容（${done} 段）`, { progress: 1, stopTimer: true, autoHideMs: 2000 });
         }
@@ -206,8 +211,7 @@
           return;
         }
         if (failures.length) {
-          const failedSegs = failures.reduce((s, f) => s + f.count, 0);
-          SK.showToast('error', `可視範圍新內容部分失敗：${failedSegs} / ${units.length} 段失敗`, { stopTimer: true });
+          showFailures(failures);
         } else if (done > 0) {
           SK.showToast('success', `已翻譯可視範圍新內容（${done} 段）`, { progress: 1, stopTimer: true, autoHideMs: 2000 });
         }
