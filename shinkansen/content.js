@@ -93,6 +93,7 @@
   let rescanAttempts = 0;
   let rescanTimer = null;
   let viewportRescanTimer = null;
+  let viewportListenersAttached = false;
 
   SK.cancelRescan = function cancelRescan() {
     if (rescanTimer) {
@@ -114,24 +115,33 @@
     rescanTimer = setTimeout(rescanTick, SK.RESCAN_DELAYS_MS[0]);
   }
 
-  function isAlreadyTranslatedUnit(unit) {
+  function isAlreadyTranslatedUnit(unit, memo) {
     const el = unit?.el;
     if (!el) return true;
-    if (el.hasAttribute?.('data-shinkansen-translated')) return true;
-    if (el.hasAttribute?.('data-shinkansen-dual-source')) return true;
-    let cur = el.parentElement;
+    if (memo?.has(el)) return memo.get(el);
+
+    let result = false;
+    let cur = el;
     while (cur && cur !== document.body) {
-      if (cur.hasAttribute?.('data-shinkansen-translated')) return true;
-      if (cur.hasAttribute?.('data-shinkansen-dual-source')) return true;
+      if (memo?.has(cur)) {
+        result = memo.get(cur);
+        break;
+      }
+      if (cur.hasAttribute?.('data-shinkansen-translated') || cur.hasAttribute?.('data-shinkansen-dual-source')) {
+        result = true;
+        break;
+      }
       cur = cur.parentElement;
     }
-    return false;
+    memo?.set(el, result);
+    return result;
   }
 
   function collectVisibleUntranslatedUnits() {
+    const translatedMemo = new WeakMap();
     return SK.collectParagraphs()
       .filter(SK.isUnitInViewport)
-      .filter(unit => !isAlreadyTranslatedUnit(unit));
+      .filter(unit => !isAlreadyTranslatedUnit(unit, translatedMemo));
   }
 
   function scheduleViewportRescan(reason = 'viewport-change') {
@@ -215,11 +225,25 @@
     scheduleViewportRescan('viewport-change');
   }
 
-  window.addEventListener('scroll', onViewportChanged, { passive: true });
-  window.addEventListener('resize', onViewportChanged, { passive: true });
-  window.addEventListener('orientationchange', onViewportChanged, { passive: true });
-  window.visualViewport?.addEventListener?.('scroll', onViewportChanged, { passive: true });
-  window.visualViewport?.addEventListener?.('resize', onViewportChanged, { passive: true });
+  function attachViewportChangeListeners() {
+    if (viewportListenersAttached) return;
+    viewportListenersAttached = true;
+    window.addEventListener('scroll', onViewportChanged, { passive: true });
+    window.addEventListener('resize', onViewportChanged, { passive: true });
+    window.addEventListener('orientationchange', onViewportChanged, { passive: true });
+    window.visualViewport?.addEventListener?.('scroll', onViewportChanged, { passive: true });
+    window.visualViewport?.addEventListener?.('resize', onViewportChanged, { passive: true });
+  }
+
+  function detachViewportChangeListeners() {
+    if (!viewportListenersAttached) return;
+    viewportListenersAttached = false;
+    window.removeEventListener('scroll', onViewportChanged);
+    window.removeEventListener('resize', onViewportChanged);
+    window.removeEventListener('orientationchange', onViewportChanged);
+    window.visualViewport?.removeEventListener?.('scroll', onViewportChanged);
+    window.visualViewport?.removeEventListener?.('resize', onViewportChanged);
+  }
 
   async function rescanTick() {
     rescanTimer = null;
@@ -786,6 +810,8 @@
     STATE.viewportTranslateOptions = viewportOnlyActive
       ? { engine: options.engine || 'gemini', modelOverride: options.modelOverride || null }
       : null;
+    if (viewportOnlyActive) attachViewportChangeListeners();
+    else detachViewportChangeListeners();
 
     if (viewportOnlyActive) {
       const before = units.length;
@@ -975,6 +1001,7 @@
         }
         STATE.translated = false;
         SK.cancelViewportRescan();
+        detachViewportChangeListeners();
         STATE.viewportOnlyActive = false;
         STATE.viewportTranslateOptions = null;
         SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
@@ -1128,6 +1155,7 @@
     if (editModeActive) toggleEditMode(false);
     SK.cancelRescan();
     SK.cancelViewportRescan();
+    detachViewportChangeListeners();
     SK.stopSpaObserver();
 
     // v1.5.0: dual 模式還原——只移除 wrapper，原文未動所以不需 innerHTML 還原。
@@ -1329,6 +1357,8 @@
     STATE.partialModeActive = pmActive || viewportOnlyActive;
     STATE.viewportOnlyActive = viewportOnlyActive;
     STATE.viewportTranslateOptions = viewportOnlyActive ? { engine: 'google' } : null;
+    if (viewportOnlyActive) attachViewportChangeListeners();
+    else detachViewportChangeListeners();
     if (viewportOnlyActive) {
       units = units.filter(SK.isUnitInViewport);
       if (units.length === 0) {
@@ -1378,6 +1408,7 @@
         }
         STATE.translated = false;
         SK.cancelViewportRescan();
+        detachViewportChangeListeners();
         STATE.viewportOnlyActive = false;
         STATE.viewportTranslateOptions = null;
         SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });

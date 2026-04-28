@@ -90,6 +90,7 @@ test('translate-viewport-only: 只翻可視範圍,且優先於只翻文章開頭
     if (!translating) break;
     await page.waitForTimeout(200);
   }
+  expect(await evaluate(`!!window.__SK.STATE.translating`), '初次 viewportOnly 翻譯應在 timeout 內完成').toBe(false);
 
   const result = await evaluate(`(() => ({
     visibleTranslated: Array.from(document.querySelectorAll('[id^="visible-"]')).filter(el => el.textContent.includes('[ZH]')).length,
@@ -187,6 +188,7 @@ test('translate-viewport-only: viewport 變更後 debounce 翻譯新進可視範
     if (!translating) break;
     await page.waitForTimeout(200);
   }
+  expect(await evaluate(`!!window.__SK.STATE.translating`), '初次 viewportOnly 翻譯應在 timeout 內完成').toBe(false);
 
   const initial = await evaluate(`(() => ({
     visibleTranslated: Array.from(document.querySelectorAll('[id^="visible-"]')).filter(el => el.textContent.includes('[ZH]')).length,
@@ -214,6 +216,14 @@ test('translate-viewport-only: viewport 變更後 debounce 翻譯新進可視範
     }))()`);
     if (!result.translating && result.belowTranslated === 4) break;
   }
+  const viewportRescanReady = await evaluate(`(() => ({
+    translating: !!window.__SK.STATE.translating,
+    belowTranslated: Array.from(document.querySelectorAll('[id^="below-"]')).filter(el => el.textContent.includes('[ZH]')).length,
+  }))()`);
+  expect(viewportRescanReady, 'scroll 後 viewport rescan 應在 timeout 內完成').toEqual({
+    translating: false,
+    belowTranslated: 4,
+  });
 
   const afterScroll = await evaluate(`(() => ({
     visibleTranslated: Array.from(document.querySelectorAll('[id^="visible-"]')).filter(el => el.textContent.includes('[ZH]')).length,
