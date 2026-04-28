@@ -92,6 +92,7 @@
 
   let rescanAttempts = 0;
   let rescanTimer = null;
+  let viewportRescanTimer = null;
 
   SK.cancelRescan = function cancelRescan() {
     if (rescanTimer) {
@@ -101,10 +102,119 @@
     rescanAttempts = 0;
   };
 
+  SK.cancelViewportRescan = function cancelViewportRescan() {
+    if (viewportRescanTimer) {
+      clearTimeout(viewportRescanTimer);
+      viewportRescanTimer = null;
+    }
+  };
+
   function scheduleRescanForLateContent() {
     SK.cancelRescan();
     rescanTimer = setTimeout(rescanTick, SK.RESCAN_DELAYS_MS[0]);
   }
+
+  function isAlreadyTranslatedUnit(unit) {
+    const el = unit?.el;
+    if (!el) return true;
+    if (el.hasAttribute?.('data-shinkansen-translated')) return true;
+    if (el.hasAttribute?.('data-shinkansen-dual-source')) return true;
+    if (el.closest?.('[data-shinkansen-translated],[data-shinkansen-dual-source]')) return true;
+    return false;
+  }
+
+  function collectVisibleUntranslatedUnits() {
+    return SK.collectParagraphs()
+      .filter(SK.isUnitInViewport)
+      .filter(unit => !isAlreadyTranslatedUnit(unit));
+  }
+
+  function scheduleViewportRescan(reason = 'viewport-change') {
+    if (!STATE.viewportOnlyActive) return;
+    if (!STATE.translated) return;
+    if (viewportRescanTimer) clearTimeout(viewportRescanTimer);
+    viewportRescanTimer = setTimeout(() => viewportRescanTick(reason), SK.VIEWPORT_CHANGE_DEBOUNCE_MS);
+  }
+
+  async function viewportRescanTick(reason) {
+    viewportRescanTimer = null;
+    if (!STATE.viewportOnlyActive || !STATE.translated) return;
+    if (STATE.translating) {
+      scheduleViewportRescan('translation-busy');
+      return;
+    }
+
+    let units = collectVisibleUntranslatedUnits();
+    if (units.length === 0) {
+      SK.sendLog('info', 'translate', 'viewportOnly: no untranslated visible units', { reason });
+      return;
+    }
+
+    STATE.translating = true;
+    STATE.abortController = new AbortController();
+    const signal = STATE.abortController.signal;
+    const opts = STATE.viewportTranslateOptions || {};
+    const engine = opts.engine || (STATE.translatedBy === 'google' ? 'google' : 'gemini');
+
+    SK.sendLog('info', 'translate', 'viewportOnly: translate newly visible units', { reason, units: units.length, engine });
+    SK.showToast('loading', `翻譯可視範圍新內容… 0 / ${units.length}`, { progress: 0, startTimer: true });
+
+    try {
+      if (engine === 'google') {
+        const { done, failures } = await SK.translateUnitsGoogle(units, {
+          signal,
+          onProgress: (d, t) => SK.showToast('loading', `翻譯可視範圍新內容… ${d} / ${t}`, { progress: d / t }),
+        });
+        if (signal.aborted) {
+          SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
+          return;
+        }
+        if (failures.length) {
+          const failedSegs = failures.reduce((s, f) => s + f.count, 0);
+          SK.showToast('error', `可視範圍新內容部分失敗：${failedSegs} / ${units.length} 段失敗`, { stopTimer: true });
+        } else if (done > 0) {
+          SK.showToast('success', `已翻譯可視範圍新內容（${done} 段）`, { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        }
+      } else {
+        const { done, failures } = await SK.translateUnits(units, {
+          signal,
+          engine,
+          modelOverride: opts.modelOverride || null,
+          ignorePartialMode: true,
+          onProgress: (d, t, mismatch) => SK.showToast('loading', `翻譯可視範圍新內容… ${d} / ${t}`, {
+            progress: d / t,
+            mismatch: !!mismatch,
+          }),
+        });
+        if (signal.aborted) {
+          SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
+          return;
+        }
+        if (failures.length) {
+          const failedSegs = failures.reduce((s, f) => s + f.count, 0);
+          SK.showToast('error', `可視範圍新內容部分失敗：${failedSegs} / ${units.length} 段失敗`, { stopTimer: true });
+        } else if (done > 0) {
+          SK.showToast('success', `已翻譯可視範圍新內容（${done} 段）`, { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        }
+      }
+    } catch (err) {
+      SK.sendLog('warn', 'translate', 'viewportOnly rescan failed', { error: err.message });
+      SK.showToast('error', '可視範圍新內容翻譯失敗', { detail: err.message?.slice?.(0, 120), stopTimer: true });
+    } finally {
+      STATE.translating = false;
+      STATE.abortController = null;
+    }
+  }
+
+  function onViewportChanged() {
+    scheduleViewportRescan('viewport-change');
+  }
+
+  window.addEventListener('scroll', onViewportChanged, { passive: true });
+  window.addEventListener('resize', onViewportChanged, { passive: true });
+  window.addEventListener('orientationchange', onViewportChanged, { passive: true });
+  window.visualViewport?.addEventListener?.('scroll', onViewportChanged, { passive: true });
+  window.visualViewport?.addEventListener?.('resize', onViewportChanged, { passive: true });
 
   async function rescanTick() {
     rescanTimer = null;
@@ -666,6 +776,10 @@
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     const viewportOnlyActive = !ignorePartialMode && pm && pm.viewportOnly === true;
     STATE.partialModeActive = pmActive || viewportOnlyActive;
+    STATE.viewportOnlyActive = viewportOnlyActive;
+    STATE.viewportTranslateOptions = viewportOnlyActive
+      ? { engine: options.engine || 'gemini', modelOverride: options.modelOverride || null }
+      : null;
 
     if (viewportOnlyActive) {
       const before = units.length;
@@ -1004,6 +1118,7 @@
   function restorePage() {
     if (editModeActive) toggleEditMode(false);
     SK.cancelRescan();
+    SK.cancelViewportRescan();
     SK.stopSpaObserver();
 
     // v1.5.0: dual 模式還原——只移除 wrapper，原文未動所以不需 innerHTML 還原。
@@ -1036,6 +1151,8 @@
     STATE.stickyTranslate = false;
     STATE.stickySlot = null;    // v1.4.12
     STATE.partialModeActive = false;  // v1.8.5
+    STATE.viewportOnlyActive = false;
+    STATE.viewportTranslateOptions = null;
     browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     // v1.4.11: 清除跨 tab sticky（只影響當前 tab，不影響樹中其他 tab）
     browser.runtime.sendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
@@ -1200,6 +1317,8 @@
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     const viewportOnlyActive = !ignorePartialMode && pm && pm.viewportOnly === true;
     STATE.partialModeActive = pmActive || viewportOnlyActive;
+    STATE.viewportOnlyActive = viewportOnlyActive;
+    STATE.viewportTranslateOptions = viewportOnlyActive ? { engine: 'google' } : null;
     if (viewportOnlyActive) {
       units = units.filter(SK.isUnitInViewport);
       if (units.length === 0) {

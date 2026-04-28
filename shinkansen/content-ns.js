@@ -74,6 +74,9 @@ if (window.__shinkansen_loaded) {
     displayMode: 'single',
     translatedMode: null,
     translationCache: new Map(),
+    // v1.8.13: viewport-only 節省模式。可視範圍變更時用同一組翻譯設定續翻新進 viewport 的段落。
+    viewportOnlyActive: false,
+    viewportTranslateOptions: null,
   };
 
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback
@@ -225,6 +228,7 @@ if (window.__shinkansen_loaded) {
 
   // Rescan 常數
   SK.RESCAN_DELAYS_MS = [1200, 3000];
+  SK.VIEWPORT_CHANGE_DEBOUNCE_MS = 500;
 
   // CJK 字元匹配 pattern（serialize 用）
   SK.CJK_CHAR = '[\\u3400-\\u9fff\\uf900-\\ufaff\\u3000-\\u303f\\uff00-\\uffef]';
