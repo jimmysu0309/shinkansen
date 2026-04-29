@@ -118,6 +118,8 @@
 
   function isAlreadyTranslatedUnit(unit, memo) {
     const el = unit?.el;
+    // return true 表示這個 unit 應跳過；false 表示仍需要翻譯。memo 是單次 viewport
+    // rescan 內的 WeakMap cache，避免大量 unit 重複向上掃描同一批 ancestor。
     // viewport rescan 只應處理可定位的 DOM unit。若 collectParagraphs 意外回傳不完整 unit，
     // 視同已處理並略過，避免對未知/無法還原的內容重複送翻譯。
     if (!el) return true;
