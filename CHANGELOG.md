@@ -79,6 +79,100 @@
 
 ## v1.8.x
 
+**v1.8.20** — 大批 code review 結構性修補一輪(22 條 high/medium bug 一次清完 + 5 條新 spec 鎖死)。**最高優先**:options.js 主 Gemini config(temperature/topP/topK/maxOutputTokens)+ glossary/yt/customProvider 的數值欄位全改 `parseUserNum`,消除「空字串 → NaN 寫進 storage 後送 API 拒絕」+「使用者打 0 被當 falsy 改回預設」兩類靜默設定遺失。**結構性修補**:Content Guard IntersectionObserver 修 v1.8.14 子集設計缺口(`initGuardIntersectionObserver` 只 observe 啟動快照,後續 SPA rescan 翻新一批的譯段從未進 `guardVisibleSet` → guard sweep 對它們完全失效)— 加 `SK._guardObserveEl(el)` hook,5 處 `STATE.translatedHTML.set` + dual `translationCache.set` + dual swap key 都呼叫;`history.replaceState` patch 在 pathname 變動時觸發 SPA reset(原版只更 spaLastUrl,React Router shallow / Notion / Twitter 部分路徑會踩);streaming SW keep-alive 從 setInterval(SW unload 時跟 module-level state 一起死)改 `chrome.alarms.create`(持久排程,SW 收回後到觸發點仍會被喚醒 — `_STREAM_KEEPALIVE_PERIOD_MIN = 0.5`);`addUsage` 改 promise chain 序列化(防跨 tab 並行翻譯 read-modify-write race 永久遺失累計用量);`lib/cache.js` flushTouches 重讀 storage 比 value 後才更新 timestamp(防 5s 內被 setBatch 寫進的新譯文被舊值蓋回);`lib/logger.js` persistLog 同類 race 序列化;`getGlossary` set 改 safeStorageSet。**fragment 路徑補完整**:`injectFragmentTranslation` 結尾補 `setAttribute('data-shinkansen-translated','1')` + `STATE.translatedHTML.set` + `SK._guardObserveEl` — 否則 dual 模式下 fragment 段落 Content Guard 保護不到、SPA observer 重複偵測 → 重複翻譯。**自訂 Provider 用量帳單修正**:`handleTranslateCustom` 的 cache hit 折扣比例從硬編碼 0.75(Gemini 75% off)改成 `getCustomCacheHitRate(baseUrl)` 依 provider 推斷:Anthropic Claude / DeepSeek 0.10、OpenAI 0.50、未知 0.50 中間值 — 原版套 0.25 對 OpenAI 系統性低估費用 50%。**ASR 字幕 status 殘留修**:`_updateOverlay` 命中含中文 cue 時主動 `hideCaptionStatus()`(原本 ASR + 純中文模式 status 永遠殘留);`flushOnTheFly` 進場 + await 後雙重檢查 `YT.active`,`stopYouTubeTranslation` 清 `YT.flushing` flag(防 stop 後 ~300ms 內 flush 污染下個 session)。**安全 / 文件**:`lib/system-instruction.js` 加 `sanitizeTermText()`(對 glossary / fixedGlossary / forbiddenTerms 的 source/target/forbidden/replacement 消毒,移除 `<<<SHINKANSEN_SEP>>>` / `</forbidden_terms_blacklist>` / `⟦數字⟧` 佔位符 / 控制字元、200 字截斷,防 auto glossary 從惡意頁面抽出 token 污染協定);privacy-policy.html 移除已不存在的 `scripting` 權限聲明,改成 activeTab + alarms。**UX 補洞**:popup 翻譯按鈕雙擊防護(`disabled` flag);options 用量分頁 `_loadUsageDataReqId` token 比對只渲染最新 request(快切日期/粒度時舊資料不再覆蓋新圖表);Debug 分頁 fetchLogs `_fetchLogsInFlight` guard(SW 喚醒慢時不重複累加 log);`update-check` fetch 加 15s AbortController timeout(原本網路差會被 SW 30s idle 強殺,訊息可能被吞);welcome-notice 版本 parse 改 `parseInt(s,10) || 0` 防 `1.6.5-beta` 後綴 NaN;`restorePage` skip detached 元素 + warn log(SPA framework rerender 後 element 已 detach,寫 innerHTML 等於沒寫);OPEN_GDOC_MOBILE setTimeout leak 修(onUpdated 路徑 resolve 時 clearTimeout)。**新增 spec**(5 檔 36 條,SANITY 全驗): `test/regression/guard-io-observer-hook.spec.js`、`test/regression/inject-fragment-attribute-and-cache.spec.js`、`test/unit/system-instruction-sanitize.spec.js`(7)、`test/unit/custom-provider-cache-hit-rate.spec.js`(9)、`test/unit/streaming-keepalive-alarms.spec.js`(5)。**PENDING_REGRESSION 大清理**:9 條未清條目處理完(2 條補新 spec,5 條延續原 PENDING 判斷劃掉豁免,2 條 Drive 待修 task 從 regression backlog 移出 — 屬 design work 不是 spec missing)。
+
+**v1.8.19** — 大型 UI 簡化 + 結構性修補一輪:options 多個 section 收進「進階設定」摺疊區、preset label 上限放寬、content scripts 全面導入安全 sendMessage helper(消除 Extension reload 後 orphan content script 噴 uncaught error)、配額管理文案從技術導向改價值導向、preset 順序改為「主要 → 預設 2 → 預設 3」、icon 換成 PNG 取代 emoji、option HTML 全形括號 audit。
+
+**Bug 修正:**
+- **Extension context invalidated 不再洩漏 uncaught error**:Extension reload / 更新時,已載入頁面的 orphan content script 失去 extension 連線通道, 此後任何 `browser.runtime.sendMessage` 呼叫會 SYNC throw "Extension context invalidated" — 不是 promise reject!既有 caller 的 `.catch()` 接不到, 會洩漏 uncaught error 到 `chrome://extensions/` 錯誤面板, 污染真實 bug 的能見度。修法:`shinkansen/content-ns.js` 加 `SK.safeSendMessage(msg)` helper(三層防護: `chrome.runtime.id` fast path + sync try/catch + async `.catch` 過濾, 只吞 invalidated / Receiving end 兩類錯誤, 真實業務錯誤照丟); content scripts 31 處 caller 全替換(content.js × 18、content-youtube.js × 7、content-toast.js × 2、content-drive.js × 2、content-spa.js × 1、content-drive-iframe.js × 1 inline 防護因不在 SK 命名空間內)。Regression 補進 `test/regression/safe-send-message-context-invalidated.spec.js`(3 條 spec: sync throw 不洩漏 / async reject 訊息匹配也吞 / 真實業務錯誤仍會 reject)
+
+**UI 大型簡化:**
+- **配額管理改價值導向 + 整段收進進階摺疊**:原「配額(API 用量限制)」section 改名「API 配額管理(進階)」, 整個 section 包進 `<details class="advanced-details">` 摺疊區(預設收起)。文案從技術導向「自動控制請求頻率, 避免超出 Google 的使用量限制」改成價值導向「Shinkansen 會在背景幫你管理 Gemini API 用量。大頁面翻譯時會把請求平均攤開避免 burst 觸發 Google 限速; 快超過每日上限時提早警告, 不會等到失敗才知道。多數情況維持預設即可」。**安全邊際 slider 從 UI 移除**(99% 使用者不知道為什麼要設、設多少也看不出差別 — 純 over-engineering); 程式碼內部寫死 0.1(透過 `lib/storage.js` default + `lib/tier-limits.js` fallback)。設定 import schema 仍容忍 `safetyMargin` key, 舊匯出檔可正常匯入
+- **多個 section 整體進階化**:LLM 參數微調(Service Tier、Top P、Top K、Max Output Tokens 收進進階, Temperature 留外面作主要欄位)、效能(翻譯效率調校)整段收進進階、翻譯視窗設定整段收進進階、術語表三進階欄位 + 術語擷取 Prompt 收進同一個 details
+- **preset label 字元上限 12→30**:對齊輸入框視覺寬度(原 12 字元只佔輸入框 1/3 寬度, 使用者反映無法塞入「OpenRouter Claude 3.5」這類完整模型描述)。下游 3 處顯示加 truncate: `usage-table .col-model` 加 `max-width: 220px + ellipsis + title attr` 提供 hover tooltip; `popup-button-slot` / `auto-translate-slot` 兩個 select 加 `max-width: 360px`。Regression 補進 `test/regression/options-preset-label-live-update.spec.js`(本來其實是 v1.8.17 加的, 順便鎖死下游聯動)
+- **preset UI 順序改為「主要預設 → 預設 2 → 預設 3」**:options preset card 順序 + popup-button-slot / auto-translate-slot 下拉順序 + manifest commands 順序(`chrome://extensions/shortcuts` 顯示)三處同步調整。內部 slot 1/2/3 編號**完全不變**, 所有依賴 slot 編號的 storage / cache / 跨 tab sticky 全部正常
+- **manifest commands description 重整 + command id rename 控制顯示順序**:舊「翻譯預設 2(預設 Gemini Flash Lite)」/「翻譯主要預設(預設 Gemini Flash)」/「翻譯預設 3(預設 Google Translate, 維持原 slot 3 編號)」格式不對稱、寫死模型名會誤導(使用者改 preset 後 description 仍寫舊模型)、含開發者註記「維持原 slot 3 編號」使用者看不懂。改成「翻譯本頁 - 主要預設」「翻譯本頁 - 預設 2」「翻譯本頁 - 預設 3」三條對稱簡潔, 不寫死模型。Chrome `chrome://extensions/shortcuts` 顯示順序由 command id 字典序決定(實測), 為了讓「主要預設」排第一, 把 `translate-preset-2` 改名為 `translate-preset-0`(字典序「0」最前), background.js listener 加 `COMMAND_ID_TO_SLOT = { 0: 2, 1: 1, 3: 3 }` mapping 維持 slot 1/2/3 storage 對應。**升級影響**:沒手動改過快捷鍵的使用者完全無感(Chrome 自動套 `suggested_key: Alt+S`);手動改過 Alt+S 為其他鍵的使用者, Chrome 會把舊 command id 視為移除、新 id 視為新加, 自訂綁定丟失需重綁(進 chrome://extensions/shortcuts 即可)
+- **option / popup 標題 emoji 改 PNG icon**:從 `🚄 Shinkansen` 改用 `<img src="../icons/icon-128.png" class="page-title-icon">` + 「Shinkansen」, options 用 32px / popup 用 22px, flex + gap 對齊
+- **options.html 全形括號 audit**:Python 腳本批次轉 18 處 CJK 上下文的半形括號為全形, 純英文縮寫(`(ELv2)` / `Twitter (X)`)按 §13 例外維持半形
+
+**v1.8.18** — 移除 `chrome.management` API 的依賴(原本用來判斷 CWS vs 手動安裝),改用 `chrome.runtime.getManifest().update_url` 判斷,完全消除「需要 management permission」這個歷史包袱;同步更新 README + landing page 補充「字幕雙語對照」說明。
+
+**Code 變更:**
+- `shinkansen/lib/update-check.js`:`isManualInstall()` 改用 `chrome.runtime.getManifest().update_url` 同步判斷(CWS 安裝時 Chrome 會自動 inject `update_url`,自家 manifest 不寫 → 有 = CWS,沒有 = 手動)。原本的 `chrome.management.getSelf()` 需要 `management` permission(屬 CWS 敏感權限,能列舉/disable 其他 extension),雖然 manifest 沒宣告所以原 code 走 try/catch fallback,但邏輯不夠乾淨。修法後完全消除對 `management` API 的依賴,manifest 只保留實際用到的 `storage / activeTab / alarms` 三個 permission
+- `test/unit/update-check.spec.js`:mock 從 `management.getSelf` 改成 `runtime.getManifest` 注入 `update_url`(installType='normal' → 注入,模擬 CWS 安裝),15 條既有 spec 全綠
+
+**文件:**
+- `README.md`:功能特色清單新增「字幕雙語對照」(v1.8.15 起)條目;「YouTube 字幕翻譯」section 新增「### 字幕雙語對照」子段(適合場景 + 實作要點:YouTube + Google Drive 影片共用同一個設定、即時切換、AI 分句模式相容)
+- `docs/index.html`:landing page「YouTube 字幕翻譯」 feature card 文案補充「並可選擇雙語對照」
+
+**v1.8.17** — 修設定頁「翻譯快速鍵」preset 標籤改變時,「工具列翻譯本頁按鈕」與「自動翻譯網站」兩個下拉選單沒有即時跟著更新顯示文字的小 bug。
+
+**Bug 修正:**
+- `shinkansen/options/options.js`:原本兩個下拉選單的 option text 只在 `init()` 載入時組一次,使用者在「翻譯快速鍵」section 改 preset 標籤輸入框時,下游兩個 select 要重整頁面才會更新。修法:抽出 `refreshSlotDropdownLabels()` helper 統一從 DOM input 讀目前值組「{slotTitle}:{label}」,在 init() 載入時呼叫一次,並在三個 `preset-label-{slot}` input 上掛 `input` event listener,使用者打字當下就刷新兩個下拉選單顯示。Regression 補進 `test/regression/options-preset-label-live-update.spec.js`(三 slot 即時聯動 + 空標籤 fallback 到 slotTitle)。
+
+**v1.8.16** — 修 YouTube 字幕「reload 後字幕等不到 / 多次 reload 才 work」race condition + 「翻譯中…」提示打擾優化。
+
+**Bug 修正:**
+- YouTube 字幕翻譯 reload 後常等不到字幕、reload 多次才會突然開始翻的 race condition。根因:`content.js:1599` 的 auto-subtitle on load(setTimeout 800ms)與 `content-youtube.js:2334` 的 yt-navigate-finish SPA restart(setTimeout 500ms)兩條獨立自動鬧鐘在 reload 後都會 fire,後到那條進 `translateYouTubeSubtitles` 看 `YT.active=true` 走「再按一次還原」分支誤觸 `stopYouTubeTranslation`,把第一條鬧鐘已啟動的字幕 pipeline 整個砍掉。修法:`translateYouTubeSubtitles` 加 `{ source: 'manual' | 'auto' }` 參數,auto 路徑遇 active 直接 no-op log + return,manual 維持 toggle 還原語義。Caller 改造:content.js:1599 與 content-youtube.js:2334 兩條自動路徑改傳 `source: 'auto'`,popup `SET_SUBTITLE` 維持預設 manual(使用者操作 = manual)。Regression 補進 `test/regression/youtube-auto-activate-no-toggle-stop.spec.js`(2 條 test 涵蓋 auto no-op + manual toggle)
+- 雙語字幕模式 reload 後中英 CC 重疊在原生 30px 高度(toggle 雙語 off→on 後就錯開)。根因:`_setAsrHidingMode` 原本只在 `active=true`(純中文模式)分支注入 stylesheet,雙語直接啟動走 `active=false` 分支只 removeClass 不注入,`shinkansen-yt-overlay[bilingual] { --sk-cue-bottom: 90px }` 這條讓 overlay 上抬避開原生英文 CC 的 rule 從來沒進 DOM。修法:stylesheet 注入抽 `_ensureAsrStylesheet()` helper,`_setAsrHidingMode` 入口無條件 ensure,active true/false 兩條分支都拿到 CSS rule。Regression 補進 `test/regression/youtube-bilingual-reload-stylesheet.spec.js`(SANITY 通過)
+
+**UX 優化:**
+- 螢幕上已有中文字幕時不顯示「翻譯中…」黑底文字 indicator,避免覆蓋實質內容。新增 `_hasVisibleChineseCaption()` helper(ASR 路徑查 `_findActiveCue` 命中當前 cue 含 CJK / 非 ASR 路徑查 `.ytp-caption-segment` 含 CJK),3 處 `showCaptionStatus('翻譯中…')` 各包 guard。「等待字幕資料…」提示**不**加 guard——該分支進得去代表 rawSegments=0 不可能有中文字幕,出現 = 系統 invariant 異常,留作日後 debug 訊號
+- 設定頁 Debug 分頁「分類」filter dropdown 補上 4 個既有 sendLog / debugLog 在用但 dropdown 漏列的 channel:`YouTube 字幕`(youtube)、`Drive 字幕`(drive)、`Content Guard`(guard)、`YouTube 除錯`(youtube-debug)。先前使用者要篩 YouTube log 只能看 row 端標籤手動找,無法用 filter。row 端 LOG_CAT_LABELS map 不動,raw key 顯示維持現狀
+
+**v1.8.15** — Drive 影片 ASR 字幕翻譯 + 字幕雙語對照 toggle 大功能版本。
+
+**功能新增:**
+- **Drive 影片字幕翻譯**:支援 Google Drive 影片 viewer(drive.google.com/file/...)的 ASR 自動字幕翻譯。架構上 youtube.googleapis.com/embed iframe 內 PerformanceObserver 攔截 timedtext URL,background 用 authpayload-self-contained URL 直接 refetch json3,relay 給 top frame 的 content-drive.js。譯文走 D'(LLM 自由合句)寫進 SK.DRIVE.entries,top frame 自繪 `<shinkansen-drive-overlay>` Shadow DOM 浮層 + 跨 origin postMessage(YouTube IFrame Player API)同步 currentTime 顯示對應中文。整支 26 分鐘影片 throttled 並行 3 batch,~1 分鐘翻完,$0.05 token cost(Gemini)/ $0(Google Translate)
+- **字幕雙語對照 toggle**(`ytSubtitle.bilingualMode`,popup 加切換):YouTube + Drive 共用一個開關。打開 = 中英對照(YouTube ASR 中文 overlay 在原生英文 CC 上方 / Drive 中文浮層 + iframe 內原生英文 CC / YouTube 人工字幕「英文 + 譯文兩行」寫進原生 segment);關閉 = 純中文(預設,沿用 v1.8.14 既有行為)。即時切換不需 reload(YouTube 路徑 storage onChanged listener 即時 reapply,Drive 透過 postMessage loadModule/unloadModule captions)
+- **Drive 字幕設定共用 ytSubtitle**:user 不需為 Drive 額外設定。`ytSubtitle.engine='gemini'` Drive 走 D' LLM 合句,`'google'` 走 GT 逐段翻免費。autoTranslate / model / pricing 全部沿用
+- **popup 加 Drive 字幕翻譯 toggle**(類似 YouTube 既有 toggle,共用 ytSubtitle.autoTranslate 設定)
+
+**架構新增:**
+- 新檔 `shinkansen/content-drive.js`(top frame entry,gate hostname=drive.google.com & pathname /file/ & top frame)
+- 新檔 `shinkansen/content-drive-iframe.js`(youtube.googleapis.com/embed iframe entry,PerformanceObserver 攔 timedtext URL → background relay)
+- `manifest.json` content_scripts 加 `https://youtube.googleapis.com/*` entry(只裝 content-drive-iframe.js)+ all_urls 既有那組加 content-drive.js
+- `background.js` 加 `DRIVE_TIMEDTEXT_URL` / `TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH` / `TRANSLATE_DRIVE_BATCH_GOOGLE` 三個訊息 handler;抽 `_handleAsrSubtitleBatch` helper 給 YouTube 跟 Drive 共用 D' 邏輯
+- `content-youtube.js` IIFE 末尾 export `SK.ASR = { parseJson3, mergeAsr, parseAsrResponse }` 給 content-drive.js 共用
+
+**已知限制(留 v1.8.16 dedicated 修):**
+- Drive 影片需手動按 CC 一次觸發字幕載入(自動 setOption track protocol 對 cross-origin postMessage timing 不可靠,留 v1.8.16 debug)
+- Drive overlay 控制列顯示時不動態上抬避開進度條(cross-origin iframe 監測 chrome show/hide 的 mouseenter/mouseleave event 不可靠,留 v1.8.16 改 design);目前 overlay 固定 22% 高度,實際 player 高度大時不會被進度條疊到
+
+無 regression spec(commit 1-5d 整段 Drive ASR pipeline 走 PENDING_REGRESSION 路徑 B,e2e spec 留 v1.8.16);YouTube 既有 ASR 13 + non-ASR 8 + version-check 5 + GT preserve / unit 等相關 spec 全綠驗 YouTube 路徑零踩。
+
+---
+
+**v1.8.14** — 全專案技術債 review 後一輪整理:**2 個真實 bug** + **8 條性能/正確性修補** + **7 條維護性 refactor**(無功能變更)。
+
+Bug fix:
+- A1 `content-youtube.js:_runAsrSubBatch` 結尾 `domSegmentCount: domSegs.length` 在該 scope 未定義 → ASR 字幕每跑一個子批就拋 ReferenceError 被外層 try/catch 吞掉,`YT.lastApiMs` 沒同步、debug 計時失準、log 持續噴 "asr sub-batch N failed",但字幕本身 OK 所以沒被回報。修:刪該欄位 + 暴露 `SK._runAsrSubBatch` 給 spec。新 regression `test/regression/asr-sub-batch-no-reference-error.spec.js`(SANITY 加回該行 → fail)
+- A2 設定頁用量分頁「匯出 CSV」按鈕 `$('usage-from').value` / `$('usage-to').value` 讀已不存在的 element id(v1.5.7 拆成 `usage-from-date` / `usage-from-hour` / `usage-from-min`)→ TypeError、按鈕一按必炸。修:`lib/format.js` 新增 `formatYmd` + `buildUsageCsvFilename(fromMs, toMs)` helper 改用 timestamp 構檔名。新 unit spec `test/unit/usage-csv-filename.spec.js`(6 條,SANITY 驗過)
+
+性能/正確性:
+- B1 `cache.js getCacheUsageBytes` 改用 `storage.local.getBytesInUse(null)`(舊瀏覽器 fallback 走 get(null))→ 不再每次反覆把 9.5MB 翻譯快取 JSON 拉進記憶體;`evictOldest` 接 optional `preFetchedAll` 避免雙掃。新 unit spec `test/unit/cache-bytes-getbytesinuse.spec.js`
+- B2+B3 `lib/storage.js` 新增 `getSettingsCached()`(promise cache + `storage.onChanged` invalidate);`lib/logger.js debugLog` 與 `background.js LOG_USAGE` handler 改用 cached 版本 → YouTube 一支影片上百次 LOG_USAGE / 每筆 log 都重讀整份 settings 變單次。新 unit spec `test/unit/settings-cache.spec.js`(2 條含 invalidate 行為)
+- B4 `content-spa.js` Content Guard 加 `IntersectionObserver` + `guardVisibleSet`,sweep 改成只走 viewport 附近的 entry 而非整份 STATE.translatedHTML → 長文(Wikipedia 千段)從每秒 1000 次字串相等比對 + 部分 forced layout 降到通常 < 30 entry 子集
+- B5 `options.js` usage-search input 加 150ms debounce;fetchLogs 在 `res.logs.length===0` 時 short-circuit 不 render
+- C1 `background.js` streaming 期間用 `_streamKeepAliveTimer` 每 20 秒呼叫 `chrome.runtime.getPlatformInfo` 重置 SW idle timer → 長頁翻譯中切去 5 分鐘回來,取消按鈕仍能用(原本 SW unload 後 inFlightStreams Map 消失 → abort 訊號到不了 fetch)
+- C2 `options.save()` 加 `_saveInFlight` flag,並發按下兩次儲存 short-circuit
+- C3 `lib/storage.js` 新增 `cleanupLegacySyncKeys()`,SW 啟動時一次性把 `ytPreserveLineBreaks` / `preserveLineBreaks`(v1.2.38 移除)從 storage.sync 清除,避免長期累積踩到 8KB / item quota。新 unit spec `test/unit/legacy-key-cleanup.spec.js`(3 條含冪等)
+
+Refactor(行為等價,純維護性):
+- E1 `content-detect.js` 抽 `hasBlockAncestor(el)` + `blockAncestorMemo`,leaf anchor / leaf div span 兩條補抓共用,長頁面省千次祖先比對
+- E2 `content.js restorePage` dual / single 兩分支重複的 `originalHTML.forEach` 合併成單一迴圈
+- E3 `content.js` 抽 `restoreOriginalHTMLAndReset()`,Gemini abort + Google abort 兩處共用(SPA reset 語意不同不抽)
+- E4 `content.js packBatches` 寫入 `job.idx`,兩處 `jobs.indexOf(job)` 改 `job.idx`(O(N²) → O(1) log 計算)
+- E5 `content-youtube.js _findActiveCue` 確認 `_upsertDisplayCue` 已用 findIndex upsert + sort(同 startMs 不留多筆),內 loop 簡化為 `cues[i+1].startMs`(O(N²) → O(N))
+- E6 `lib/cache.js hashText` 加 LRU memo(上限 500),getBatch + setBatch 同段原文不重算 SHA-1
+- E8 `lib/rate-limiter.js` 維護 `_tokenSum` incremental(push += / shift -=),`currentTokenSum` 從 reduce 整陣列改 O(1) 直接讀。新 unit spec `test/unit/rate-limiter-token-sum.spec.js`(4 條含壓力測試)
+
+PENDING_REGRESSION 入庫(改動已套用,spec 抽不出乾淨):A3 GMT 字幕 IndexedDB source 分類錯誤(非真漏帳,費用幾乎 $0)、B4 IO subset、B5 debounce、C1 SW keep-alive、C2 save in-flight guard。
+
+未動(獨立評估):D1-D4 中-高風險重構(三條翻譯 handler / translatePage Gemini vs Google / content-youtube 三條 streaming pattern / options form binding)、E7 usage-db compound index(IndexedDB schema migration 等用量真的暴增再說)。
+
+Full suite 357/357 pass。
+
 **v1.8.13** — 修 Google MT 翻譯大量 inline 連結段落時譯文殘留「【1/Proad】 /Proad1】 /Proad1】 ...」這類 garbage 標記的 bug(典型觸發場景:Medium 作者 byline「socials: YouTube | TikTok | Substack | ...」這類大量短 `<a>` 列表)。根因:以實 fetch `translate.googleapis.com/translate_a/single` 驗證,Google Translate 非官方端點對同段內 `【N】xxx【/N】` 配對標記超過 5 對時會 hallucinate 把標記當 list 結構亂吐 garbage tokens(3-5 對 OK、6 對開始壞、8 對完全爛、Atomic `【*N】` 不受影響連 8 個都正常)。修法:`shinkansen/content-serialize.js` `serializeNodeIterableForGoogle` 加 `GT_MAX_PAIRED_SLOTS=5` 閾值 + `countPairedInlineForGT` helper,paired-eligible inline 元素數 > 5 時降級——同段內 `GT_INLINE_TAGS` 元素改走「不加 paired 標記、純取文字」路徑(slots 仍可含 atomic),該段失去 `<a>` 連結保留(anchor text 變純文字)但譯文不會壞。新 1 條 regression spec(`test/regression/google-translate-many-markers-degrade.spec.js`,2 test:8 個 `<a>` 應降級 + 5 個 `<a>` 維持原 v1.4.2 行為的回歸保護);SANITY 把 `degrade` 寫死成 `false` → test #1 fail(received=8 markers expected=0)test #2 仍 pass,還原後 5/5 含 v1.4.1/4.2/4.3 既有 3 條全綠。Full suite 339/339 pass。
 
 **v1.8.12** — popup「⚠ 尚未設定 API Key」警告 gate 在「translatePresets 中至少一組是 Gemini」之後。使用者反映他完全沒用 Gemini(三組 preset 都改成 Google MT / 自訂模型),但 popup 一直在提醒沒填 Gemini API Key。修法:`shinkansen/lib/storage.js` 加 `presetsRequireGemini(presets)` helper(any-slot some-match;空 / undefined / 非 array → 保守回 true 跟 DEFAULT_SETTINGS 對齊),`shinkansen/popup/popup.js` 把原本 `if (!apiKey)` 改成 `if (!apiKey && presetsRequireGemini(translatePresets))`。範圍外不動的:`background.js` 三處「尚未設定 Gemini API Key」error throw 維持原狀(只在使用者主動觸發 Gemini 翻譯時才跑出來,行為正確);options 設定頁 Gemini 分頁 API Key 欄位也維持(使用者主動點進去看不算嘮叨)。新 1 條 regression(`test/unit/presets-require-gemini.spec.js`,7 條斷言;SANITY 把 `some` 改 `every` → 預設組合 + 含 gemini mixed 兩條 fail,還原後 7/7 pass)。

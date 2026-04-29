@@ -7,7 +7,7 @@
 </head>
 <body>
   <header>
-    <h1>🚄 Shinkansen<span class="update-dot" id="update-dot" hidden title="有新版可下載"></span></h1>
+    <h1><img src="../icons/icon-128.png" alt="" class="page-title-icon">Shinkansen<span class="update-dot" id="update-dot" hidden title="有新版可下載"></span></h1>
     <span class="version" id="version"></span>
   </header>
 
@@ -50,6 +50,18 @@
     <div class="row" id="yt-subtitle-row" hidden>
       <label for="yt-subtitle-toggle">YouTube 字幕翻譯</label>
       <input type="checkbox" id="yt-subtitle-toggle">
+    </div>
+
+    <!-- commit 5a:只在 Drive 影片 viewer 顯示(drive.google.com/file/) -->
+    <div class="row" id="drive-subtitle-row" hidden>
+      <label for="drive-subtitle-toggle">Drive 影片字幕翻譯</label>
+      <input type="checkbox" id="drive-subtitle-toggle">
+    </div>
+
+    <!-- commit 5c:雙語對照 toggle(YouTube 影片 + Drive 影片頁顯示,共用 ytSubtitle.bilingualMode) -->
+    <div class="row" id="bilingual-row" hidden>
+      <label for="bilingual-toggle">字幕雙語對照</label>
+      <input type="checkbox" id="bilingual-toggle">
     </div>
 
     <div class="row">

@@ -7,8 +7,12 @@
 //   - 非 development install → 直接 skip 不打 GitHub API
 //   - parseVersion / isNewer 三段式版本比對正確
 //
-// Mock 策略：替換 globalThis.chrome（storage.local in-memory + management.getSelf
-// + runtime.getManifest）+ globalThis.fetch 攔截 GitHub API。
+// Mock 策略：替換 globalThis.chrome（storage.local in-memory + runtime.getManifest）
+// + globalThis.fetch 攔截 GitHub API。
+// v1.8.18: isManualInstall() 改用 manifest.update_url 判斷(不再需要 management
+// permission),mock 裡用 installType 變數推導 update_url:
+//   installType === 'normal' → 注入 update_url(模擬 CWS Chrome 自動 inject)
+//   其他 → 不注入 update_url(模擬手動安裝 / unpacked)
 import { test, expect } from '@playwright/test';
 
 const store = {};
@@ -37,10 +41,14 @@ globalThis.chrome = {
     },
   },
   runtime: {
-    getManifest: () => ({ version: manifestVersion }),
-  },
-  management: {
-    getSelf: async () => ({ installType }),
+    getManifest: () => {
+      const m = { version: manifestVersion };
+      // 模擬 CWS 自動 inject 的 update_url(只有 'normal' install type 會有)
+      if (installType === 'normal') {
+        m.update_url = 'https://clients2.google.com/service/update2/crx';
+      }
+      return m;
+    },
   },
 };
 
@@ -169,8 +177,8 @@ test.describe('checkForUpdate', () => {
     expect(store.updateAvailable).toBeUndefined();
   });
 
-  test('CWS 安裝（installType=normal）→ 不打 GitHub API', async () => {
-    installType = 'normal';
+  test('CWS 安裝（manifest.update_url 存在）→ 不打 GitHub API', async () => {
+    installType = 'normal'; // mock 依此推導 manifest.update_url 存在
     nextFetchResponse = makeOkResp('v9.9.9'); // 即使 GitHub 有新版也不該被讀
     const result = await checkForUpdate();
     expect(result.checked).toBe(false);
@@ -233,5 +241,7 @@ test.describe('shouldShowTodayNotice / markUpdateNoticeShown', () => {
 
 // SANITY 紀錄（已在 Claude Code 端驗過）：
 //   把 update-check.js isNewer() 改成永遠回 false → 「latest > current → 寫入」spec fail。
-//   把 isManualInstall() 改成永遠回 true（移除 installType 判斷）→ 「CWS 安裝跳過」spec fail。
+//   把 isManualInstall() 改成永遠回 true（移除 update_url 判斷）→ 「CWS 安裝跳過」spec fail。
+//   v1.8.18 sanity:把 isManualInstall() 內 `return !updateUrl` 改成 `return true`,
+//     「CWS 安裝跳過」spec fail(fetch 被打,store 被寫)。還原 → pass。
 //   還原後全部 pass。

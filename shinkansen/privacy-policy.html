@@ -143,8 +143,13 @@
   </section>
 
   <section>
-    <h3><code>activeTab</code> 與 <code>scripting</code></h3>
-    <p>用於在使用者啟動翻譯時，將翻譯腳本注入當前頁面。</p>
+    <h3><code>activeTab</code></h3>
+    <p>用於在使用者主動啟動翻譯時，於當前作用中分頁啟用翻譯邏輯（內容腳本透過宣告式 <code>content_scripts</code> 注入，無需 <code>scripting</code> 動態權限）。</p>
+  </section>
+
+  <section>
+    <h3><code>alarms</code></h3>
+    <p>用於 service worker 排定閒置喚醒時機（例如維持翻譯串流連線、定期檢查更新），不背景收集資料。</p>
   </section>
 
   <h2>7. 資料安全</h2>

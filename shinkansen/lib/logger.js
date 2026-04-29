@@ -19,7 +19,7 @@
 //   youtube    — YouTube 字幕翻譯流程
 
 import { browser } from './compat.js';
-import { getSettings } from './storage.js';
+import { getSettingsCached } from './storage.js';
 
 const MAX_LOGS = 1000;
 
@@ -35,16 +35,20 @@ const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'rate-limit']);
 const PERSIST_KEY = 'yt_debug_log';
 const PERSIST_MAX = 100;
 
-/** 非同步將 entry 寫入 browser.storage.local（fire-and-forget，不阻塞 buffer 寫入）。 */
+// v1.8.20: 序列化 persistLog 寫入,避免平行 log 踩 read-modify-write race。
+// 多筆 log 在短時間內進來時(rate-limit + api 同時觸發很常見),原本 N 個獨立的
+// get → set 會互相覆蓋,後寫的吃掉前寫的 → log 遺失。改 promise chain 排隊。
+let _persistQueue = Promise.resolve();
 function persistLog(entry) {
   if (!PERSIST_CATEGORIES.has(entry.category)) return;
-  browser.storage.local.get(PERSIST_KEY).then(result => {
-    const logs = result[PERSIST_KEY] || [];
-    logs.push(entry);
-    if (logs.length > PERSIST_MAX) logs.splice(0, logs.length - PERSIST_MAX);
-    return browser.storage.local.set({ [PERSIST_KEY]: logs });
-  }).catch(() => {
-    // 寫入失敗不影響記憶體 buffer
+  _persistQueue = _persistQueue.then(async () => {
+    try {
+      const result = await browser.storage.local.get(PERSIST_KEY);
+      const logs = result[PERSIST_KEY] || [];
+      logs.push(entry);
+      if (logs.length > PERSIST_MAX) logs.splice(0, logs.length - PERSIST_MAX);
+      await browser.storage.local.set({ [PERSIST_KEY]: logs });
+    } catch (_) { /* 寫入失敗不影響記憶體 buffer 也不卡 queue */ }
   });
 }
 
@@ -85,7 +89,8 @@ export function debugLog(level, category, message, data) {
   persistLog(entry);
 
   // 有開 debugLog 才印 console（非同步讀設定，不阻塞 buffer 寫入）
-  getSettings().then(settings => {
+  // v1.8.14: 改用 getSettingsCached 避免每筆 log 都打 storage IPC
+  getSettingsCached().then(settings => {
     if (settings.debugLog) {
       const tag = `[Shinkansen][${category}]`;
       if (level === 'error') console.error(tag, message, data);

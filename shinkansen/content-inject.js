@@ -266,6 +266,7 @@
         replaceNodeInPlace(el, frag);
         el.setAttribute('data-shinkansen-translated', '1');
         STATE.translatedHTML.set(el, el.innerHTML);
+        SK._guardObserveEl?.(el); // v1.8.20: 把新譯段註冊進 IO subset
         return;
       }
       const cleaned = SK.stripStrayPlaceholderMarkers(translation);
@@ -275,17 +276,20 @@
         replaceNodeInPlace(el, recovered);
         el.setAttribute('data-shinkansen-translated', '1');
         STATE.translatedHTML.set(el, el.innerHTML);
+        SK._guardObserveEl?.(el);
         return;
       }
       plainTextFallback(el, cleaned);
       el.setAttribute('data-shinkansen-translated', '1');
       STATE.translatedHTML.set(el, el.innerHTML);
+      SK._guardObserveEl?.(el);
       return;
     }
 
     replaceTextInPlace(el, translation);
     el.setAttribute('data-shinkansen-translated', '1');
     STATE.translatedHTML.set(el, el.innerHTML);
+    SK._guardObserveEl?.(el);
   };
 
   function injectFragmentTranslation(unit, translation, slots) {
@@ -329,6 +333,11 @@
       if (n.parentNode === el) el.removeChild(n);
     }
     el.insertBefore(newContent, anchor);
+    // v1.8.20: fragment 路徑也要寫 attribute + STATE.translatedHTML——
+    // 否則 dual 模式下 fragment 段落 Content Guard 保護不到、SPA observer 重複偵測 → 重複翻譯。
+    el.setAttribute('data-shinkansen-translated', '1');
+    STATE.translatedHTML.set(el, el.innerHTML);
+    SK._guardObserveEl?.(el);
   }
 
   // 暴露 resolveWriteTarget / injectIntoTarget 供 Debug API testInject 使用
@@ -503,6 +512,7 @@
         if (info.wrapper === existingWrapper) {
           STATE.translationCache.delete(oldKey);
           STATE.translationCache.set(original, info);
+          SK._guardObserveEl?.(original); // v1.8.20: swap key 後新 key 要重新進 IO subset
           break;
         }
       }
@@ -559,6 +569,7 @@
 
     original.setAttribute('data-shinkansen-dual-source', '1');
     STATE.translationCache.set(original, { wrapper, insertMode });
+    SK._guardObserveEl?.(original); // v1.8.20: dual 路徑也要進 IO subset
   };
 
   /** 還原 dual 模式：移除所有 wrapper、清乾淨 attribute（restorePage 雙語分支用） */

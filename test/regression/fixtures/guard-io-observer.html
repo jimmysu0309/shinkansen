@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>fixture: guard-io-observer</title>
+</head>
+<body>
+  <!--
+    對應 v1.8.20 Content Guard IntersectionObserver hook 修復
+    (修 v1.8.14 IO subset 設計缺口:initGuardIntersectionObserver 只 observe
+     啟動快照,後續 SPA rescan 翻新一批的譯段從未進 guardVisibleSet → guard sweep
+     對它們完全失效)。
+
+    結構:兩個獨立段落,模擬 SPA 啟動後翻第一批 + 後續加新內容再翻第二批。
+    每次 injectTranslation 後 SK._guardObserveEl(el) 應被呼叫,把該段元素
+    註冊到 IO observer 的訂閱清單。
+  -->
+  <article>
+    <p id="target-a">First paragraph translated in batch 1 of an SPA page.</p>
+    <p id="target-b">Second paragraph injected later via SPA rescan should also be observed.</p>
+  </article>
+</body>
+</html>

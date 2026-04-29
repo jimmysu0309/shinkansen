@@ -44,6 +44,8 @@ export class RateLimiter {
     // Sliding window 緩衝區
     this.requests = [];              // 時間戳陣列（ms）
     this.tokens = [];                // { t: 時間戳, n: token 數 }
+    // v1.8.14: tokens 累計 incremental,push += / shift -=,O(1) 取代 reduce
+    this._tokenSum = 0;
 
     // RPD 狀態（從 storage 讀入）
     this.rpdDateKey = null;          // 對應哪一天
@@ -135,13 +137,14 @@ export class RateLimiter {
       this.requests.shift();
     }
     while (this.tokens.length && this.tokens[0].t < cutoff) {
+      this._tokenSum -= this.tokens[0].n;
       this.tokens.shift();
     }
   }
 
   /** 取得目前 60 秒視窗內累積的 token 數。 */
   currentTokenSum() {
-    return this.tokens.reduce((s, e) => s + e.n, 0);
+    return this._tokenSum;
   }
 
   /**
@@ -176,6 +179,7 @@ export class RateLimiter {
     const now = Date.now();
     this.requests.push(now);
     this.tokens.push({ t: now, n: estTokens });
+    this._tokenSum += estTokens;
     this.rpdCount += 1;
     // 節流持久化 RPD（每 10 次或 30 秒才寫入一次，降低 storage 寫入頻率）
     this.scheduleRpdPersist();

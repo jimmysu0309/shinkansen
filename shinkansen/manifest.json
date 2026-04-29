@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Shinkansen",
-  "version": "1.8.13",
+  "version": "1.8.20",
   "description": "快速、流暢的網頁翻譯擴充功能，使用 Google Gemini 將外語網頁翻譯成台灣繁體中文。",
   "default_locale": "zh_TW",
   "browser_specific_settings": {
@@ -42,6 +42,16 @@
     },
     {
       "matches": [
+        "https://youtube.googleapis.com/*"
+      ],
+      "js": [
+        "content-drive-iframe.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
         "<all_urls>"
       ],
       "js": [
@@ -52,6 +62,7 @@
         "content-inject.js",
         "content-spa.js",
         "content-youtube.js",
+        "content-drive.js",
         "content.js"
       ],
       "css": [
@@ -75,26 +86,26 @@
     "open_in_tab": true
   },
   "commands": {
+    "translate-preset-0": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
+      "description": "翻譯本頁 - 主要預設"
+    },
     "translate-preset-1": {
       "suggested_key": {
         "default": "Alt+A",
         "mac": "Alt+A"
       },
-      "description": "翻譯預設 2（預設 Gemini Flash Lite）"
-    },
-    "translate-preset-2": {
-      "suggested_key": {
-        "default": "Alt+S",
-        "mac": "Alt+S"
-      },
-      "description": "翻譯主要預設（預設 Gemini Flash）"
+      "description": "翻譯本頁 - 預設 2"
     },
     "translate-preset-3": {
       "suggested_key": {
         "default": "Alt+D",
         "mac": "Alt+D"
       },
-      "description": "翻譯預設 3（預設 Google Translate,維持原 slot 3 編號）"
+      "description": "翻譯本頁 - 預設 3"
     }
   }
 }

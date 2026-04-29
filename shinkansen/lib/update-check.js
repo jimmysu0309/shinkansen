@@ -79,18 +79,24 @@ function isWorthNotifying(latest, current) {
 
 /**
  * 是否為「需要手動更新」的安裝來源（非 Chrome Web Store）。
- * @returns {Promise<boolean>}
+ *
+ * 判斷依據:`chrome.runtime.getManifest().update_url`。CWS 安裝時 Chrome
+ * 會自動 inject 一個 update_url 欄位(指向 CWS 自動更新端點),自家
+ * manifest.json 不寫此欄位 → 有 update_url = CWS,沒有 = unpacked / sideload。
+ *
+ * 為什麼不用 `chrome.management.getSelf()`:那需要 'management' permission,
+ * CWS 審查會把它當敏感權限額外 review(它能列舉/disable 其他 extension)。
+ * 我們只需要判斷「是不是 CWS 安裝」,不需要那個權限的所有能力。
+ *
+ * @returns {boolean}
  */
-async function isManualInstall() {
+function isManualInstall() {
   try {
-    const info = await browser.management.getSelf();
-    // 'development' = unpacked / 開發者模式載入
-    // 'sideload' = 第三方安裝（罕見）
-    // 'normal' = CWS / 'admin' = 企業政策
-    return info.installType === 'development' || info.installType === 'sideload';
+    const updateUrl = browser.runtime.getManifest().update_url;
+    return !updateUrl;
   } catch (err) {
-    // 沒有 management permission 或其他錯誤——保守估計算手動安裝
-    debugLog('warn', 'update-check', 'management.getSelf failed', { error: err.message });
+    // 理論上不會發生(getManifest 是同步且永遠可用)。保守估計算手動安裝。
+    debugLog('warn', 'update-check', 'getManifest failed', { error: err.message });
     return true;
   }
 }
@@ -107,19 +113,27 @@ async function isManualInstall() {
  * @returns {Promise<{ checked: boolean, hasUpdate: boolean, version?: string, releaseUrl?: string, error?: string }>}
  */
 export async function checkForUpdate() {
-  if (!(await isManualInstall())) {
+  if (!isManualInstall()) {
     return { checked: false, hasUpdate: false, error: 'CWS install — skipped' };
   }
   const currentVersion = browser.runtime.getManifest().version;
   let resp;
+  // v1.8.20: AbortController 15s timeout——MV3 SW 30s idle 上限,網路差時若不主動 abort
+  // 會被強制終止,fire-and-forget 訊息可能被吞;15s 留 buffer 給後續 JSON parse + storage 寫入
+  const ac = new AbortController();
+  const timeoutId = setTimeout(() => ac.abort(), 15_000);
   try {
     resp = await fetch(GITHUB_RELEASES_URL, {
       headers: { 'Accept': 'application/vnd.github+json' },
+      signal: ac.signal,
     });
   } catch (err) {
-    debugLog('warn', 'update-check', 'fetch failed', { error: err.message });
-    return { checked: false, hasUpdate: false, error: err.message };
+    clearTimeout(timeoutId);
+    const isAbort = err?.name === 'AbortError';
+    debugLog('warn', 'update-check', isAbort ? 'fetch timeout' : 'fetch failed', { error: err.message });
+    return { checked: false, hasUpdate: false, error: isAbort ? 'timeout' : err.message };
   }
+  clearTimeout(timeoutId);
   if (!resp.ok) {
     debugLog('warn', 'update-check', `GitHub API ${resp.status}`, { status: resp.status });
     return { checked: false, hasUpdate: false, error: `HTTP ${resp.status}` };

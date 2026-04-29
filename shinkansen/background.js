@@ -5,7 +5,7 @@ import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
-import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
+import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -17,6 +17,9 @@ import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/upda
 import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
+
+// v1.8.14: 一次性清掉 storage.sync 的 legacy keys(避免長期累積踩到 quota)
+cleanupLegacySyncKeys();
 
 // v1.2.11: SUBTITLE_SYSTEM_PROMPT 已移至 lib/storage.js（DEFAULT_SUBTITLE_SYSTEM_PROMPT）
 // TRANSLATE_SUBTITLE_BATCH handler 從 ytSubtitle 設定讀取，不再使用硬碼常數。
@@ -118,13 +121,22 @@ async function getUsageStats() {
   };
 }
 
+// v1.8.20: 序列化 addUsage 寫入。原版 read-modify-write 沒鎖,跨 tab 並行翻譯時兩個
+// await getUsageStats() 各拿舊值 → 後寫覆蓋前寫 → 累計用量永久遺失一筆。
+// 改 promise chain 排隊:每次 addUsage 接在 _usageWriteQueue 之後跑,保證序列化。
+let _usageWriteQueue = Promise.resolve();
 async function addUsage(inputTokens, outputTokens, costUSD) {
-  const s = await getUsageStats();
-  s.totalInputTokens += inputTokens;
-  s.totalOutputTokens += outputTokens;
-  s.totalCostUSD += costUSD;
-  await browser.storage.local.set({ [USAGE_KEY]: s });
-  return s;
+  const next = _usageWriteQueue.then(async () => {
+    const s = await getUsageStats();
+    s.totalInputTokens += inputTokens;
+    s.totalOutputTokens += outputTokens;
+    s.totalCostUSD += costUSD;
+    await browser.storage.local.set({ [USAGE_KEY]: s });
+    return s;
+  });
+  // 防止單次 reject 卡住整條 queue:catch 後 swallow,但仍把 result/error return 給 caller
+  _usageWriteQueue = next.catch(() => {});
+  return next;
 }
 
 async function resetUsageStats() {
@@ -145,14 +157,41 @@ function computeCostUSD(inputTokens, outputTokens, pricing) {
 }
 
 /**
- * v0.48: 計算套用 Gemini implicit context cache 折扣後的實付費用。
- * Gemini 對 cache 命中部分只收原價 25%（省 75%），未命中部分與 output 全價。
- * 公式：effectiveInput = (inputTokens - cachedTokens) + cachedTokens × 0.25
+ * v0.48: 計算套用 implicit / explicit context cache 折扣後的實付費用。
+ * v1.8.20: 改成可注入折扣比例(cachedRate = cache 命中部分相對全價的比例)。
+ * 各家公告:
+ *   - Gemini implicit cache: 命中收 25% (省 75%)
+ *   - OpenAI prompt cache:    命中收 50% (省 50%)
+ *   - Anthropic Claude read:  命中收 10% (省 90%);write 是 +25% 的另一條,本擴充功能
+ *                             不主動建 cache,只看 read,所以僅處理命中折扣。
+ *   - 不確定的 provider:      預設用 0.5 的中間值,低估比高估保守。
+ *
+ * 公式:effectiveInput = (inputTokens - cachedTokens) + cachedTokens × cachedRate
  */
-function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing) {
+function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing, cachedRate) {
+  const rate = (typeof cachedRate === 'number' && cachedRate >= 0 && cachedRate <= 1)
+    ? cachedRate
+    : 0.25; // 預設 Gemini 75% 折扣(向下相容既有 caller)
   const uncached = Math.max(0, inputTokens - cachedTokens);
-  const effectiveInput = uncached + cachedTokens * 0.25;
+  const effectiveInput = uncached + cachedTokens * rate;
   return computeCostUSD(effectiveInput, outputTokens, pricing);
+}
+
+/**
+ * v1.8.20: 依自訂 Provider baseUrl 推斷 cache 命中折扣比例。
+ * 真值比例不應該硬編碼成 0.25 套到所有 provider —— OpenAI cache 折扣 50%、
+ * Claude 高達 90%,套 0.25 對 OpenAI 會低估費用約 50%、對 Claude 會高估 70%。
+ * 由 baseUrl 簡單字串判斷,使用者用 OpenRouter 等 aggregator 時走預設 0.5 中間值。
+ *
+ * @param {string} baseUrl
+ * @returns {number} cache 命中部分相對全價的比例(0-1)
+ */
+function getCustomCacheHitRate(baseUrl) {
+  const url = String(baseUrl || '').toLowerCase();
+  if (url.includes('anthropic.com')) return 0.10;        // Claude read 90% off
+  if (url.includes('openai.com')) return 0.50;            // OpenAI prompt cache 50% off
+  if (url.includes('deepseek.com')) return 0.10;          // DeepSeek context cache hit 90% off
+  return 0.50;                                            // 未知 provider 中間值
 }
 
 // ─── Extension icon badge(已翻譯紅點提示） ─────────────────
@@ -257,6 +296,30 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
   stickyTabs.delete(tabId);
   await persistStickyTabs();
 });
+
+// commit 4a 抽出:YouTube 跟 Drive 影片 ASR 都走 D' 模式(LLM 自由合句 + 時間戳對齊),
+// 邏輯一致只差 cacheTag(避免 YouTube / Drive cache 互打)與 log namespace。
+async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
+  const _tReceived = Date.now();
+  const s = await getSettings();
+  const _settingsMs = Date.now() - _tReceived;
+  debugLog('info', namespace, 'asr subtitle batch received', {
+    inputBytes: payload?.texts?.[0]?.length || 0,
+    settingsMs: _settingsMs,
+  });
+  const yt = s.ytSubtitle || {};
+  const geminiOverrides = {
+    // ASR 模式不沿用使用者自訂的 ytSubtitle.systemPrompt(那是逐條翻譯版本,規則不適用 ASR JSON 模式)
+    systemInstruction: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
+    // ASR 合句需要一點推理,但翻譯仍應穩定;沿用 ytSubtitle.temperature
+    temperature: yt.temperature ?? 0.1,
+  };
+  if (yt.model) geminiOverrides.model = yt.model;
+  const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+  // ASR 路徑不套用固定術語表 / 黑名單(ASR prompt 已內含禁用詞規則,且 JSON 包裝增加術語注入難度)
+  return handleTranslate(payload, sender, geminiOverrides, pricingOverride, cacheTag,
+    false, false);
+}
 
 // ─── 訊息路由（handler map 取代 if-else 鏈） ──────────────────
 const messageHandlers = {
@@ -382,32 +445,69 @@ const messageHandlers = {
   //   - 字幕 settings 沿用 ytSubtitle(model / temperature / pricing),只覆寫 systemInstruction
   TRANSLATE_ASR_SUBTITLE_BATCH: {
     async: true,
+    handler: (payload, sender) => _handleAsrSubtitleBatch(payload, sender, '_yt_asr', 'youtube'),
+  },
+  // commit 4a:Drive 影片 ASR 字幕走獨立 cache key('_drive_yt_asr')避免污染 YouTube
+  // 既有 cache。LLM prompt / pricing / 設定全部沿用 ytSubtitle(D' 模式跟 YouTube 一致)。
+  TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH: {
+    async: true,
+    handler: (payload, sender) => _handleAsrSubtitleBatch(payload, sender, '_drive_yt_asr', 'drive'),
+  },
+  // Drive 影片 ASR 字幕 URL 偵測——iframe(youtube.googleapis.com/embed)的
+  // content-drive-iframe.js 用 PerformanceObserver 抓到 timedtext URL 後送來。
+  // 為什麼 background fetch 而不直接 iframe fetch:iframe 內 fetch 會被 PerformanceObserver
+  // 重新捕捉造成 loop;且 background 跟 iframe 不同 origin,但 authpayload 自含 auth(已驗
+  // credentials:'omit' 也 200),background 直接 refetch 即可。
+  // 拿到 json3 後 relay 到 top frame(drive.google.com)的 content-script(commit 2 接手處理)。
+  DRIVE_TIMEDTEXT_URL: {
+    async: true,
     handler: async (payload, sender) => {
-      const _tReceived = Date.now();
-      const s = await getSettings();
-      const _settingsMs = Date.now() - _tReceived;
-      debugLog('info', 'youtube', 'asr subtitle batch received', {
-        inputBytes: payload?.texts?.[0]?.length || 0,
-        settingsMs: _settingsMs,
+      const url = payload?.url;
+      if (!url || !sender?.tab?.id) return { ok: false, error: 'invalid payload' };
+      debugLog('info', 'drive', 'timedtext url received from iframe', {
+        tabId: sender.tab.id,
+        frameId: sender.frameId,
+        url: url.slice(0, 200),
       });
-      const yt = s.ytSubtitle || {};
-      const geminiOverrides = {
-        // ASR 模式不沿用使用者自訂的 ytSubtitle.systemPrompt(那是逐條翻譯版本,規則不適用 ASR JSON 模式)
-        systemInstruction: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
-        // ASR 合句需要一點推理,但翻譯仍應穩定;沿用 ytSubtitle.temperature
-        temperature: yt.temperature ?? 0.1,
-      };
-      if (yt.model) geminiOverrides.model = yt.model;
-      const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
-      // ASR 路徑不套用固定術語表 / 黑名單(ASR prompt 已內含禁用詞規則,且 JSON 包裝增加術語注入難度)
-      return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt_asr',
-        false, false);
+      try {
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) {
+          debugLog('warn', 'drive', 'timedtext fetch failed', { status: res.status });
+          return { ok: false, error: `http ${res.status}` };
+        }
+        const json3 = await res.json();
+        debugLog('info', 'drive', 'timedtext fetched', {
+          eventCount: Array.isArray(json3?.events) ? json3.events.length : 0,
+        });
+        try {
+          await browser.tabs.sendMessage(
+            sender.tab.id,
+            { type: 'DRIVE_ASR_CAPTIONS', payload: { url, json3 } },
+            { frameId: 0 },
+          );
+        } catch (e) {
+          // top frame 可能還沒 listener(commit 2 才接),這層先記 log
+          debugLog('info', 'drive', 'top frame relay no listener (expected pre-commit-2)', {
+            error: e?.message || String(e),
+          });
+        }
+        return { ok: true };
+      } catch (e) {
+        debugLog('warn', 'drive', 'timedtext handler error', { error: e?.message || String(e) });
+        return { ok: false, error: e?.message || String(e) };
+      }
     },
   },
   // v1.4.0: Google Translate 網頁翻譯（不需 API Key，不走 rate limiter，快取 key 用 _gt 後綴）
   TRANSLATE_BATCH_GOOGLE: {
     async: true,
     handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt'),
+  },
+  // commit 5b:Drive 影片字幕走 Google Translate 路徑(獨立 cache key '_gt_drive' 避免跟
+  // 一般網頁 GT 翻譯('_gt')互打)。input texts = raw segments 的 text array,逐段翻。
+  TRANSLATE_DRIVE_BATCH_GOOGLE: {
+    async: true,
+    handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt_drive'),
   },
   // v1.5.7: OpenAI-compatible 自訂 Provider 翻譯（chat.completions endpoint）
   // 不走 rate limiter，cache key 加 baseUrl hash + model 分區。
@@ -581,9 +681,13 @@ const messageHandlers = {
       // 等待新分頁載入完成後自動觸發翻譯
       // 透過 onUpdated 監聽 tab 的 complete 狀態，再送 TOGGLE_TRANSLATE 訊息
       return new Promise((resolve) => {
+        // v1.8.20: 把 30s 安全閥 timer 拉出來,onUpdated 路徑 resolve 時 clearTimeout
+        // 避免 SW 多活 30s 跑無作用 code(原本 onUpdated 路徑沒清,timeout setTimeout 仍然 fire)
+        let safetyTimer = null;
         const onUpdated = (tabId, changeInfo) => {
           if (tabId === tab.id && changeInfo.status === 'complete') {
             browser.tabs.onUpdated.removeListener(onUpdated);
+            if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
             // 小延遲確保 content script 已完成初始化
             setTimeout(() => {
               browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
@@ -594,7 +698,7 @@ const messageHandlers = {
         browser.tabs.onUpdated.addListener(onUpdated);
 
         // 安全閥：30 秒後若尚未 complete，移除 listener 避免洩漏
-        setTimeout(() => {
+        safetyTimer = setTimeout(() => {
           browser.tabs.onUpdated.removeListener(onUpdated);
           resolve({ tabId: tab.id, timeout: true });
         }, 30000);
@@ -619,7 +723,9 @@ const messageHandlers = {
   LOG_USAGE: {
     async: true,
     handler: async (payload) => {
-      const settings = await getSettings();
+      // v1.8.14: 改用 getSettingsCached——YouTube 一支影片上百筆 LOG_USAGE,
+      // 每筆原本都重讀整份 settings 只為了取 model 名稱。
+      const settings = await getSettingsCached();
       // v1.5.7: 依 payload.engine 決定 model 該從哪裡取——這樣 Alt+A/S 切不同 preset
       // 寫入紀錄的 model 才會是該批 API 真實使用的模型。
       // - 'openai-compat'：自訂模型，model 從 settings.customProvider.model
@@ -698,6 +804,37 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // v1.8.0: streamId → AbortController 對映,支援使用者中途取消 streaming
 const inFlightStreams = new Map();
+
+// v1.8.14: streaming 期間 SW keep-alive。
+// v1.8.20: 改用 chrome.alarms — setInterval 在 SW 真被收回時整個被銷毀,等於 keep-alive 本身死亡;
+// alarms 是持久排程,SW 收回後到觸發點仍會被喚醒繼續續命。
+// 設計:0.4 分鐘(24 秒)觸發一次,由 onAlarm 排程下一次,直到 inFlightStreams 清空才停。
+const _STREAM_KEEPALIVE_ALARM = 'shinkansen-stream-keepalive';
+const _STREAM_KEEPALIVE_PERIOD_MIN = 0.5; // Chrome alarms 最低 0.5 分鐘 = 30 秒
+function _startStreamKeepAlive() {
+  // 重複呼叫 alarms.create 同名會覆蓋(無重複註冊風險)
+  try {
+    browser.alarms.create(_STREAM_KEEPALIVE_ALARM, {
+      delayInMinutes: _STREAM_KEEPALIVE_PERIOD_MIN,
+      periodInMinutes: _STREAM_KEEPALIVE_PERIOD_MIN,
+    });
+  } catch (_) { /* alarms 權限缺失或測試環境 */ }
+}
+function _stopStreamKeepAliveIfIdle() {
+  if (inFlightStreams.size === 0) {
+    try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
+  }
+}
+// alarm 觸發即「SW 被喚醒到」這個事實本身就是 keep-alive。listener body 不必做事;
+// 但 alarm 觸發時若 inFlightStreams 已空(stream 完成同時 alarm fire 的 race),順手清理。
+try {
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm?.name !== _STREAM_KEEPALIVE_ALARM) return;
+    if (inFlightStreams.size === 0) {
+      try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
+    }
+  });
+} catch (_) { /* alarms 不可用環境 */ }
 
 // v1.8.0: Streaming 翻譯 handler。
 // v1.8.9: 加 opts 參數,支援字幕路徑(TRANSLATE_SUBTITLE_BATCH_STREAM)復用同一條 streaming pipeline,
@@ -792,6 +929,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   if (allHit) {
     // Fast path:跳過 streaming + Gemini call,立即推 FIRST_CHUNK + 各 SEGMENT + DONE
     inFlightStreams.delete(streamId);  // 不需要 abort
+    _stopStreamKeepAliveIfIdle();
     browser.tabs.sendMessage(tabId, { type: 'STREAMING_FIRST_CHUNK', payload: { streamId } }).catch(() => {});
     for (let i = 0; i < cached.length; i++) {
       browser.tabs.sendMessage(tabId, {
@@ -814,6 +952,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
 
   const ac = new AbortController();
   inFlightStreams.set(streamId, ac);
+  _startStreamKeepAlive();
 
   let firstChunkSent = false;
   const onFirstChunk = () => {
@@ -903,6 +1042,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     }
   } finally {
     inFlightStreams.delete(streamId);
+    _stopStreamKeepAliveIfIdle();
   }
 }
 
@@ -1285,15 +1425,20 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
     // 4. 寫回快取
     await cache.setBatch(missingTexts, fresh, suffix);
 
-    // 5. 累計用量（cachedTokens 走 25% 折扣與 Gemini 同邏輯——OpenAI cache 命中折扣率類似）
+    // 5. 累計用量
+    // v1.8.20: 折扣比例依 provider 推斷——OpenAI/Claude/DeepSeek 各家 cache 命中折扣率不同,
+    // 原本硬編碼 0.25 套所有 provider 對 OpenAI 系統性低估 50% 成本。
+    const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+    const cachedSavedRatio = 1 - cachedRate;
     const billedInput = Math.max(
-      0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * 0.75),
+      0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * cachedSavedRatio),
     );
     const billedCost = computeBilledCostUSD(
       batchUsage.inputTokens,
       batchUsage.cachedTokens || 0,
       batchUsage.outputTokens,
       { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 },
+      cachedRate,
     );
     await addUsage(billedInput, batchUsage.outputTokens, billedCost);
   }
@@ -1302,6 +1447,8 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   const result = cached.slice();
   missingIdxs.forEach((idx, k) => { result[idx] = fresh[k]; });
 
+  const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+  const cachedSavedRatio = 1 - cachedRate;
   return {
     result,
     usage: {
@@ -1310,13 +1457,14 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
       cachedTokens: batchUsage.cachedTokens || 0,
       costUSD: batchCostUSD,
       billedInputTokens: Math.max(
-        0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * 0.75),
+        0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * cachedSavedRatio),
       ),
       billedCostUSD: computeBilledCostUSD(
         batchUsage.inputTokens,
         batchUsage.cachedTokens || 0,
         batchUsage.outputTokens,
         { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 },
+        cachedRate,
       ),
       cacheHits,
     },
@@ -1461,10 +1609,16 @@ async function handleExtractGlossary(payload, sender) {
 // ─── 快捷鍵 ────────────────────────────────────────────────
 // v1.4.12: 三個 preset 快捷鍵（Alt+A/S/D 預設，可在 chrome://extensions/shortcuts 改）。
 // 每個對應 translatePresets[slot-1]，由 content.js 依 preset.engine/model 派送。
+// v1.8.19: chrome://extensions/shortcuts 顯示順序由 command id 字典序決定,
+//   要讓「主要預設」排最前必須改 id 從「translate-preset-2」→「translate-preset-0」,
+//   storage 內仍維持 slot 1/2/3 編號,故 command id 0 → slot 2 mapping 寫死。
+const COMMAND_ID_TO_SLOT = { 0: 2, 1: 1, 3: 3 };
 browser.commands.onCommand.addListener(async (command) => {
   const match = command.match(/^translate-preset-(\d+)$/);
   if (!match) return;
-  const slot = Number(match[1]);
+  const cmdNum = Number(match[1]);
+  const slot = COMMAND_ID_TO_SLOT[cmdNum];
+  if (!slot) return;
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
   // 在 chrome://、Chrome Web Store、新分頁等頁面按快捷鍵時,該 tab 沒有

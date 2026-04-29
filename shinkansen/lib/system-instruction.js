@@ -21,6 +21,28 @@ const MAX_UNITS_PER_CHUNK = DEFAULT_UNITS_PER_BATCH;
 const MAX_CHARS_PER_CHUNK = DEFAULT_CHARS_PER_BATCH;
 
 /**
+ * v1.8.20: 對 glossary / forbiddenTerms 的 source / target / forbidden / replacement 做消毒,
+ * 移除可能污染 system instruction 的協定 token——auto glossary 從頁面內容抽,惡意頁面可在
+ * 抽出來的詞裡塞 `<<<SHINKANSEN_SEP>>>` / `</forbidden_terms_blacklist>` / 反斜線換行
+ * 影響後續批次切分或標記閉合;固定術語表使用者輸入也比照處理(防失誤)。
+ *
+ * 策略:單行化 + 移除佔位符與 sentinel token + 移除控制字元。
+ */
+function sanitizeTermText(s) {
+  return String(s ?? '')
+    // 控制字元 + 換行符 → 空白(避免欺騙 LLM 換行成額外規則)
+    .replace(/[\x00-\x1f\x7f]+/g, ' ')
+    // 配對 / 自閉合佔位符 token(防止使用者輸入誤觸發佔位符規則)
+    .replace(/⟦\/?\*?\d+⟧/g, '')
+    // 多段 sentinel(防止假冒批次切分標記)
+    .replace(/<<<SHINKANSEN_SEP>>>/gi, '')
+    // forbidden_terms_blacklist 標籤(防止使用者輸入提前關閉區塊)
+    .replace(/<\/?forbidden_terms_blacklist>/gi, '')
+    .trim()
+    .slice(0, 200); // 單詞超過 200 字本來就不正常,截斷防 prompt 暴脹
+}
+
+/**
  * Greedy 打包：對 texts 陣列用字元預算 + 段數上限雙門檻切成連續子批次，
  * 回傳「起始 / 結束 index」陣列讓呼叫端可以對齊結果。
  */
@@ -84,29 +106,45 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
   }
 
   // 自動擷取術語對照表
+  // v1.8.20: 對 source / target 消毒,防止頁面內容塞 sentinel token 影響協定
   if (glossary && glossary.length > 0) {
-    const lines = glossary.map(e => `${e.source} → ${e.target}`).join('\n');
-    parts.push(
-      '以下是本篇文章的術語對照表，遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
-    );
+    const lines = glossary
+      .map(e => `${sanitizeTermText(e.source)} → ${sanitizeTermText(e.target)}`)
+      .filter(l => !/^\s*→\s*$/.test(l))
+      .join('\n');
+    if (lines) {
+      parts.push(
+        '以下是本篇文章的術語對照表，遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
+      );
+    }
   }
 
   // v1.0.29: 使用者固定術語表（優先級最高，放在最末端讓 LLM 給予最高權重）
   if (fixedGlossary && fixedGlossary.length > 0) {
-    const lines = fixedGlossary.map(e => `${e.source} → ${e.target}`).join('\n');
-    parts.push(
-      '以下是使用者指定的固定術語表，優先級高於上方所有術語對照。遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
-    );
+    const lines = fixedGlossary
+      .map(e => `${sanitizeTermText(e.source)} → ${sanitizeTermText(e.target)}`)
+      .filter(l => !/^\s*→\s*$/.test(l))
+      .join('\n');
+    if (lines) {
+      parts.push(
+        '以下是使用者指定的固定術語表，優先級高於上方所有術語對照。遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
+      );
+    }
   }
 
   // v1.5.6: 中國用語黑名單。放在所有規則最末端（高於 fixedGlossary）讓 LLM 給予最高權重。
   // 用 <forbidden_terms_blacklist> XML tag 包起來，跟 DEFAULT_SYSTEM_PROMPT 第 2 條
   // 的「依本 prompt 末端 <forbidden_terms_blacklist> 區塊」reference 對應。
   if (forbiddenTerms && forbiddenTerms.length > 0) {
-    const tableLines = forbiddenTerms.map(t => `${t.forbidden} → ${t.replacement}`).join('\n');
-    parts.push(
-      '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國大陸用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
-    );
+    const tableLines = forbiddenTerms
+      .map(t => `${sanitizeTermText(t.forbidden)} → ${sanitizeTermText(t.replacement)}`)
+      .filter(l => !/^\s*→\s*$/.test(l))
+      .join('\n');
+    if (tableLines) {
+      parts.push(
+        '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國大陸用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
+      );
+    }
   }
 
   return parts.join('\n\n');

@@ -14,6 +14,13 @@
   let contentGuardInterval = null;
   const GUARD_SWEEP_INTERVAL_MS = 1000;
 
+  // v1.8.14: Guard sweep 改用 IntersectionObserver 維護「viewport 附近」的子集,
+  // sweep 只走子集而非整份 STATE.translatedHTML。長文(Wikipedia 千段)從每秒
+  // 1000 次字串相等比對 + 部分 rect 算降到通常 < 30 個 entry 的子集。
+  let guardIntersectionObserver = null;
+  let guardVisibleSet = null; // Set<Element>,IO callback 維護
+
+
   // ─── 重置翻譯狀態 ────────────────────────────────────
 
   function resetForSpaNavigation() {
@@ -29,7 +36,7 @@
     STATE.cache.clear();
     STATE.translated = false;
     STATE._glossaryPromise = null;
-    browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+    SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     SK.hideToast();
     SK.sendLog('info', 'spa', 'SPA navigation detected, state reset', { url: location.href, stickyTranslate: STATE.stickyTranslate });
   }
@@ -110,9 +117,17 @@
       _origPushState(...args);
       handleSpaNavigation();
     };
+    // v1.8.20: replaceState 在 pathname 變動時也視為 SPA navigation。
+    // React Router shallow routing、Notion、Twitter/X 部分路徑用 replaceState 換內容,
+    // 原版只更新 spaLastUrl 不 reset → 新內容用舊 STATE 跑,新段落不會被翻。
+    // 純 query string / hash 變動(pathname 不變)維持只更 lastUrl 不 reset 的行為。
     history.replaceState = function (...args) {
+      const oldPath = location.pathname;
       _origReplaceState(...args);
       spaLastUrl = location.href;
+      if (location.pathname !== oldPath) {
+        handleSpaNavigation();
+      }
     };
     history.pushState.__sk_patched = true;
   }
@@ -165,8 +180,55 @@
     if (!contentGuardInterval) {
       contentGuardInterval = setInterval(runContentGuard, GUARD_SWEEP_INTERVAL_MS);
     }
+    initGuardIntersectionObserver();
     SK.sendLog('info', 'spa', 'SPA observer started');
   };
+
+  // v1.8.14: 把 STATE.translatedHTML 與 STATE.translationCache 的元素全部 observe,
+  // IO callback 維護 guardVisibleSet,sweep 用該 set 做 subset。
+  function initGuardIntersectionObserver() {
+    if (guardIntersectionObserver) return;
+    if (typeof IntersectionObserver === 'undefined') return; // Safari 舊版 fallback
+    guardVisibleSet = new Set();
+    guardIntersectionObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) guardVisibleSet.add(entry.target);
+        else guardVisibleSet.delete(entry.target);
+      }
+    }, { rootMargin: '500px' }); // 與舊 rect.bottom < -500 / top > innerHeight + 500 對齊
+
+    if (STATE.translatedHTML) {
+      for (const el of STATE.translatedHTML.keys()) {
+        if (el.isConnected) guardIntersectionObserver.observe(el);
+      }
+    }
+    if (STATE.translationCache) {
+      for (const el of STATE.translationCache.keys()) {
+        if (el && el.isConnected) guardIntersectionObserver.observe(el);
+      }
+    }
+  }
+  SK.initGuardIntersectionObserver = initGuardIntersectionObserver;
+
+  function teardownGuardIntersectionObserver() {
+    if (guardIntersectionObserver) {
+      guardIntersectionObserver.disconnect();
+      guardIntersectionObserver = null;
+    }
+    guardVisibleSet = null;
+  }
+
+  // v1.8.20: injection 路徑寫入 STATE 後呼叫此 hook,把新元素加進 IO 訂閱。
+  // 修 v1.8.14 IO subset 設計缺口:`initGuardIntersectionObserver` 只 observe 啟動快照,
+  // 後續 SPA rescan 翻新一批的譯段從未進 `guardVisibleSet` → guard sweep(走 IO subset)
+  // 對它們完全失效。
+  SK._guardObserveEl = function _guardObserveEl(el) {
+    if (!el) return;
+    if (!guardIntersectionObserver) return; // observer 未啟動(尚未進 SPA 觀察狀態)
+    if (!el.isConnected) return;
+    try { guardIntersectionObserver.observe(el); } catch (_) { /* el 可能不是 Element */ }
+  };
+
 
   function stopSpaObserver() {
     if (spaObserverDebounceTimer) {
@@ -181,6 +243,7 @@
       spaObserver.disconnect();
       spaObserver = null;
     }
+    teardownGuardIntersectionObserver();
     spaObserverRescanCount = 0;
     spaObserverSeenTexts.clear();
   }
@@ -201,14 +264,23 @@
       return;
     }
     let restored = 0;
-    for (const [el, savedHTML] of STATE.translatedHTML) {
+    // v1.8.14: 優先走 IO subset(viewport 附近的 entry),沒 IO 時 fallback 全表
+    const candidates = guardVisibleSet
+      ? guardVisibleSet
+      : STATE.translatedHTML.keys();
+    for (const el of candidates) {
+      const savedHTML = STATE.translatedHTML.get(el);
+      if (savedHTML == null) continue; // IO subset 可能含已被 restorePage 清掉的元素
       if (!el.isConnected) continue;
       if (el.innerHTML === savedHTML) continue;
       // v1.5.5: 編輯模式下使用者正在改譯文，innerHTML 偏離 savedHTML 是預期的，
       // guard 不能覆蓋——否則每秒一次 sweep 會把使用者剛打的字蓋回去。
       if (el.getAttribute('contenteditable') === 'true') continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
+      // IO subset 已過濾 viewport,fallback 路徑才需 rect 防護
+      if (!guardVisibleSet) {
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
+      }
       el.innerHTML = savedHTML;
       restored++;
     }

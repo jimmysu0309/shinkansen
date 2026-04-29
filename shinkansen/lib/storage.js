@@ -206,6 +206,9 @@ export const DEFAULT_SETTINGS = {
     //                   兼顧速度與品質。toggle 開啟時用(預設)。
     //   'llm'         = 純 LLM 自由分句(內部保留,UI 不再可選)。
     asrMode: 'progressive',
+    // commit 5c:雙語對照模式。預設 false=純中文(YouTube 既有行為:CSS 隱藏原生 CC;
+    // Drive 透過 postMessage unloadModule 關 player CC)。true=中英對照(原生 CC + 中文 overlay)
+    bilingualMode: false,
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限
@@ -325,6 +328,31 @@ export const DEFAULT_SETTINGS = {
 const API_KEY_STORAGE_KEY = 'apiKey';
 const CUSTOM_PROVIDER_API_KEY = 'customProviderApiKey';
 
+// v1.8.14: storage.sync legacy key cleanup
+// 之前移除的設定欄位仍躺在使用者 sync storage 佔 quota(8KB / item, 100KB total)。
+// 一次性 sweep 把已知 legacy keys 刪除,避免長期累積踩到 QUOTA_BYTES。
+// 新增 legacy key 時直接加進這個陣列即可。
+const LEGACY_SYNC_KEYS = [
+  'ytPreserveLineBreaks',  // v1.2.38 移除(YouTube 字幕保留換行,改為永遠 true)
+  'preserveLineBreaks',    // 同上(全頁翻譯版本,更早期)
+];
+
+let _legacyCleanupDone = false;
+export async function cleanupLegacySyncKeys() {
+  if (_legacyCleanupDone) return;
+  _legacyCleanupDone = true;
+  try {
+    const saved = await browser.storage.sync.get(LEGACY_SYNC_KEYS);
+    const present = LEGACY_SYNC_KEYS.filter((k) => k in saved);
+    if (present.length > 0) {
+      await browser.storage.sync.remove(present);
+    }
+  } catch {
+    // 失敗不影響主流程
+    _legacyCleanupDone = false;
+  }
+}
+
 // 一次性遷移：若 sync 裡還殘留 apiKey（舊版 <= v0.61 的使用者）、而 local
 // 還沒有，就把它搬到 local 並從 sync 刪除。呼叫 getSettings() 會自動觸發。
 async function migrateApiKeyIfNeeded(syncSaved) {
@@ -336,6 +364,33 @@ async function migrateApiKeyIfNeeded(syncSaved) {
   }
   // 無論 local 原本有沒有，都要把 sync 裡的 apiKey 清掉（避免之後又被同步回來）
   await browser.storage.sync.remove('apiKey');
+}
+
+// v1.8.14: settings 熱路徑 cache。
+// 之前每筆 debugLog / LOG_USAGE 都呼叫 getSettings() → 每秒上百次 storage IPC。
+// 現在用 module-scope cache + storage.onChanged invalidate,SW 重啟後 module 重 init
+// 自然回到無 cache 狀態(首呼叫會重建)。
+let _settingsCachePromise = null;
+let _settingsCacheListenerBound = false;
+
+function _bindSettingsCacheInvalidator() {
+  if (_settingsCacheListenerBound) return;
+  _settingsCacheListenerBound = true;
+  // sync 改動(設定頁存設定)或 local 改動(apiKey)都要 invalidate
+  browser.storage.onChanged.addListener(() => {
+    _settingsCachePromise = null;
+  });
+}
+
+export async function getSettingsCached() {
+  _bindSettingsCacheInvalidator();
+  if (!_settingsCachePromise) {
+    _settingsCachePromise = getSettings().catch((err) => {
+      _settingsCachePromise = null; // 失敗別 cache
+      throw err;
+    });
+  }
+  return _settingsCachePromise;
 }
 
 export async function getSettings() {

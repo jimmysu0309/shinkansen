@@ -14,7 +14,8 @@ header {
   border-bottom: 1px solid #eee;
 }
 
-header h1 { font-size: 16px; margin: 0; }
+header h1 { font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; }
+header h1 .page-title-icon { width: 22px; height: 22px; flex-shrink: 0; }
 .version { font-size: 11px; color: #86868b; }
 
 main { padding: 14px 16px; }

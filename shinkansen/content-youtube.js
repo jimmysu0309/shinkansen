@@ -156,7 +156,28 @@
     }
   }
 
+  // v1.8.16: 螢幕上若已有中文字幕(ASR overlay 命中當前 cue / 非 ASR DOM segment
+  // 已替換成中文),不顯示「翻譯中…」避免覆蓋實質內容打擾使用者。
+  function _hasVisibleChineseCaption() {
+    const YT = SK.YT;
+    if (YT.isAsr) {
+      const video = document.querySelector('video');
+      const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
+      const cue = _findActiveCue(currentMs);
+      return !!(cue && cue.text && /[一-鿿]/.test(cue.text));
+    }
+    const segs = document.querySelectorAll('.ytp-caption-segment');
+    for (const s of segs) {
+      if (/[一-鿿]/.test(s.textContent || '')) return true;
+    }
+    return false;
+  }
+
   function showCaptionStatus(text) {
+    // commit 5c.3:雙語模式不顯示「翻譯中…」status — 原生英文 CC 已經給 user
+    // feedback,中文 overlay 也會在 LLM 回後顯示,status indicator 多餘且會夾在
+    // overlay 跟原生 CC 中間造成三層觀感(image 21 bug)。
+    if (SK.YT.config?.bilingualMode === true) return;
     // 注入目標：.ytp-caption-window-container > 我們的 div
     // 退而求其次用 #movie_player，仍在播放器範圍內
     const container =
@@ -280,8 +301,10 @@
 
   // ─── 字幕解析：JSON3（含時間戳）────────────────────────────
 
-  function parseJson3(text) {
-    const json = JSON.parse(text);
+  // input 可為 JSON 字串(YouTube 路徑,XHR responseText)或已 parse 的 object
+  // (Drive 路徑,background fetch 後已 res.json() 過)。
+  function parseJson3(input) {
+    const json = typeof input === 'string' ? JSON.parse(input) : input;
     const segments = [];
     const seen = new Set();
     let groupCounter = 0;
@@ -357,9 +380,11 @@
     }
     // G 路徑:ASR 字幕一進來就 enable hiding mode + 預建 overlay 容器,
     //         避免使用者啟動翻譯瞬間還看到原生英文字幕跳動。
+    // commit 5c:bilingualMode=true → 不隱藏原生 CC(中英對照);false=純中文(既有行為)
     if (YT.isAsr) {
-      _setAsrHidingMode(true);
+      const cfg = YT.config || await getYtConfig();
       _ensureOverlay();
+      _applyBilingualMode(cfg.bilingualMode === true);
     }
     const lastMs = segments[segments.length - 1]?.startMs ?? 0;
     SK.sendLog('info', 'youtube', 'XHR captions captured', {
@@ -378,7 +403,7 @@
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
       const windowStartMs = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
       _debugUpdate(`XHR 攔截 ${segments.length} 條字幕（至 ${Math.round(lastMs / 1000)}s），開始翻譯`);
-      showCaptionStatus('翻譯中…');
+      if (!_hasVisibleChineseCaption()) showCaptionStatus('翻譯中…');
       translateWindowFrom(windowStartMs);
     }
   });
@@ -822,38 +847,77 @@
   // 用 class + 全域 style 而非 inline style:避免每個 caption-window 個別處理 mutation 競爭。
   const _ASR_PLAYER_CLASS = 'shinkansen-asr-active';
   const _ASR_HIDE_CSS_ID  = 'shinkansen-asr-hide-css';
+  // v1.8.16:stylesheet 注入從 _setAsrHidingMode 抽出獨立 helper,
+  // bilingual=true 也走「不隱藏原生 CC + overlay 上抬 90px」的 CSS rule(host[bilingual]),
+  // 這條 rule 必須跟 .ytp-autohide 規則同份 stylesheet 一起注入,reload 後直接進雙語
+  // (從沒走過 active=true 分支)否則拿不到 90px 上抬,中英 CC 重疊在原生 30px 高度。
+  function _ensureAsrStylesheet() {
+    if (document.getElementById(_ASR_HIDE_CSS_ID)) return;
+    const style = document.createElement('style');
+    style.id = _ASR_HIDE_CSS_ID;
+    // 用 visibility/opacity 隱藏(而非 display:none),保留 layout —— 我們需要讀
+    // .ytp-caption-segment 的 computed font-size 當作 overlay 字體基準。
+    // pointer-events:none 避免使用者誤點(雖然 absolute positioned 沒互動性)。
+    style.textContent = `
+      .${_ASR_PLAYER_CLASS} .caption-window,
+      .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
+      .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      /* 控制列(chrome)顯示時讓 overlay 上移避開進度條:
+         YouTube 在 chrome 隱藏時加 .ytp-autohide 到 .html5-video-player,顯示時移除。
+         :not(.ytp-autohide) 命中代表 chrome 顯示中,把 CSS variable 推給 host element,
+         shadow DOM 內 .window 透過 var() 自動繼承 → bottom 從預設 30px 改為 60px。 */
+      .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG} {
+        --sk-cue-bottom: calc(60px + var(--sk-cue-size, 22px));
+      }
+      /* commit 5c.6:雙語模式(host[bilingual] attr)overlay 從預設 30px 推到 90px
+         避開原生英文 CC(原生 30-40px from bottom)。chrome 顯示時再多推一段
+         避開控制列 + 已上抬的原生 CC(YouTube 自己把原生 CC 推到約 82px)。 */
+      ${_OVERLAY_TAG}[bilingual] {
+        --sk-cue-bottom: 90px;
+      }
+      .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG}[bilingual] {
+        --sk-cue-bottom: calc(140px + var(--sk-cue-size, 22px));
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function _setAsrHidingMode(active) {
     const root = _getPlayerRoot();
     if (!root) return;
+    _ensureAsrStylesheet();
     if (active) {
-      if (!document.getElementById(_ASR_HIDE_CSS_ID)) {
-        const style = document.createElement('style');
-        style.id = _ASR_HIDE_CSS_ID;
-        // 用 visibility/opacity 隱藏(而非 display:none),保留 layout —— 我們需要讀
-        // .ytp-caption-segment 的 computed font-size 當作 overlay 字體基準。
-        // pointer-events:none 避免使用者誤點(雖然 absolute positioned 沒互動性)。
-        style.textContent = `
-          .${_ASR_PLAYER_CLASS} .caption-window,
-          .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
-          .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
-            visibility: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-          }
-          /* 控制列(chrome)顯示時讓 overlay 上移避開進度條:
-             YouTube 在 chrome 隱藏時加 .ytp-autohide 到 .html5-video-player,顯示時移除。
-             :not(.ytp-autohide) 命中代表 chrome 顯示中,把 CSS variable 推給 host element,
-             shadow DOM 內 .window 透過 var() 自動繼承 → bottom 從預設 30px 改為 60px。 */
-          .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG} {
-            --sk-cue-bottom: calc(60px + var(--sk-cue-size, 22px));
-          }
-        `;
-        document.head.appendChild(style);
-      }
       root.classList.add(_ASR_PLAYER_CLASS);
     } else {
       root.classList.remove(_ASR_PLAYER_CLASS);
     }
+  }
+
+  // commit 5c:統一切 bilingualMode 的副作用 — 字幕隱藏/顯示 + overlay 位置調整。
+  // 雙語模式中文 overlay 要避開原生英文 CC(原生位置約 30-40px from bottom),把
+  // overlay --sk-cue-bottom 推到 90px 在英文上方。純中文模式(原生 CC 已隱藏)
+  // overlay 回預設 30px 佔據原生 CC 的視覺位置。
+  function _applyBilingualMode(bilingual) {
+    _setAsrHidingMode(!bilingual);
+    // commit 5c.6:用 host attribute + CSS rule(_setAsrHidingMode 內注入的 stylesheet)
+    // 控制 overlay 位置,讓 chrome 顯示時的 :not(.ytp-autohide) selector 可以再上抬,
+    // 避免 inline style override 卡住自動上抬邏輯。
+    const host = document.querySelector(_OVERLAY_TAG);
+    if (host) {
+      if (bilingual) {
+        host.setAttribute('bilingual', 'true');
+      } else {
+        host.removeAttribute('bilingual');
+      }
+      // 清除 commit 5c.1 之前可能殘留的 inline style override(避免擋住 attr CSS rule)
+      host.style.removeProperty('--sk-cue-bottom');
+    }
+    // commit 5c.3:即時切到雙語時把已顯示的「翻譯中…」清掉(雙語下這 status 不該存在)
+    if (bilingual) hideCaptionStatus();
   }
 
   // 讀 YouTube 原生字幕字體大小(已套用使用者字幕設定 + player size 自適應比例)。
@@ -898,14 +962,12 @@
   // 內) 造成的 endMs 跟下一句重疊;若無下一句,沿用 cue.endMs。
   function _findActiveCue(currentMs) {
     const cues = SK.YT.displayCues;
+    // v1.8.14: _upsertDisplayCue 已用 findIndex upsert + sort,同 startMs 只留一筆,
+    // 所以 cues[i+1].startMs 必嚴格大於 cues[i].startMs(若 i+1 存在)。
+    // 從原本 O(N²) 內 loop 簡化為 O(N) 線性掃描。
     for (let i = 0; i < cues.length; i++) {
       const c = cues[i];
-      // 找出下一個 startMs 嚴格大於當前 cue 的 cue 當作 clamp 上限
-      // (排除 progressive 模式同 startMs 覆蓋的情況)
-      let nextStart = Infinity;
-      for (let j = i + 1; j < cues.length; j++) {
-        if (cues[j].startMs > c.startMs) { nextStart = cues[j].startMs; break; }
-      }
+      const nextStart = (i + 1 < cues.length) ? cues[i + 1].startMs : Infinity;
       const effectiveEnd = Math.min(c.endMs, nextStart);
       if (currentMs >= c.startMs && currentMs <= effectiveEnd) return c;
     }
@@ -927,6 +989,10 @@
     }
     const currentMs = YT.videoEl.currentTime * 1000;
     const cue = _findActiveCue(currentMs);
+    // v1.8.20: ASR + 純中文模式下,replaceSegmentEl L1909 會 early return 跳過
+    // L1934 的 hideCaptionStatus → 「翻譯中…」永遠殘留。改在 overlay 寫入時若有
+    // 中文 cue 命中,就主動 hide(冪等,沒 status indicator 時直接 return)。
+    if (cue && cue.targetText) hideCaptionStatus();
     _setOverlayContent(cue ? cue.targetText : '');
   }
 
@@ -1066,7 +1132,7 @@
     });
     const inputJson = JSON.stringify(inputArr);
 
-    const res = await browser.runtime.sendMessage({
+    const res = await SK.safeSendMessage({
       type: 'TRANSLATE_ASR_SUBTITLE_BATCH',
       payload: { texts: [inputJson], glossary: null },
     });
@@ -1112,9 +1178,9 @@
       entriesWritten: writtenCount,
       entriesDropped: droppedCount,
       captionMapSize: YT.captionMap.size,
-      domSegmentCount: domSegs.length,
     });
   }
+  SK._runAsrSubBatch = _runAsrSubBatch;
 
   async function _runAsrWindow(windowSegs, windowStartMs, windowEndMs) {
     const YT = SK.YT;
@@ -1230,7 +1296,7 @@
     const _batchApiMs = new Array(batches.length).fill(0);
 
     const _runBatch = (batchUnits, b) =>
-      browser.runtime.sendMessage({
+      SK.safeSendMessage({
         type: 'TRANSLATE_SUBTITLE_BATCH',
         payload: { texts: batchUnits.map(u => u.text), glossary: null },
       }).then(res => {
@@ -1466,7 +1532,7 @@
         };
 
         const _runBatch = (batchUnits, b) =>
-          browser.runtime.sendMessage({
+          SK.safeSendMessage({
             type: _subtitleMsgType,
             payload: { texts: batchUnits.map(u => u.text), glossary: null },
           }).then(res => {
@@ -1534,7 +1600,7 @@
           };
           browser.runtime.onMessage.addListener(onMessage);
 
-          browser.runtime.sendMessage({
+          SK.safeSendMessage({
             type: 'TRANSLATE_SUBTITLE_BATCH_STREAM',
             payload: { texts: batchUnits.map(u => u.text), glossary: null, streamId },
           }).then((resp) => {
@@ -1603,7 +1669,7 @@
               stream.cleanup();
               if (r.kind === 'timeout') {
                 SK.sendLog('warn', 'youtube', 'streaming first_chunk timeout, falling back to non-streaming', { streamId: stream.streamId });
-                browser.runtime.sendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
+                SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
               }
               batch0NeedsFallback = true;
             }
@@ -1776,7 +1842,8 @@
     _debugUpdate(`seeked → 重設翻譯起點 ${Math.round(newWindowStart/1000)}s`);
     // v1.2.57: 若跳到尚未翻譯的視窗，立刻顯示「翻譯中…」提示
     // （translateWindowFrom 內部有防重入，已翻視窗會直接 return，不需要提示）
-    if (!YT.translatedWindows.has(newWindowStart)) {
+    // v1.8.16: 若當前畫面已有中文字幕,跳過提示避免打擾
+    if (!YT.translatedWindows.has(newWindowStart) && !_hasVisibleChineseCaption()) {
       showCaptionStatus('翻譯中…');
     }
     // v1.2.54: translateWindowFrom 內部用 translatingWindows Set 防重入，無需外部 guard
@@ -1839,6 +1906,11 @@
 
   function replaceSegmentEl(el) {
     if (!SK.YT.active) return;
+    // commit 5c.2:ASR 路徑雙語模式下保留英文 segment(中文由 overlay 顯示),否則
+    // overlay 中文 + segment 中文 = 三層觀感(image 20)
+    // commit 5c.4:非 ASR 路徑(人工字幕)沒有 G overlay,雙語應走「英文 + 譯文兩行」
+    // 寫進 segment 的設計;單純 return 會只剩英文(image 22 bug)。所以只 gate ASR。
+    if (SK.YT.config?.bilingualMode === true && SK.YT.isAsr === true) return;
     const original = el.textContent.trim();
     if (!original) return;
     // 已含中日韓字元 → 這是我們設置的譯文被 characterData mutation 觸發回呼，直接跳過
@@ -1864,8 +1936,18 @@
         // 修正：seek 後 _firstCacheHitLogged 已為 true，但 showCaptionStatus 可能已再次顯示，
         // 只靠 !_firstCacheHitLogged gate 會導致新顯示的提示永遠不被移除。
         if (cached) hideCaptionStatus();
-        // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
-        _setSegmentText(el, cached);
+        // commit 5c.4:雙語模式(非 ASR 路徑)寫「原文 + 譯文兩行」<br> 串接。
+        // commit 5c.5:跳過 _wrapTargetText 自動切點 — 它依字數限制(中文 15-35 字)切,
+        // 對英文寬鬆但對中文常硬切兩行(image 22:中文長句被切,英文沒切)。直接寫
+        // innerHTML + <br>,讓 caption-window 的 CSS word-wrap 依實際容器寬度自然處理。
+        const isBilingual = SK.YT.config?.bilingualMode === true;
+        if (isBilingual && cached) {
+          const html = `${_escapeHtml(original)}<br>${_escapeHtml(cached)}`;
+          if (el.innerHTML !== html) el.innerHTML = html;
+        } else {
+          // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
+          _setSegmentText(el, cached);
+        }
         // 同步展開字幕框（不用 rAF——新版 expandCaptionLine 純設 style，不需量測 layout；
         // 若用 rAF，瀏覽器會先 paint 出「中文 + 舊 315px 容器」再展開，造成一幀閃爍）
         if (cached) expandCaptionLine(el);
@@ -1907,6 +1989,7 @@
   async function flushOnTheFly() {
     const YT = SK.YT;
     if (YT.pendingQueue.size === 0 || YT.flushing) return;
+    if (!YT.active) return; // v1.8.20: 進場 guard,session 已 stop 直接放棄
     YT.flushing = true;
 
     const queue = new Map(YT.pendingQueue);
@@ -1921,11 +2004,17 @@
     }
 
     try {
-      const res = await browser.runtime.sendMessage({
+      const res = await SK.safeSendMessage({
         type: 'TRANSLATE_SUBTITLE_BATCH',
         payload: { texts, glossary: null },
       });
       if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
+      // v1.8.20: await 後再次檢查 active——stop 在 await 期間發生時放棄寫入,
+      // 否則寫進已被 stopYouTubeTranslation 重置的新 captionMap 污染下個 session。
+      if (!SK.YT.active) {
+        YT.flushing = false;
+        return;
+      }
       // v1.2.39: 累積並記錄 on-the-fly 批次用量
       _logWindowUsage(texts.length, res.usage);
 
@@ -1936,8 +2025,17 @@
         YT.captionMap.set(key, trans);
         for (const el of (queue.get(key) || [])) {
           if (document.contains(el) && normText(el.textContent) === key) {
-            // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>
-            _setSegmentText(el, trans);
+            // commit 5c.4:雙語模式(非 ASR)寫「原文 + 譯文兩行」
+            // commit 5c.5:雙語跳過 _wrapTargetText,讓 CSS word-wrap 自然處理
+            const isBilingual = YT.config?.bilingualMode === true;
+            if (isBilingual && trans) {
+              const original = el.textContent.trim();
+              const html = `${_escapeHtml(original)}<br>${_escapeHtml(trans)}`;
+              if (el.innerHTML !== html) el.innerHTML = html;
+            } else {
+              // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>
+              _setSegmentText(el, trans);
+            }
           }
         }
       }
@@ -2009,7 +2107,7 @@
     // 取得本次使用的模型名稱（from config，若設定了 ytModel 就帶入）
     const model = (YT.config?.model) || undefined;
 
-    browser.runtime.sendMessage({
+    SK.safeSendMessage({
       type: 'LOG_USAGE',
       payload: {
         url:   location.href,
@@ -2050,6 +2148,7 @@
     YT.rawSegments        = [];         // v1.3.5: 補齊（原僅在 yt-navigate-finish 重置）
     YT.captionMap         = new Map();
     YT.pendingQueue       = new Map();
+    YT.flushing           = false;       // v1.8.20: 確保下個 session 重啟後 flushOnTheFly 不被舊 flag 卡住
     YT.isAsr              = false;
     YT.displayCues        = [];         // G 路徑:清 overlay 顯示單位
     _setAsrHidingMode(false);
@@ -2063,11 +2162,19 @@
 
   // ─── 主入口：Alt+S ─────────────────────────────────────────
 
-  SK.translateYouTubeSubtitles = async function translateYouTubeSubtitles() {
+  // v1.8.16: source 區分使用者明示 toggle vs 自動啟動。
+  //   'manual'(預設,Alt+S / popup):active 時 toggle 還原(再按一次語義)
+  //   'auto'(content-script init / SPA nav restart):active 時 no-op,
+  //     避免兩條自動鬧鐘在 reload 後 race 互相關掉對方。
+  SK.translateYouTubeSubtitles = async function translateYouTubeSubtitles({ source = 'manual' } = {}) {
     const YT = SK.YT;
 
-    // 切換：再按一次還原
     if (YT.active) {
+      if (source === 'auto') {
+        SK.sendLog('info', 'youtube', 'auto-activate skipped (already active)', { rawSegments: YT.rawSegments.length });
+        return;
+      }
+      // manual:再按一次還原
       stopYouTubeTranslation();
       SK.showToast('success', '已還原原文字幕');
       setTimeout(() => SK.hideToast(), 2000);
@@ -2108,7 +2215,7 @@
     if (YT.rawSegments.length > 0) {
       // 已有快取（interceptor 在 activate 之前就攔截到了）→ 直接開始翻譯
       _debugUpdate(`已有 ${YT.rawSegments.length} 條字幕，開始翻譯`);
-      showCaptionStatus('翻譯中…');
+      if (!_hasVisibleChineseCaption()) showCaptionStatus('翻譯中…');
       const video = document.querySelector('video');
       const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
@@ -2185,9 +2292,11 @@
           wasActive, autoTranslate: saved.ytSubtitle?.autoTranslate,
         });
         setTimeout(() => {
-          // 若使用者在等待期間已手動操作（active 變 true），不重複啟動
-          if (!SK.YT.active && SK.isYouTubePage?.()) {
-            SK.translateYouTubeSubtitles?.().catch(err => {
+          // v1.8.16: 改傳 source: 'auto',若 active 走 no-op 而非 toggle stop。
+          //   原本就有 !SK.YT.active 前置 guard,但兩條保險(前置 guard + source='auto')
+          //   覆蓋 setTimeout 排隊期間 active 才被另一條 caller 拉起的 race。
+          if (SK.isYouTubePage?.()) {
+            SK.translateYouTubeSubtitles?.({ source: 'auto' }).catch(err => {
               SK.sendLog('warn', 'youtube', 'SPA nav auto-subtitle restart failed', { error: err.message });
             });
           }
@@ -2197,5 +2306,29 @@
       SK.sendLog('warn', 'youtube', 'SPA nav autoTranslate check failed', { error: err.message });
     }
   });
+
+  // commit 5c:bilingualMode 即時切換(toggle 不需要 reload 影片頁)
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' || !changes.ytSubtitle) return;
+    const newVal = changes.ytSubtitle.newValue || {};
+    const newBilingual = newVal.bilingualMode === true;
+    if (SK.YT.config) SK.YT.config.bilingualMode = newBilingual;
+    // 只在 ASR 字幕已啟用時即時 reapply(避免 ASR 還沒啟動就動 player class)
+    if (SK.YT.isAsr && SK.YT.active) {
+      _applyBilingualMode(newBilingual);
+      SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual });
+    }
+  });
+
+  // ─── 對外 export:給 content-drive.js(Drive ASR commit 3+)共用 ─────
+  // parseJson3:json3 → raw segments [{text, normText, startMs, groupId}]
+  // mergeAsr:啟發式合句(kle/Ile/Lle 三段)→ [{startMs, endMs, text, sourceSegs}]
+  // Drive ASR 路徑跟 YouTube ASR 路徑共用同一份字幕格式與合句啟發式,
+  // 只差注入路徑(player same-frame DOM vs cross-origin iframe 浮層)。
+  SK.ASR = {
+    parseJson3,
+    mergeAsr: _heuristicMergeAsr,
+    parseAsrResponse: _parseAsrResponse,
+  };
 
 })(window.__SK);

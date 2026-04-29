@@ -36,22 +36,59 @@ function scheduleTouchFlush() {
   touchFlushTimer = setTimeout(flushTouches, TOUCH_FLUSH_DELAY_MS);
 }
 
-function flushTouches() {
+// v1.8.20: 防止 flushTouches 把舊 value 覆蓋掉中間被 setBatch 寫進的新 value。
+// 原本 pendingTouches[k] 存的是 read 當下的 (v, t) 物件,5 秒後直接 set 寫回——
+// 若 setBatch 在這 5s 內寫了新譯文 V',flush 會把舊 V 蓋上去 → 下次重翻取到舊值。
+// 改成 flush 前重讀 storage,逐筆比對 value 一致才更新 timestamp;不一致(已被改)就 skip。
+async function flushTouches() {
   touchFlushTimer = null;
-  const updates = { ...pendingTouches };
-  const keys = Object.keys(updates);
+  const snapshot = { ...pendingTouches };
+  const keys = Object.keys(snapshot);
   if (!keys.length) return;
-  // 清空 pending（先清再寫，避免 flush 期間的新 touch 被漏掉）
   for (const k of keys) delete pendingTouches[k];
-  browser.storage.local.set(updates).catch(() => {}); // fire-and-forget
+  try {
+    const current = await browser.storage.local.get(keys);
+    const updates = {};
+    for (const k of keys) {
+      const cur = current[k];
+      if (cur == null) continue; // 已被淘汰,不重建
+      const curV = extractValue(cur);
+      const wantV = snapshot[k]?.v;
+      if (curV !== wantV) continue; // 已被 setBatch 換新譯文,放棄這次 touch
+      updates[k] = { v: curV, t: Date.now() };
+    }
+    if (Object.keys(updates).length) {
+      browser.storage.local.set(updates).catch(() => {});
+    }
+  } catch (_) { /* fire-and-forget */ }
 }
 
+// v1.8.14: hashText LRU memo
+// SHA-1 對單段不貴,但 batch 20 段 → 40 次 digest;1000 段一頁 → 2000 次。
+// SubtleCrypto 是 async API 會 yield 多次,影響 streaming first-chunk 延遲。
+// 同一段原文常在 getBatch + setBatch 被 hash 兩次,memo 命中率高。
+const _hashCache = new Map();
+const _HASH_CACHE_MAX = 500;
+
 async function hashText(text) {
+  const cached = _hashCache.get(text);
+  if (cached !== undefined) {
+    // LRU: 命中時搬到尾端(最新)
+    _hashCache.delete(text);
+    _hashCache.set(text, cached);
+    return cached;
+  }
   const buf = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest('SHA-1', buf);
-  return Array.from(new Uint8Array(digest))
+  const hex = Array.from(new Uint8Array(digest))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
+  _hashCache.set(text, hex);
+  if (_hashCache.size > _HASH_CACHE_MAX) {
+    // Map.keys() 第一個 = 最舊
+    _hashCache.delete(_hashCache.keys().next().value);
+  }
+  return hex;
 }
 
 /**
@@ -95,9 +132,12 @@ function extractTimestamp(stored) {
 /**
  * LRU 淘汰：刪除最舊的快取條目，騰出至少 targetBytes 空間。
  * 只淘汰 tc_ 和 gloss_ 前綴的快取條目，不動其他 storage 資料。
+ *
+ * v1.8.14: preFetchedAll 可由呼叫端傳入既已 get(null) 的 entries,避免
+ * proactiveEvictionCheck 內「getCacheUsageBytes 一次 + evictOldest 又一次」雙掃。
  */
-async function evictOldest(targetBytes) {
-  const all = await browser.storage.local.get(null);
+async function evictOldest(targetBytes, preFetchedAll = null) {
+  const all = preFetchedAll || await browser.storage.local.get(null);
   const cacheEntries = [];
   for (const [key, value] of Object.entries(all)) {
     if (key.startsWith(KEY_PREFIX) || key.startsWith(GLOSSARY_PREFIX)) {
@@ -127,9 +167,19 @@ async function evictOldest(targetBytes) {
 }
 
 /**
- * 計算目前快取佔用的大致 bytes。
+ * 計算目前 storage.local 用量(bytes)。
+ *
+ * v1.8.14: 優先用 Chrome 原生 storage.local.getBytesInUse(null),不需把整份 storage
+ * 拉進記憶體。回傳的是「整個 local 用量」(包含 cache 以外的設定 / RPD / log 等),
+ * 但 cache 占大宗(9.5MB / 10MB),拿來判斷 quota 接近時夠用。
+ *
+ * Fallback:若 getBytesInUse 不支援(極舊瀏覽器)走 get(null) 加總。
  */
 async function getCacheUsageBytes() {
+  if (typeof browser.storage.local.getBytesInUse === 'function') {
+    return browser.storage.local.getBytesInUse(null);
+  }
+  // Fallback(舊瀏覽器):走原本的全表 get + 加總
   const all = await browser.storage.local.get(null);
   let bytes = 0;
   for (const [key, value] of Object.entries(all)) {
@@ -293,8 +343,9 @@ export async function getGlossary(inputHash) {
   // v0.85: 向下相容 — 舊格式直接是 Array，新格式是 { v: Array, t: number }
   if (Array.isArray(entry)) return entry;
   if (entry && typeof entry === 'object' && Array.isArray(entry.v)) {
-    // 更新時間戳（fire-and-forget）
-    browser.storage.local.set({ [key]: { v: entry.v, t: Date.now() } }).catch(() => {});
+    // v1.8.20: 走 safeStorageSet,讓 quota 滿時觸發 LRU eviction 後重試,
+    // 否則 timestamp 永遠寫不進去 → 活躍 glossary 被當最舊先淘汰。
+    safeStorageSet({ [key]: { v: entry.v, t: Date.now() } }).catch(() => {});
     return entry.v;
   }
   return null;

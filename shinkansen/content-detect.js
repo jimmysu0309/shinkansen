@@ -205,6 +205,31 @@
     // v1.6.9: per-call memo for isInsideExcludedContainer。整個 collectParagraphs
     // 期間 DOM 不變,同一祖先鏈只算一次。
     const excludedMemo = new Map();
+    // v1.8.14: 補抓三條(leaf anchor / leaf div span / 等)共用的「BLOCK 祖先」memo。
+    // 之前每條補抓路徑各自從葉節點 walk 到 body,大頁面浪費上千次祖先比對。
+    const blockAncestorMemo = new Map();
+    function hasBlockAncestor(el) {
+      if (blockAncestorMemo.has(el)) return blockAncestorMemo.get(el);
+      const chain = [];
+      let cur = el.parentElement;
+      let result = false;
+      while (cur && cur !== document.body) {
+        if (blockAncestorMemo.has(cur)) {
+          result = blockAncestorMemo.get(cur);
+          break;
+        }
+        chain.push(cur);
+        if (SK.BLOCK_TAGS_SET.has(cur.tagName)) {
+          result = true;
+          break;
+        }
+        cur = cur.parentElement;
+      }
+      // 把整條 chain memoize 為相同結果
+      for (const node of chain) blockAncestorMemo.set(node, result);
+      blockAncestorMemo.set(el, result);
+      return result;
+    }
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
       acceptNode(el) {
@@ -393,13 +418,7 @@
     document.querySelectorAll('a').forEach(a => {
       if (seen.has(a)) return;
       if (a.hasAttribute('data-shinkansen-translated')) return;
-      let cur = a.parentElement;
-      let hasBlockAncestor = false;
-      while (cur && cur !== document.body) {
-        if (SK.BLOCK_TAGS_SET.has(cur.tagName)) { hasBlockAncestor = true; break; }
-        cur = cur.parentElement;
-      }
-      if (hasBlockAncestor) return;
+      if (hasBlockAncestor(a)) return;
       if (SK.containsBlockDescendant(a)) return;
       if (isInsideExcludedContainer(a, excludedMemo)) return;
       if (isInteractiveWidgetContainer(a)) return;
@@ -423,13 +442,7 @@
       if (seen.has(d)) return;
       if (d.hasAttribute('data-shinkansen-translated')) return;
       // d.children.length > 0 過濾已由 :not(:has(*)) selector 取代,移除
-      let cur = d.parentElement;
-      let hasBlockAncestor = false;
-      while (cur && cur !== document.body) {
-        if (SK.BLOCK_TAGS_SET.has(cur.tagName)) { hasBlockAncestor = true; break; }
-        cur = cur.parentElement;
-      }
-      if (hasBlockAncestor) return;
+      if (hasBlockAncestor(d)) return;
       if (isInsideExcludedContainer(d, excludedMemo)) return;
       if (isInteractiveWidgetContainer(d)) return;
       if (!SK.isVisible(d)) return;

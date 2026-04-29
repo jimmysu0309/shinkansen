@@ -11,6 +11,9 @@ test/reports/
 # Chrome Web Store 上傳用的本機打包
 dist/
 
+# docs 內部素材暫存區(Brand asset 工作區、原始概念稿、CWS 上架用素材等),只保留本機
+docs/excluded/
+
 # Claude 協作用內部文件（含個人資訊，不公開）
 CLAUDE.md
 測試流程說明.md
@@ -25,3 +28,6 @@ CLAUDE-TEMPLATE-*.md
 # debug harness 截圖輸出（tools/debug-harness.js）與一次性 probe 腳本
 .playwright-mcp/
 tools/probe-*.js
+
+# Claude Code ScheduleWakeup transient lock（每次 wakeup 重生,不該進 commit）
+.claude/scheduled_tasks.lock

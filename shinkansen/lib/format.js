@@ -41,3 +41,24 @@ export function parseUserNum(rawValue, defaultValue) {
   const n = Number(v);
   return Number.isFinite(n) ? n : defaultValue;
 }
+
+/**
+ * 把 ms timestamp 格式化為 YYYYMMDD(本地時區)。
+ */
+export function formatYmd(ts) {
+  const d = new Date(ts);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}`;
+}
+
+/**
+ * 組用量紀錄 CSV 匯出檔名(`shinkansen-usage-YYYYMMDD-YYYYMMDD.csv`)。
+ *
+ * 從 timestamp 構檔名,避開 v1.5.7 已移除的 `usage-from`/`usage-to` 元素 id —
+ * 直接讀那兩個 id 會在 `$().value` 拿到 null 拋 TypeError。
+ */
+export function buildUsageCsvFilename(fromMs, toMs) {
+  return `shinkansen-usage-${formatYmd(fromMs)}-${formatYmd(toMs)}.csv`;
+}

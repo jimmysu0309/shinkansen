@@ -41,6 +41,7 @@ function createEnvWithNavType({ navType, url = 'https://example.com/page-a' }) {
   const sentMessages = [];
   const chromeMock = {
     runtime: {
+      id: 'mock-extension-id',
       sendMessage: jest.fn().mockImplementation((msg) => {
         sentMessages.push(msg);
         // STICKY_QUERY 預設回 no-translate，讓這組 test 聚焦在「CLEAR 有沒有被送」

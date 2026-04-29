@@ -50,8 +50,12 @@ export function shouldShowWelcomeNotice(welcomeNotice, currentVersion) {
   if (!welcomeNotice || !welcomeNotice.version) {
     return { show: false, removeStale: false };
   }
-  const noticeParts = String(welcomeNotice.version).split('.').map(Number);
-  const currentParts = String(currentVersion).split('.').map(Number);
+  // v1.8.20: 用 parseInt(s,10) || 0 防呆,防止「1.6.5-beta」這類後綴讓 Number('5-beta') = NaN
+  // → NaN === NaN 永遠 false → minor 比對失誤造成永遠 show=false。目前 release tag 不帶後綴
+  // 但 storage 殘留壞值或未來改 tag 規則時這條保險才有意義。
+  const parseNum = (s) => parseInt(s, 10) || 0;
+  const noticeParts = String(welcomeNotice.version).split('.').map(parseNum);
+  const currentParts = String(currentVersion).split('.').map(parseNum);
   const sameMinor = noticeParts[0] === currentParts[0] && noticeParts[1] === currentParts[1];
   if (!sameMinor) {
     return { show: false, removeStale: true };
