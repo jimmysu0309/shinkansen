@@ -352,8 +352,14 @@ $('bilingual-toggle').addEventListener('change', async (e) => {
   }
 });
 
-$('options-btn').addEventListener('click', () => {
-  browser.runtime.openOptionsPage();
+$('options-btn').addEventListener('click', async() => {
+  try{
+    await browser.runtime.openOptionsPage();
+  } catch (e) {
+    // 如果 openOptionsPage 不支援（例如 Arc），退而求其次直接開啟 options.html 頁面
+    const url = browser.runtime.getURL('options/options.html');
+    await browser.tabs.create({ url });
+  }
 });
 
 // v1.6.23:popup 開著時 reactive sync ytSubtitle.autoTranslate(設定頁同步寫 storage 後立即反映)
