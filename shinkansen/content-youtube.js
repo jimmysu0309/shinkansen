@@ -1488,8 +1488,13 @@
     });
     const inputJson = JSON.stringify(inputArr);
 
+    const config = SK.YT.config || await getYtConfig();
+    const msgType =
+      config.engine === 'openai-compat' ? 'TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM' :
+                                          'TRANSLATE_ASR_SUBTITLE_BATCH';
+
     const res = await SK.safeSendMessage({
-      type: 'TRANSLATE_ASR_SUBTITLE_BATCH',
+      type: msgType,
       payload: { texts: [inputJson], glossary: null },
     });
     const elapsed = Date.now() - _t0Window;
@@ -1651,9 +1656,15 @@
     const _t0 = Date.now();
     const _batchApiMs = new Array(batches.length).fill(0);
 
+    const config = SK.YT.config || await getYtConfig();
+    const msgType =
+      config.engine === 'google'        ? 'TRANSLATE_SUBTITLE_BATCH_GOOGLE' :
+      config.engine === 'openai-compat' ? 'TRANSLATE_SUBTITLE_BATCH_CUSTOM' :
+                                          'TRANSLATE_SUBTITLE_BATCH';
+
     const _runBatch = (batchUnits, b) =>
       SK.safeSendMessage({
-        type: 'TRANSLATE_SUBTITLE_BATCH',
+        type: msgType,
         payload: { texts: batchUnits.map(u => u.text), glossary: null },
       }).then(res => {
         const elapsed = Date.now() - _t0;

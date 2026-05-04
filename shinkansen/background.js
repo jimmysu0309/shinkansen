@@ -571,6 +571,22 @@ const messageHandlers = {
         yt.applyForbiddenTerms === true);
     },
   },
+  // v1.8.45: YouTube ASR 字幕使用自訂模型時，走 OpenAI-compatible Provider。
+  // ASR prompt 是 JSON timestamp 模式，不能沿用一般逐條字幕 prompt；但仍共用 customProvider 的
+  // baseUrl / model / apiKey / pricing / thinking 等設定，避免選了自訂模型卻要求 Gemini API Key。
+  TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM: {
+    async: true,
+    handler: async (payload, sender) => {
+      const s = await getSettings();
+      const yt = s.ytSubtitle || {};
+      const overrides = {
+        systemPrompt: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
+        temperature: yt.temperature ?? 0.1,
+      };
+      return handleTranslateCustom(payload, sender, '_oc_yt_asr', overrides,
+        false, false);
+    },
+  },
   // v1.6.1: 使用者點 toast 內「下載」連結或「×」時，標記今日已顯示更新提示（每日節流）
   UPDATE_NOTICE_DISMISSED: {
     async: true,

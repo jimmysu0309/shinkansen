@@ -680,6 +680,89 @@ test('youtube-asr-mode: progressive mode 兩種訊息都送(heuristic + LLM 並�
   await page.close();
 });
 
+
+test('youtube-asr-mode: openai-compat engine 應路由 ASR heuristic 與 LLM 批次到 custom handlers', async ({
+  context,
+  localServer,
+}) => {
+  // Regression: ytSubtitle.engine='openai-compat' 時，ASR progressive 模式不應再硬走 Gemini handlers。
+  //   - heuristic 路徑應送 TRANSLATE_SUBTITLE_BATCH_CUSTOM
+  //   - LLM/timestamp 路徑應送 TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM
+  //   - 不應送 TRANSLATE_SUBTITLE_BATCH / TRANSLATE_ASR_SUBTITLE_BATCH
+
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('video', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+  await evaluate(`window.__SK.isYouTubePage = () => true`);
+  await evaluate(`chrome.storage.sync.set({ ytSubtitle: { asrMode: 'progressive', engine: 'openai-compat' } })`);
+
+  await evaluate(`
+    window.__customAsrBatchCount = 0;
+    window.__customSubtitleBatchCount = 0;
+    window.__geminiAsrBatchCount = 0;
+    window.__geminiSubtitleBatchCount = 0;
+    chrome.runtime.sendMessage = async function(msg) {
+      if (!msg || !msg.type) return { ok: true };
+      if (msg.type === 'TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM') {
+        window.__customAsrBatchCount++;
+        const inputArr = JSON.parse((msg.payload && msg.payload.texts && msg.payload.texts[0]) || '[]');
+        const merged = inputArr.length > 0 ? [{
+          s: inputArr[0].s, e: inputArr[inputArr.length - 1].e, t: 'custom LLM 譯文',
+        }] : [];
+        return { ok: true, result: [JSON.stringify(merged)], usage: {} };
+      }
+      if (msg.type === 'TRANSLATE_SUBTITLE_BATCH_CUSTOM') {
+        window.__customSubtitleBatchCount++;
+        const texts = (msg.payload && msg.payload.texts) || [];
+        return {
+          ok: true,
+          result: texts.map(() => 'custom heuristic 譯文'),
+          usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, billedInputTokens: 1, billedCostUSD: 0, cacheHits: 0 },
+        };
+      }
+      if (msg.type === 'TRANSLATE_ASR_SUBTITLE_BATCH') window.__geminiAsrBatchCount++;
+      if (msg.type === 'TRANSLATE_SUBTITLE_BATCH') window.__geminiSubtitleBatchCount++;
+      return { ok: true };
+    };
+  `);
+
+  await evaluate(`
+    const events = [
+      { tStartMs: 0,    segs: [{ utf8: 'the' }] },
+      { tStartMs: 400,  segs: [{ utf8: 'auto' }] },
+      { tStartMs: 800,  segs: [{ utf8: 'captions' }] },
+      { tStartMs: 1200, segs: [{ utf8: 'are' }] },
+      { tStartMs: 1500, segs: [{ utf8: 'broken' }] },
+      { tStartMs: 4000, segs: [{ utf8: 'hello' }] },
+      { tStartMs: 4400, segs: [{ utf8: 'world' }] },
+    ];
+    const json3 = JSON.stringify({ events });
+    window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
+      detail: { url: 'https://www.youtube.com/api/timedtext?v=ABC&lang=en&kind=asr', responseText: json3 },
+    }));
+  `);
+  await page.waitForTimeout(100);
+
+  await evaluate(`(() => { window.__SK.translateYouTubeSubtitles(); })()`);
+  await page.waitForTimeout(1500);
+
+  const result = await evaluate(`({
+    customAsrBatchCount: window.__customAsrBatchCount,
+    customSubtitleBatchCount: window.__customSubtitleBatchCount,
+    geminiAsrBatchCount: window.__geminiAsrBatchCount,
+    geminiSubtitleBatchCount: window.__geminiSubtitleBatchCount,
+  })`);
+
+  expect(result.customSubtitleBatchCount, 'heuristic 路徑應走 TRANSLATE_SUBTITLE_BATCH_CUSTOM').toBeGreaterThanOrEqual(1);
+  expect(result.customAsrBatchCount, 'LLM/timestamp 路徑應走 TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM').toBeGreaterThanOrEqual(1);
+  expect(result.geminiSubtitleBatchCount, 'openai-compat 時不應送 TRANSLATE_SUBTITLE_BATCH').toBe(0);
+  expect(result.geminiAsrBatchCount, 'openai-compat 時不應送 TRANSLATE_ASR_SUBTITLE_BATCH').toBe(0);
+
+  await page.close();
+});
+
 test('youtube-asr-mode: G 路徑 — overlay 內容由 timeupdate 驅動,根據 currentTime 切換 active cue', async ({
   context,
   localServer,
