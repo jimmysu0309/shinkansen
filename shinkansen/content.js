@@ -859,7 +859,7 @@
         try {
           const glossaryResult = await Promise.race([
             SK.safeSendMessage({
-              type: 'EXTRACT_GLOSSARY',
+              type: options.engine === 'openai-compat' ? 'EXTRACT_GLOSSARY_CUSTOM' : 'EXTRACT_GLOSSARY',
               payload: { compressedText, inputHash },
             }),
             new Promise((_, reject) =>
@@ -879,7 +879,7 @@
         }
       } else {
         const glossaryPromise = SK.safeSendMessage({
-          type: 'EXTRACT_GLOSSARY',
+          type: options.engine === 'openai-compat' ? 'EXTRACT_GLOSSARY_CUSTOM' : 'EXTRACT_GLOSSARY',
           payload: { compressedText, inputHash },
         }).then(res => {
           if (res?.ok && res.glossary?.length > 0) {

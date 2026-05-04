@@ -618,6 +618,12 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleExtractGlossary(payload, sender),
   },
+  // v1.8.45: 自訂模型翻譯時，術語表擷取也走 OpenAI-compatible Provider，
+  // 避免 settings.glossary.enabled=true 但 Gemini API Key 未設定時產生 EXTRACT_GLOSSARY failed。
+  EXTRACT_GLOSSARY_CUSTOM: {
+    async: true,
+    handler: (payload, sender) => handleExtractGlossaryCustom(payload, sender),
+  },
   CLEAR_CACHE: {
     async: true,
     handler: () => cache.clearAll().then(removed => ({ removed })),
@@ -1412,7 +1418,8 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   const cp = { ...(settings.customProvider || {}), ...(cpOverrides || {}) };
   // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key）；商用後端漏填會自然 401
   if (!cp.baseUrl) throw new Error('尚未設定自訂 Provider 的 Base URL。');
-  if (!cp.model) throw new Error('尚未設定自訂 Provider 的模型 ID。');
+  // v1.8.41: llama.cpp / Ollama 等本機 server 啟動時可鎖定 model。
+  // customProvider.model 允許空字串，lib/openai-compat.js 會省略 body.model 並使用 server default。
 
   const texts = payload.texts;
   const glossary = payload.glossary || null;
@@ -1637,6 +1644,34 @@ async function handleTranslateGoogle(payload, sender, cacheSuffix) {
 }
 
 // ─── v0.70: 術語表擷取處理（v0.69 建立，v0.70 加強除錯與容錯） ──
+
+function parseGlossaryFromText(rawText, maxTerms = 200) {
+  let jsonStr = String(rawText || '').trim();
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim();
+  } else {
+    const firstBracket = jsonStr.search(/[\[{]/);
+    const lastBracket = Math.max(jsonStr.lastIndexOf(']'), jsonStr.lastIndexOf('}'));
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
+    }
+  }
+
+  const parsed = JSON.parse(jsonStr);
+  let entries;
+  if (Array.isArray(parsed)) {
+    entries = parsed;
+  } else if (parsed && typeof parsed === 'object') {
+    const arrKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+    entries = arrKey ? parsed[arrKey] : null;
+  }
+  if (!entries) return [];
+  return entries
+    .filter(e => e && typeof e.source === 'string' && typeof e.target === 'string' && e.source && e.target)
+    .slice(0, maxTerms);
+}
+
 async function handleExtractGlossary(payload, sender) {
   debugLog('info', 'glossary', 'glossary extraction start', { inputHash: payload.inputHash, chars: payload.compressedText?.length });
   const settings = await getSettings();
@@ -1693,6 +1728,80 @@ async function handleExtractGlossary(payload, sender) {
   });
 
   return { glossary, usage, fromCache: false, _diag: _diag || null };
+}
+
+async function handleExtractGlossaryCustom(payload, sender) {
+  debugLog('info', 'glossary', 'custom glossary extraction start', { inputHash: payload.inputHash, chars: payload.compressedText?.length });
+  const settings = await getSettings();
+  const cp = settings.customProvider || {};
+  if (!cp.baseUrl) throw new Error('尚未設定自訂 Provider 的 Base URL。');
+  // v1.8.41: customProvider.model 允許空字串，讓本機 server 使用 startup-loaded model。
+
+  const { compressedText, inputHash } = payload;
+  const cached = await cache.getGlossary(inputHash);
+  if (cached) {
+    debugLog('info', 'glossary', 'glossary cache hit', { inputHash, terms: cached.length, engine: 'openai-compat' });
+    return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
+  }
+
+  const glossaryConfig = settings.glossary || {};
+  const prompt = glossaryConfig.prompt || '';
+  const maxTerms = glossaryConfig.maxTerms ?? 200;
+  const customSettings = {
+    ...settings,
+    customProvider: {
+      ...cp,
+      systemPrompt: prompt,
+      temperature: glossaryConfig.temperature ?? cp.temperature ?? 0.1,
+    },
+  };
+
+  debugLog('info', 'glossary', 'calling custom provider for glossary', {
+    baseUrl: cp.baseUrl,
+    model: cp.model || '<server-default>',
+  });
+
+  const result = await translateBatchCustom([compressedText], customSettings, null, null, []);
+  const rawText = result.translations?.[0] || '';
+  let glossary = [];
+  let diag = null;
+  try {
+    glossary = parseGlossaryFromText(rawText, maxTerms);
+    if (glossary.length === 0) diag = `custom glossary returned no valid entries (rawText first 300): ${rawText.slice(0, 300)}`;
+  } catch (err) {
+    diag = `custom glossary JSON parse error: ${err.message}, preview: ${rawText.slice(0, 300)}`;
+    debugLog('warn', 'glossary', 'custom glossary JSON parse failed', { error: err.message, preview: rawText.slice(0, 500) });
+  }
+
+  if (glossary.length > 0) {
+    await cache.setGlossary(inputHash, glossary);
+  }
+
+  const usage = result.usage || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+  if (usage.inputTokens > 0 || usage.outputTokens > 0) {
+    const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+    const billedCost = computeBilledCostUSD(
+      usage.inputTokens,
+      usage.cachedTokens || 0,
+      usage.outputTokens,
+      { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 },
+      cachedRate,
+    );
+    const billedInput = Math.max(
+      0,
+      Math.round(usage.inputTokens - (usage.cachedTokens || 0) * (1 - cachedRate)),
+    );
+    await addUsage(billedInput, usage.outputTokens, billedCost);
+  }
+
+  debugLog('info', 'glossary', 'custom glossary extraction complete', {
+    terms: glossary.length,
+    inputHash,
+    tabUrl: sender?.tab?.url,
+    diag,
+  });
+
+  return { glossary, usage, fromCache: false, _diag: diag };
 }
 
 // ─── 快捷鍵 ────────────────────────────────────────────────
