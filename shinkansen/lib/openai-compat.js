@@ -250,7 +250,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   });
 
   // 拆分對齊（與 Gemini 同邏輯：split by DELIMITER + 移除 «N» 序號標記）
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
+  // 多段時額外處理本地模型把 «1» 變形為 N1 的情況
+  const SEQ_MARKER_RE = texts.length > 1 ? /^(?:«\d+»|N\d+)\s*/ : /^«\d+»\s*/;
   const parts = text.split(DELIMITER).map(s => s.trim().replace(SEQ_MARKER_RE, ''));
   if (parts.length !== texts.length) {
     await debugLog('warn', 'api', 'openai-compat segment count mismatch — fallback to per-segment', {

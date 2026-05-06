@@ -504,8 +504,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     outputPreview: text.slice(0, 300),
   });
 
-  // v0.89: split 後移除序號標記 «N»（若有）
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
+  // split 後移除序號標記 «N»；多段時額外處理本地模型把 «1» 變形為 N1 的情況
+  const SEQ_MARKER_RE = texts.length > 1 ? /^(?:«\d+»|N\d+)\s*/ : /^«\d+»\s*/;
   const parts = text.split(DELIMITER).map(s => s.trim().replace(SEQ_MARKER_RE, ''));
   // 若回傳段數不符，且本批不只一段，則 fallback 改為逐段單獨翻譯，確保對齊
   if (parts.length !== texts.length) {
@@ -607,7 +607,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   });
 
   const t0 = Date.now();
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
+  const SEQ_MARKER_RE = texts.length > 1 ? /^(?:«\d+»|N\d+)\s*/ : /^«\d+»\s*/;
 
   let resp;
   try {
