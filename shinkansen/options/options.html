@@ -366,10 +366,14 @@
         <input type="checkbox" id="partialModeEnabled">
         <span>只翻文章開頭</span>
       </label>
+      <label class="switch">
+        <input type="checkbox" id="partialModeViewportOnly">
+        <span>僅翻譯目前可視範圍</span>
+      </label>
       <label>
         翻譯段落數上限
         <input type="number" id="partialModeMaxUnits" step="1" min="5" max="50">
-        <small class="muted">啟用後只翻譯頁面前 N 段（按 DOM 順序，不排序）。適合先快速預覽再決定是否繼續讀完整文章，可大幅減少 token 用量。翻譯完成後右下角提示會出現「翻譯剩餘段落」按鈕，點按即可繼續翻完整篇——前面已翻好的段落會從本地快取載入，不重複收費。預設 25 段，範圍 5-50</small>
+        <small class="muted">「只翻文章開頭」啟用後只翻譯頁面前 N 段（按 DOM 順序，不排序）。「僅翻譯目前可視範圍」啟用後，只翻目前畫面內的段落，捲動頁面時會自動翻譯新進入可視範圍且尚未翻譯的內容。預設 25 段，範圍 5-50</small>
       </label>
     </section>
 

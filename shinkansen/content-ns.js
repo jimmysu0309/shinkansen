@@ -81,6 +81,11 @@ if (window.__shinkansen_loaded) {
     displayMode: 'single',
     translatedMode: null,
     translationCache: new Map(),
+    // viewportOnly：只翻目前可視範圍，捲動後再補翻進入 viewport 的段落。
+    viewportOnlyActive: false,
+    viewportScrollTimer: null,
+    viewportScrollTranslating: false,
+    viewportTranslateOptions: null,
   };
 
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback

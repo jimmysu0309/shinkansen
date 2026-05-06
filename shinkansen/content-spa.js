@@ -621,6 +621,10 @@
       SK.sendLog('info', 'spa', 'partialMode: skip SPA observer rescan');
       return;
     }
+    if (STATE.viewportOnlyActive) {
+      SK.sendLog('info', 'spa', 'viewportOnly: skip SPA observer rescan');
+      return;
+    }
     if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) {
       SK.sendLog('info', 'spa', 'SPA observer: reached max rescans, stopping NEW translations only', { maxRescans: SK.SPA_OBSERVER_MAX_RESCANS });
       return;

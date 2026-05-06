@@ -115,6 +115,7 @@ async function load() {
   // v1.8.3: partialMode toggle + size
   const pm = { ...DEFAULTS.partialMode, ...(s.partialMode || {}) };
   $('partialModeEnabled').checked = pm.enabled === true;
+  $('partialModeViewportOnly').checked = pm.viewportOnly === true;
   $('partialModeMaxUnits').value = pm.maxUnits;
   $('maxRetries').value = s.maxRetries ?? 3;
 
@@ -678,6 +679,7 @@ async function _saveImpl() {
     partialMode: {
       enabled: $('partialModeEnabled').checked,
       maxUnits: parseUserNum($('partialModeMaxUnits').value, 25),
+      viewportOnly: $('partialModeViewportOnly').checked,
     },
     // 只有 custom tier 才寫入 override（其他 tier 的數字從對照表讀，不存）
     rpmOverride: $('tier').value === 'custom' ? (Number($('rpm').value) || null) : null,
@@ -925,6 +927,7 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('maxTranslateUnits').value    = D.maxTranslateUnits;
   // v1.8.3: 只翻文章開頭重設
   $('partialModeEnabled').checked = D.partialMode.enabled;
+  $('partialModeViewportOnly').checked = D.partialMode.viewportOnly;
   $('partialModeMaxUnits').value  = D.partialMode.maxUnits;
   markDirty();
   $('save-gemini-status').textContent = '欄位已重設，請按「儲存設定」生效';
@@ -1368,6 +1371,7 @@ function sanitizeImport(raw) {
     const pm = raw.partialMode;
     const pmClean = {};
     if (typeof pm.enabled === 'boolean') pmClean.enabled = pm.enabled;
+    if (typeof pm.viewportOnly === 'boolean') pmClean.viewportOnly = pm.viewportOnly;
     if (typeof pm.maxUnits === 'number' && Number.isInteger(pm.maxUnits) && pm.maxUnits >= 5 && pm.maxUnits <= 50) {
       pmClean.maxUnits = pm.maxUnits;
     }

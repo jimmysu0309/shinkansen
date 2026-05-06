@@ -114,6 +114,122 @@
     rescanAttempts = 0;
   };
 
+  function unitIsInViewport(unit) {
+    const el = unit?.el || unit?.parent;
+    if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+    const vh = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+    const vw = window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0;
+    if (vh <= 0 || vw <= 0) return false;
+    const rect = el.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+    // viewportOnly 模式保留少量 overscan，避免使用者剛捲動時看到邊界附近仍是原文。
+    const verticalOverscan = Math.max(120, Math.round(vh * 0.2));
+    const horizontalOverscan = Math.max(40, Math.round(vw * 0.05));
+    return rect.bottom > -verticalOverscan
+      && rect.top < vh + verticalOverscan
+      && rect.right > -horizontalOverscan
+      && rect.left < vw + horizontalOverscan;
+  }
+
+  function filterViewportUnits(units) {
+    return units.filter(unitIsInViewport);
+  }
+
+  function stopViewportScrollTranslation() {
+    if (STATE.viewportScrollTimer) {
+      clearTimeout(STATE.viewportScrollTimer);
+      STATE.viewportScrollTimer = null;
+    }
+    window.removeEventListener('scroll', viewportScrollHandler, true);
+    window.removeEventListener('resize', viewportScrollHandler, true);
+    STATE.viewportOnlyActive = false;
+    STATE.viewportScrollTranslating = false;
+    STATE.viewportTranslateOptions = null;
+  }
+
+  function viewportScrollHandler() {
+    scheduleViewportTranslation('viewport-scroll', 50);
+  }
+
+  function startViewportScrollTranslation(options) {
+    STATE.viewportOnlyActive = true;
+    STATE.viewportTranslateOptions = {
+      engine: options.engine || 'gemini',
+      modelOverride: options.modelOverride || null,
+      label: options.label || null,
+    };
+    window.addEventListener('scroll', viewportScrollHandler, { passive: true, capture: true });
+    window.addEventListener('resize', viewportScrollHandler, { passive: true, capture: true });
+  }
+
+  function scheduleViewportTranslation(reason, delay = 160) {
+    if (!STATE.viewportOnlyActive || !STATE.translated) return;
+    if (STATE.viewportScrollTimer) clearTimeout(STATE.viewportScrollTimer);
+    STATE.viewportScrollTimer = setTimeout(() => {
+      STATE.viewportScrollTimer = null;
+      translateVisibleViewportUnits(reason).catch(err => {
+        SK.sendLog('warn', 'translate', 'viewport translation failed', { reason, error: err.message });
+      });
+    }, delay);
+  }
+
+  async function translateVisibleViewportUnits(reason) {
+    if (!STATE.viewportOnlyActive || !STATE.translated) return { done: 0, failures: [] };
+    if (STATE.viewportScrollTranslating) {
+      scheduleViewportTranslation('viewport-reschedule', 240);
+      return { done: 0, failures: [] };
+    }
+    const units = filterViewportUnits(SK.collectParagraphs());
+    if (units.length === 0) return { done: 0, failures: [] };
+
+    STATE.viewportScrollTranslating = true;
+    const opts = STATE.viewportTranslateOptions || {};
+    const labelPrefix = opts.label ? `[${opts.label}] ` : '';
+    let loadingShown = false;
+    const loadingTimer = setTimeout(() => {
+      loadingShown = true;
+      SK.showToast('loading', `${labelPrefix}翻譯可視範圍… 0 / ${units.length}`, { progress: 0, startTimer: true });
+    }, 200);
+
+    try {
+      let result;
+      if (STATE.translatedBy === 'google' || opts.engine === 'google') {
+        result = await SK.translateUnitsGoogle(units, {
+          onProgress: (d, t) => {
+            if (loadingShown) SK.showToast('loading', `${labelPrefix}Google 翻譯可視範圍… ${d} / ${t}`, { progress: d / t });
+          },
+        });
+      } else {
+        result = await SK.translateUnits(units, {
+          engine: opts.engine || 'gemini',
+          modelOverride: opts.modelOverride || null,
+          visibleViewportMode: true,
+          onProgress: (d, t) => {
+            if (loadingShown) SK.showToast('loading', `${labelPrefix}翻譯可視範圍… ${d} / ${t}`, { progress: d / t });
+          },
+        });
+      }
+      clearTimeout(loadingTimer);
+      if (!STATE.translated) return result;
+      if (result.done > 0) {
+        SK.sendLog('info', 'translate', 'viewport visible units translated', {
+          reason,
+          done: result.done,
+          failures: result.failures?.length || 0,
+        });
+        if (loadingShown) {
+          SK.showToast('success', `已翻譯可視範圍 ${result.done} 段`, { progress: 1, stopTimer: true, autoHideMs: 1600 });
+        }
+      } else if (loadingShown) {
+        SK.hideToast();
+      }
+      return result;
+    } finally {
+      clearTimeout(loadingTimer);
+      STATE.viewportScrollTranslating = false;
+    }
+  }
+
   function scheduleRescanForLateContent() {
     SK.cancelRescan();
     rescanTimer = setTimeout(rescanTick, SK.RESCAN_DELAYS_MS[0]);
@@ -122,6 +238,10 @@
   async function rescanTick() {
     rescanTimer = null;
     if (!STATE.translated) return;
+    if (STATE.viewportOnlyActive) {
+      await translateVisibleViewportUnits('late-content-rescan');
+      return;
+    }
     // v1.8.5: 「只翻文章開頭」啟用時，延遲 rescan 不掃新段落 — 使用者明確只想要文章開頭。
     if (STATE.partialModeActive) {
       SK.sendLog('info', 'translate', 'partialMode: skip rescan');
@@ -235,7 +355,7 @@
 
   // ─── translateUnits ──────────────────────────────────
 
-  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode } = {}) {
+  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode, visibleViewportMode } = {}) {
     const total = units.length;
     const tu_entry = Date.now();
     const serialized = units.map(unit => {
@@ -319,7 +439,7 @@
     };
     // v1.8.3: partialMode 啟用時，第一批 limit 用使用者設定的 maxUnits;chars 仍用 BATCH0_CHARS 內部限制
     // v1.8.8: ignorePartialMode 路徑（「翻譯剩餘段落」按鈕）走全頁翻譯，batch 0 用標準 BATCH0_UNITS
-    const partialModeActive = partialMode.enabled && !ignorePartialMode;
+    const partialModeActive = partialMode.enabled && !ignorePartialMode && !visibleViewportMode;
     const firstBatchUnits = partialModeActive ? partialMode.maxUnits : SK.BATCH0_UNITS;
     // v1.8.39: packBatches 收 deduped 版本（不含重複 text)，減少 batch 數與 API token
     const jobs = packBatches(dedupedTexts, dedupedUnits, dedupedSlots, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
@@ -641,23 +761,24 @@
     // modelOverride 覆蓋 geminiConfig.model，slot 用於 STICKY_SET。
     // v1.4.13: options.label 由 preset 傳入，在 loading toast 顯示讓使用者知道目前哪個 preset 在跑。
     const labelPrefix = options.label ? `[${options.label}] ` : '';
+    const ignorePartialMode = options.ignorePartialMode === true;
 
     // v1.8.8 instrumentation: 入口 STATE 狀態
     SK.sendLog('info', 'translate', 'translatePage entry', {
-      ignorePartialMode: !!options.ignorePartialMode,
+      ignorePartialMode,
       stateTranslated: STATE.translated,
       statePartialModeActive: STATE.partialModeActive,
       alreadyMarkedCount: document.querySelectorAll('[data-shinkansen-translated]').length,
     });
     // v1.8.7: options.ignorePartialMode = true 從「翻譯剩餘段落」按鈕觸發，
     // 不走 restorePage 早退，直接重翻整頁（前面已翻好的段落會從 cache fast path 命中）
-    if (STATE.translated && !options.ignorePartialMode) {
+    if (STATE.translated && !ignorePartialMode) {
       restorePage();
       return;
     }
     // ignorePartialMode 路徑：STATE.translated=true 進來時，先靜默重置 translated state
     // 讓後續流程能跑完整翻譯（否則 STATE.translated=true 會讓 translateUnits 內 inject 邏輯異常）
-    if (STATE.translated && options.ignorePartialMode) {
+    if (STATE.translated && ignorePartialMode) {
       SK.sendLog('info', 'translate', 'ignorePartialMode: re-translate without restorePage', { previousPartialMode: STATE.partialModeActive });
       // 不 clear DOM，只重置 translated flag — 已注入的譯文保留，後續 cache fast path 會原樣覆蓋（冪等）
       STATE.translated = false;
@@ -771,13 +892,28 @@
     // partialMode 會翻到導覽列（回到 v1.7.0 之前行為），但這類網站非 partialMode
     // 主要使用情境（使用者比較會在文章型部落格 / 新聞站開節省模式）。
     const pm = settings.partialMode;
+    const viewportOnlyActive = !ignorePartialMode && pm?.viewportOnly === true;
     // v1.8.7: options.ignorePartialMode = true（從「翻譯剩餘段落」按鈕觸發）時忽略 toggle,
     // 即使使用者 toggle 仍開啟也走完整翻譯。toggle 本身不被改寫，下次翻新頁面仍走節省模式。
-    const pmActive = !options.ignorePartialMode
+    const pmActive = !ignorePartialMode
+      && !viewportOnlyActive
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     STATE.partialModeActive = pmActive;
+    STATE.viewportOnlyActive = viewportOnlyActive;
 
-    if (!pmActive) {
+    if (viewportOnlyActive) {
+      units = filterViewportUnits(units);
+      SK.sendLog('info', 'translate', 'viewportOnly: filtered to visible units', { visible: units.length });
+      if (units.length === 0) {
+        SK.showToast('error', '目前可視範圍內找不到可翻譯的內容', { autoHideMs: 3000 });
+        STATE.translating = false;
+        STATE.abortController = null;
+        STATE.viewportOnlyActive = false;
+        return;
+      }
+    }
+
+    if (!pmActive && !viewportOnlyActive) {
       // v1.7.1: 把內文核心（main/article 後代、長段落）推到 array 前面，
       // 配合下方 translateUnits 的「序列 batch 0 + 並行 rest」,
       // 讓使用者最快看到的譯文是文章開頭而不是 nav / 短連結。
@@ -786,7 +922,7 @@
       units = SK.prioritizeUnits(units);
       SK.sendLog('info', 'translate', 'milestone:prioritize_done', { t: Date.now() - entryTime, dt: Date.now() - t_priority_start });
     } else {
-      SK.sendLog('info', 'translate', 'partialMode: skip prioritizeUnits, use DOM order', { totalUnits: units.length });
+      SK.sendLog('info', 'translate', viewportOnlyActive ? 'viewportOnly: skip prioritizeUnits' : 'partialMode: skip prioritizeUnits, use DOM order', { totalUnits: units.length });
     }
 
     // 超大頁面防護
@@ -937,7 +1073,8 @@
         // v1.5.7: engine='openai-compat' 走自訂 Provider 的 chat.completions endpoint
         engine: options.engine || 'gemini',
         // v1.8.8: 「翻譯剩餘段落」路徑要繞過 partialMode 的 skip batch 1+ 邏輯
-        ignorePartialMode: !!options.ignorePartialMode,
+        ignorePartialMode,
+        visibleViewportMode: viewportOnlyActive,
         onProgress: (d, t, mismatch) => SK.showToast('loading', `${labelPrefix}翻譯中… ${d} / ${t}`, {
           progress: d / t,
           mismatch: !!mismatch,
@@ -964,6 +1101,15 @@
       STATE.translatedBy = 'gemini';  // v1.4.0
       STATE.stickyTranslate = true;
       STATE.stickySlot = options.slot ?? null;  // v1.4.12: 記錄 preset slot 供 SPA 續翻 + 跨 tab 繼承
+      if (viewportOnlyActive) {
+        startViewportScrollTranslation({
+          engine: options.engine || 'gemini',
+          modelOverride: options.modelOverride || null,
+          label: options.label || null,
+        });
+      } else {
+        stopViewportScrollTranslation();
+      }
       SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
       // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
       if (options.slot != null) {
@@ -974,7 +1120,9 @@
         const totalTokens = pageUsage.inputTokens + pageUsage.outputTokens;
         // v1.8.7: partialMode + 有剩餘未翻段落 → 訊息對齊「節省模式」語意
         let successMsg;
-        if (pmActive && pmSkippedCount > 0) {
+        if (viewportOnlyActive) {
+          successMsg = `已翻譯目前可視範圍（${total} 段）`;
+        } else if (pmActive && pmSkippedCount > 0) {
           successMsg = `已翻譯前 ${total} 段（共 ${total + pmSkippedCount} 段）`;
         } else if (truncatedCount > 0) {
           successMsg = `翻譯完成 （${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`;
@@ -1031,7 +1179,7 @@
         // v1.8.8 instrumentation: success toast fire 前的 state
         SK.sendLog('info', 'translate', 'about to fire success toast', {
           successMsg, total, pmActive, pmSkippedCount, hasAction: !!action,
-          ignorePartialMode: !!options.ignorePartialMode,
+          ignorePartialMode,
           done, failures: failures.length,
         });
         SK.showToast('success', successMsg, {
@@ -1083,6 +1231,7 @@
       SK.startSpaObserver();
     } catch (err) {
       SK.sendLog('error', 'translate', 'translatePage error', { error: err.message || String(err) });
+      if (viewportOnlyActive) stopViewportScrollTranslation();
       if (!abortSignal.aborted) {
         SK.showToast('error', `翻譯失敗：${err.message}`, { stopTimer: true });
       }
@@ -1097,6 +1246,7 @@
   // SPA reset(content-spa.js:resetForSpaNavigation）語意不同（頁面已變不需還原
   // 舊頁 innerHTML)，不抽進這條 helper。
   function restoreOriginalHTMLAndReset() {
+    stopViewportScrollTranslation();
     if (STATE.originalHTML.size > 0) {
       // v1.8.20: SPA framework rerender 後 el 可能已 detached，直接寫 innerHTML 不會報錯
       // 但對使用者頁面零作用。記下 detached 數量讓 Jimmy 從 Debug 分頁能看出原因。
@@ -1115,6 +1265,7 @@
     }
     STATE.originalText?.clear?.();
     STATE.translated = false;
+    STATE.viewportOnlyActive = false;
   }
 
   // ─── restorePage ─────────────────────────────────────
@@ -1122,6 +1273,7 @@
   function restorePage() {
     if (editModeActive) toggleEditMode(false);
     SK.cancelRescan();
+    stopViewportScrollTranslation();
     SK.stopSpaObserver();
 
     // v1.5.0: dual 模式還原——只移除 wrapper，原文未動所以不需 innerHTML 還原。
@@ -1159,6 +1311,7 @@
     STATE.stickyTranslate = false;
     STATE.stickySlot = null;    // v1.4.12
     STATE.partialModeActive = false;  // v1.8.5
+    STATE.viewportOnlyActive = false;
     SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     // v1.4.11: 清除跨 tab sticky（只影響當前 tab，不影響樹中其他 tab）
     SK.safeSendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
@@ -1246,13 +1399,14 @@
     // v1.4.12: gtOptions.slot 由 preset 快速鍵注入，供 STICKY_SET
     // v1.4.13: gtOptions.label 顯示於 loading toast
     const labelPrefix = gtOptions.label ? `[${gtOptions.label}] ` : '';
+    const ignorePartialMode = gtOptions.ignorePartialMode === true;
     // 若同一引擎已翻譯 → 還原（toggle）
     // v1.8.7: ignorePartialMode 豁免，讓「翻譯剩餘段落」按鈕能在已翻譯狀態重觸發
-    if (STATE.translated && STATE.translatedBy === 'google' && !gtOptions.ignorePartialMode) {
+    if (STATE.translated && STATE.translatedBy === 'google' && !ignorePartialMode) {
       restorePage();
       return;
     }
-    if (STATE.translated && gtOptions.ignorePartialMode) {
+    if (STATE.translated && ignorePartialMode) {
       STATE.translated = false;
     }
 
@@ -1319,10 +1473,22 @@
     // v1.8.6: partialMode 啟用時跳過 prioritizeUnits 走 DOM 順序（同 translatePage Gemini 路徑）
     // v1.8.7: ignorePartialMode 豁免
     const pm = settings.partialMode;
-    const pmActive = !gtOptions.ignorePartialMode
-      && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
+    const viewportOnlyActive = !ignorePartialMode && pm?.viewportOnly === true;
+    const partialModeEnabled = !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
+    const pmActive = !ignorePartialMode && !viewportOnlyActive && partialModeEnabled;
     STATE.partialModeActive = pmActive;
-    if (!pmActive) {
+    STATE.viewportOnlyActive = viewportOnlyActive;
+    if (viewportOnlyActive) {
+      units = filterViewportUnits(units);
+      if (units.length === 0) {
+        SK.showToast('error', '目前可視範圍內找不到可翻譯的內容', { autoHideMs: 3000 });
+        STATE.translating = false;
+        STATE.abortController = null;
+        STATE.viewportOnlyActive = false;
+        return;
+      }
+    }
+    if (!pmActive && !viewportOnlyActive) {
       // v1.7.1: 與 translatePage 同樣的優先級排序（內文核心優先）
       units = SK.prioritizeUnits(units);
     }
@@ -1370,6 +1536,14 @@
       STATE.translatedBy = 'google';  // v1.4.0
       STATE.stickyTranslate = true;
       STATE.stickySlot = gtOptions.slot ?? null;  // v1.4.12
+      if (viewportOnlyActive) {
+        startViewportScrollTranslation({
+          engine: 'google',
+          label: gtOptions.label || null,
+        });
+      } else {
+        stopViewportScrollTranslation();
+      }
       SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
       // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
       if (gtOptions.slot != null) {
@@ -1377,7 +1551,9 @@
       }
 
       if (!failures.length) {
-        const successMsg = truncatedCount > 0
+        const successMsg = viewportOnlyActive
+          ? `Google 已翻譯目前可視範圍（${total} 段）`
+          : truncatedCount > 0
           ? `Google 翻譯完成（${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`
           : `Google 翻譯完成（${total} 段）`;
         // v1.6.1: 同 Gemini 路徑 — 成功 toast 順帶顯示「有新版可下載」
@@ -1402,6 +1578,7 @@
       SK.startSpaObserver();
     } catch (err) {
       SK.sendLog('error', 'translate', 'translatePageGoogle error', { error: err.message || String(err) });
+      if (viewportOnlyActive) stopViewportScrollTranslation();
       if (!abortSignal.aborted) {
         SK.showToast('error', `翻譯失敗：${err.message}`, { stopTimer: true });
       }

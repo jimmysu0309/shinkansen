@@ -639,10 +639,28 @@
     return score;
   }
 
-  SK.prioritizeUnits = function prioritizeUnits(units) {
-    const tierCache = new Map();
+  function unitViewportBand(unit) {
+    const el = unit?.el;
+    if (!el || typeof el.getBoundingClientRect !== 'function') return 2;
+    const vh = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+    if (vh <= 0) return 2;
 
-    function computeTier(unit) {
+    const rect = el.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return 2;
+    if (rect.bottom > 0 && rect.top < vh) return 0;
+    if (rect.top >= vh && rect.top < vh * 2) return 1;
+    return 2;
+  }
+
+  SK.unitViewportBand = unitViewportBand;
+  SK.isUnitInViewport = function isUnitInViewport(unit) {
+    return unitViewportBand(unit) === 0;
+  };
+
+  SK.prioritizeUnits = function prioritizeUnits(units) {
+    const priorityCache = new Map();
+
+    function contentTier(unit) {
       // fragment 用 unit.el(parent block,符合 extractInlineFragments push 結構);
       // element 用 unit.el。兩者統一。
       const el = unit.el;
@@ -682,8 +700,20 @@
       return 2;
     }
 
-    for (const u of units) tierCache.set(u, computeTier(u));
-    return units.slice().sort((a, b) => tierCache.get(a) - tierCache.get(b));
+    units.forEach((u, index) => {
+      priorityCache.set(u, {
+        viewport: unitViewportBand(u),
+        content: contentTier(u),
+        index,
+      });
+    });
+    return units.slice().sort((a, b) => {
+      const pa = priorityCache.get(a);
+      const pb = priorityCache.get(b);
+      return (pa.viewport - pb.viewport)
+        || (pa.content - pb.content)
+        || (pa.index - pb.index);
+    });
   };
 
 })(window.__SK);
