@@ -27,6 +27,12 @@ import { DEFAULT_UNITS_PER_BATCH, DEFAULT_CHARS_PER_BATCH } from './constants.js
 /** 多段翻譯時用此 delimiter 串接 / 拆回對齊。Gemini 與 OpenAI-compat 共用。 */
 export const DELIMITER = '\n<<<SHINKANSEN_SEP>>>\n';
 
+/** 多段翻譯時每段開頭的序號標記。格式與 DELIMITER 一致，避免弱模型誤翻。 */
+export const SEG_MARKER = (n) => `<<<SHINKANSEN_SEG-${n}>>>`;
+
+/** 解析 LLM 回應時用來移除每段開頭的序號標記。 */
+export const SEQ_MARKER_RE = /^<<<SHINKANSEN_SEG-\d+>>>\s*/;
+
 const MAX_UNITS_PER_CHUNK = DEFAULT_UNITS_PER_BATCH;
 const MAX_CHARS_PER_CHUNK = DEFAULT_CHARS_PER_BATCH;
 
@@ -46,6 +52,8 @@ function sanitizeTermText(s) {
     .replace(/⟦\/?\*?\d+⟧/g, '')
     // 多段 sentinel(防止假冒批次切分標記)
     .replace(/<<<SHINKANSEN_SEP>>>/gi, '')
+    // 多段序號標記(防止假冒段落序號)
+    .replace(/<<<SHINKANSEN_SEG-\d+>>>/gi, '')
     // forbidden_terms_blacklist 標籤(防止使用者輸入提前關閉區塊)
     .replace(/<\/?forbidden_terms_blacklist>/gi, '')
     .trim()
@@ -177,7 +185,7 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
   // 多段翻譯分隔符與序號規則(嵌入 batch 段數 N,batch 級變動;放最末端讓前段 cache 共享)
   if (texts.length > 1) {
     parts.push(
-      `額外規則（多段翻譯分隔符與序號，極重要）:\n本批次包含 ${texts.length} 段文字。每段開頭有序號標記 «N»（N 為 1 到 ${texts.length}），段與段之間以分隔符 <<<SHINKANSEN_SEP>>> 隔開。\n你的輸出必須：\n- 每段譯文開頭也加上對應的序號標記 «N»（N 與輸入的序號一一對應）\n- 段與段之間用完全相同的分隔符 <<<SHINKANSEN_SEP>>> 隔開\n- 恰好輸出 ${texts.length} 段譯文和 ${texts.length - 1} 個分隔符\n- 不可合併段落、不可省略分隔符、不可增減段數`
+      `額外規則（多段翻譯分隔符與序號，極重要）:\n本批次包含 ${texts.length} 段文字。每段開頭有序號標記 <<<SHINKANSEN_SEG-N>>>（N 為 1 到 ${texts.length}），段與段之間以分隔符 <<<SHINKANSEN_SEP>>> 隔開。\n你的輸出必須：\n- 每段譯文開頭也加上對應的序號標記 <<<SHINKANSEN_SEG-N>>>（N 與輸入的序號一一對應）\n- 段與段之間用完全相同的分隔符 <<<SHINKANSEN_SEP>>> 隔開\n- 恰好輸出 ${texts.length} 段譯文和 ${texts.length - 1} 個分隔符\n- 不可合併段落、不可省略分隔符、不可增減段數`
     );
   }
 

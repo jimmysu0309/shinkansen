@@ -58,7 +58,7 @@ test('streaming-batch-0-mismatch-retry (case 1): 文章 streaming hadMismatch=tr
           for (const fn of window.__listeners) {
             fn({ type: 'STREAMING_SEGMENT', payload: {
               streamId, segmentIdx: 0,
-              translation: '«1» 合併內容 <<<SHINKANSEN_SEP>>> «2» 跑進來了 <<<SHINKANSEN_SEP>>> «3» 全部塞進 idx 0',
+              translation: '<<<SHINKANSEN_SEG-1>>> 合併內容 <<<SHINKANSEN_SEP>>> <<<SHINKANSEN_SEG-2>>> 跑進來了 <<<SHINKANSEN_SEP>>> <<<SHINKANSEN_SEG-3>>> 全部塞進 idx 0',
             } });
           }
         }, 50);
@@ -150,7 +150,7 @@ test('streaming-batch-0-mismatch-retry (case 2): 字幕 streaming hadMismatch=tr
           for (const fn of window.__listeners) {
             fn({ type: 'STREAMING_SEGMENT', payload: {
               streamId, segmentIdx: 0,
-              translation: '«1» 第一句中文 <<<SHINKANSEN_SEP>>> «2» 第二句中文',
+              translation: '<<<SHINKANSEN_SEG-1>>> 第一句中文 <<<SHINKANSEN_SEP>>> <<<SHINKANSEN_SEG-2>>> 第二句中文',
             } });
           }
         }, 50);

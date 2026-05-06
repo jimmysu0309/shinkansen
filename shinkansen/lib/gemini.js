@@ -5,7 +5,7 @@
 import { debugLog } from './logger.js';
 // v1.5.7: DELIMITER / packChunks / buildEffectiveSystemInstruction 抽到共用模組，
 // 與 lib/openai-compat.js 共用同一份「翻譯 batch 構建」邏輯。
-import { DELIMITER, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
+import { DELIMITER, SEG_MARKER, SEQ_MARKER_RE, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
 
 const MAX_BACKOFF_MS = 8000;
 
@@ -358,13 +358,11 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     systemInstruction,
   } = geminiConfig;
 
-  // v0.89: 多段時加序號標記，幫助模型追蹤段數，降低 segment mismatch 機率
-  // 格式：«1» text1 <<<SHINKANSEN_SEP>>> «2» text2 ...
-  // 使用 «» 而非 [] 避免跟原文的引註 [3] 或佔位符 ⟦⟧ 衝突。
-  // parse 時會用 regex 移除每段開頭的 «N» 前綴，不會洩漏到 DOM。
+  // 多段時加序號標記，幫助模型追蹤段數，降低 segment mismatch 機率
+  // 使用 <<<SHINKANSEN_SEG-N>>> 格式避免弱模型誤翻
   const useSeqMarkers = texts.length > 1;
   const markedTexts = useSeqMarkers
-    ? texts.map((t, i) => `«${i + 1}» ${t}`)
+    ? texts.map((t, i) => `${SEG_MARKER(i + 1)} ${t}`)
     : texts;
   const joined = markedTexts.join(DELIMITER);
 
@@ -504,8 +502,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     outputPreview: text.slice(0, 300),
   });
 
-  // v0.89: split 後移除序號標記 «N»（若有）
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
+  // split 後移除序號標記（若有）
   const parts = text.split(DELIMITER).map(s => s.trim().replace(SEQ_MARKER_RE, ''));
   // 若回傳段數不符，且本批不只一段，則 fallback 改為逐段單獨翻譯，確保對齊
   if (parts.length !== texts.length) {
@@ -573,9 +570,9 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   const { apiKey, geminiConfig } = settings;
   const { model, serviceTier, temperature, topP, topK, maxOutputTokens, systemInstruction } = geminiConfig;
 
-  // 跟 translateChunk 一致:多段時加 «N» 序號標記
+  // 跟 translateChunk 一致:多段時加序號標記
   const useSeqMarkers = texts.length > 1;
-  const markedTexts = useSeqMarkers ? texts.map((t, i) => `«${i + 1}» ${t}`) : texts;
+  const markedTexts = useSeqMarkers ? texts.map((t, i) => `${SEG_MARKER(i + 1)} ${t}`) : texts;
   const joined = markedTexts.join(DELIMITER);
 
   const effectiveSystem = buildEffectiveSystemInstruction(systemInstruction, texts, joined, glossary, fixedGlossary, forbiddenTerms);
@@ -607,7 +604,6 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   });
 
   const t0 = Date.now();
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
 
   let resp;
   try {

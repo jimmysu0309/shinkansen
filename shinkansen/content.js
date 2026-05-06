@@ -379,7 +379,7 @@
         }
         if (response.rpdExceeded) rpdWarning = true;
         if (response.hadMismatch) hadAnyMismatch = true;
-        // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+        // strip LLM 偷懶殘留的 SEP / SEG-N 標記
         // v1.8.39: dedup broadcast — 同一份譯文 broadcast 到所有 dup 原始位置，
         // 讓 60 段重複的 image alt 只翻 1 次但 inject 60 個 element。
         let injectedThisBatch = 0;
@@ -456,7 +456,7 @@
           firstChunkResolve(true);
         } else if (message.type === 'STREAMING_SEGMENT') {
           const idx = message.payload.segmentIdx;
-          // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+          // strip LLM 偷懶殘留的 SEP / SEG-N 標記
           const tr = SK.sanitizeMarkers(message.payload.translation);
           if (typeof idx === 'number' && idx >= 0 && idx < job.texts.length && tr) {
             try {

@@ -19,7 +19,7 @@
 // 黑名單與固定術語表是「跨 provider 共用」（Jimmy 設計決定 #3）。
 
 import { debugLog } from './logger.js';
-import { DELIMITER, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
+import { DELIMITER, SEG_MARKER, SEQ_MARKER_RE, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
 // v1.6.18: thinking 控制 mapping（各家 provider 的 thinking schema 不同，統一成
 // thinkingLevel 'auto/off/low/medium/high' + extraBodyJson 進階透傳）
 import { buildThinkingPayload } from './openai-compat-thinking.js';
@@ -151,7 +151,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   // 多段時加序號標記（與 Gemini 同邏輯）
   const useSeqMarkers = texts.length > 1;
   const markedTexts = useSeqMarkers
-    ? texts.map((t, i) => `«${i + 1}» ${t}`)
+    ? texts.map((t, i) => `${SEG_MARKER(i + 1)} ${t}`)
     : texts;
   const joined = markedTexts.join(DELIMITER);
 
@@ -249,8 +249,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   });
 
-  // 拆分對齊（與 Gemini 同邏輯：split by DELIMITER + 移除 «N» 序號標記）
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
+  // 拆分對齊（與 Gemini 同邏輯：split by DELIMITER + 移除序號標記）
   const parts = text.split(DELIMITER).map(s => s.trim().replace(SEQ_MARKER_RE, ''));
   if (parts.length !== texts.length) {
     await debugLog('warn', 'api', 'openai-compat segment count mismatch — fallback to per-segment', {
@@ -278,7 +277,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
  * dispatch path 下兩條 engine 都能 plug-in)。
  *
  * 走 chat.completions:system = settings.glossary.prompt、user = compressedText。
- * 不走 buildEffectiveSystemInstruction(那會插入翻譯特化規則:SEP 分隔符 / «N»
+ * 不走 buildEffectiveSystemInstruction(那會插入翻譯特化規則:SEP 分隔符 / SEG-N
  * 段序號 / 段內換行 / 佔位符 / 自動 glossary / 固定術語表 / 黑名單),術語抽取不需要。
  *
  * model:沿用 customProvider.model;為空(llama.cpp / Ollama 預設)時不送 model 欄位。

@@ -246,19 +246,19 @@ if (window.__shinkansen_loaded) {
     return 'EXTRACT_GLOSSARY';
   };
 
-  // v1.8.10: 防禦式清理 LLM 沒照規則回時殘留的多段協定標記。
-  // 規格參見 lib/system-instruction.js DELIMITER 與 «N» 序號 prefix:
+  // 防禦式清理 LLM 沒照規則回時殘留的多段協定標記。
+  // 規格參見 lib/system-instruction.js DELIMITER 與 SEG_MARKER:
   //   - <<<SHINKANSEN_SEP>>>:多段譯文之間的分隔符
-  //   - «N»(N 為數字):每段譯文開頭的序號標記
+  //   - <<<SHINKANSEN_SEG-N>>>(N 為數字):每段譯文開頭的序號標記
   // 正常情況下 lib/gemini.js parser 已 split + 移除標記;但 LLM 偷懶把 N 段合併
   // 成 1 段回傳時(hadMismatch=true 路徑),分隔符與內段序號會殘留進譯文 string。
-  // 寫入 captionMap / DOM 之前先清理,避免使用者看到刺眼的英文標記。
+  // 寫入 captionMap / DOM 之前先清理,避免使用者看到刺眼的標記。
   // 跟 hadMismatch retry(B 路徑)是分層防禦——這條當最後一道防線。
   SK.sanitizeMarkers = function sanitizeMarkers(text) {
     if (text == null) return text;
     return String(text)
       .replace(/\s*<<<SHINKANSEN_SEP>>>\s*/g, ' ')
-      .replace(/«\d+»\s*/g, '')
+      .replace(/<<<SHINKANSEN_SEG-\d+>>>\s*/g, '')
       .trim();
   };
 

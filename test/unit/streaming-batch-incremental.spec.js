@@ -88,11 +88,11 @@ test.afterEach(() => {
 test('translateBatchStream: 每段 segment 收齊後立即 emit(incremental)', async () => {
   // 3 段譯文,每段一個 SSE event,中間有 SEP
   globalThis.fetch = async () => makeStreamResponse([
-    sseEvent(chunkData('«1» 段一譯文')),
+    sseEvent(chunkData('<<<SHINKANSEN_SEG-1>>> 段一譯文')),
     sseEvent(chunkData(SEP)),
-    sseEvent(chunkData('«2» 段二譯文')),
+    sseEvent(chunkData('<<<SHINKANSEN_SEG-2>>> 段二譯文')),
     sseEvent(chunkData(SEP)),
-    sseEvent(chunkData('«3» 段三譯文', 'STOP', { promptTokenCount: 10, candidatesTokenCount: 6, totalTokenCount: 16 })),
+    sseEvent(chunkData('<<<SHINKANSEN_SEG-3>>> 段三譯文', 'STOP', { promptTokenCount: 10, candidatesTokenCount: 6, totalTokenCount: 16 })),
   ]);
 
   const segments = [];
@@ -125,7 +125,7 @@ test('translateBatchStream: 每段 segment 收齊後立即 emit(incremental)', a
 
 test('translateBatchStream: SSE event 切在 chunk 中間,parser 仍能完整解出', async () => {
   // 把單一 SSE event 切成 3 個 chunks(模擬 TCP fragment)
-  const fullEvent = sseEvent(chunkData('«1» 完整段', 'STOP', { promptTokenCount: 5, candidatesTokenCount: 4 }));
+  const fullEvent = sseEvent(chunkData('<<<SHINKANSEN_SEG-1>>> 完整段', 'STOP', { promptTokenCount: 5, candidatesTokenCount: 4 }));
   const splitChunks = [
     fullEvent.slice(0, 30),
     fullEvent.slice(30, 60),
@@ -149,10 +149,10 @@ test('translateBatchStream: SSE event 切在 chunk 中間,parser 仍能完整解
 
 test('translateBatchStream: 占位符 ⟦/0⟧ 切在 SSE chunk 中間,parser 仍能完整解出', async () => {
   // 模擬:譯文「⟦0⟧第一段⟦/0⟧」被切成 ⟦0⟧第一段⟦/ + 0⟧ 兩個 chunk
-  const event1 = sseEvent(chunkData('«1» ⟦0⟧第一段⟦/'));
+  const event1 = sseEvent(chunkData('<<<SHINKANSEN_SEG-1>>> ⟦0⟧第一段⟦/'));
   const event2 = sseEvent(chunkData('0⟧'));
   const event3 = sseEvent(chunkData(SEP));
-  const event4 = sseEvent(chunkData('«2» ⟦0⟧第二段⟦/0⟧', 'STOP', { promptTokenCount: 8, candidatesTokenCount: 5 }));
+  const event4 = sseEvent(chunkData('<<<SHINKANSEN_SEG-2>>> ⟦0⟧第二段⟦/0⟧', 'STOP', { promptTokenCount: 8, candidatesTokenCount: 5 }));
 
   globalThis.fetch = async () => makeStreamResponse([event1, event2, event3, event4]);
 
@@ -175,9 +175,9 @@ test('translateBatchStream: 占位符 ⟦/0⟧ 切在 SSE chunk 中間,parser �
 test('translateBatchStream: hadMismatch 在段數不對時回 true', async () => {
   // 預期 3 段,但 LLM 只回 2 段(SEP 數量不對)
   globalThis.fetch = async () => makeStreamResponse([
-    sseEvent(chunkData('«1» 一')),
+    sseEvent(chunkData('<<<SHINKANSEN_SEG-1>>> 一')),
     sseEvent(chunkData(SEP)),
-    sseEvent(chunkData('«2» 二', 'STOP', { promptTokenCount: 5, candidatesTokenCount: 3 })),
+    sseEvent(chunkData('<<<SHINKANSEN_SEG-2>>> 二', 'STOP', { promptTokenCount: 5, candidatesTokenCount: 3 })),
   ]);
 
   const segments = [];
@@ -211,7 +211,7 @@ test('translateBatchStream: AbortSignal 抵達後,read 拋 AbortError → 函式
           }, { once: true });
         }
         // 持續發 chunk(永不 close)
-        controller.enqueue(ENC.encode(sseEvent(chunkData('«1» 段'))));
+        controller.enqueue(ENC.encode(sseEvent(chunkData('<<<SHINKANSEN_SEG-1>>> 段'))));
       },
     });
     return { ok: true, status: 200, body: stream };

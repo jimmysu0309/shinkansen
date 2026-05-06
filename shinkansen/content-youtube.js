@@ -1674,7 +1674,7 @@
         _logWindowUsage(batchUnits.length, res.usage);
         for (let j = 0; j < batchUnits.length; j++) {
           const unit = batchUnits[j];
-          // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+          // strip LLM 偷懶殘留的 SEP / SEG-N 標記
           const trans = SK.sanitizeMarkers(String(res.result[j] || unit.text).trim());
           let normTrans = trans;
           if (unit.keys.length === 1) {
@@ -1907,7 +1907,7 @@
         const _injectBatchResult = (batchUnits, results, b, elapsed) => {
           for (let j = 0; j < batchUnits.length; j++) {
             const unit     = batchUnits[j];
-            // v1.8.10 A:寫 captionMap 之前先 strip LLM 偷懶殘留的 SEP / «N» 標記
+            // 寫 captionMap 之前先 strip LLM 偷懶殘留的 SEP / SEG-N 標記
             const rawTrans = SK.sanitizeMarkers(results[j] || unit.text);
             if (unit.keys.length === 1) {
               YT.captionMap.set(unit.keys[0], rawTrans);
@@ -2532,7 +2532,7 @@
 
       for (let i = 0; i < texts.length; i++) {
         const key = texts[i];
-        // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+        // strip LLM 偷懶殘留的 SEP / SEG-N 標記
         const trans = SK.sanitizeMarkers(res.result[i] || texts[i]);
         YT.captionMap.set(key, trans);
         const isBilingual = YT.config?.bilingualMode === true;

@@ -27,8 +27,8 @@ globalThis.fetch = async (_url, options) => {
     // 故意把多段譯文合併成一段（不含分隔符）→ split 出來只有 1 段，與 segCount 不符
     respText = '合併後的單段譯文';
   } else {
-    // 對齊回應：每段照樣產生「«N» 段譯」並用 SEP 串接
-    const parts = userText.split('\n<<<SHINKANSEN_SEP>>>\n').map((_t, i) => `«${i + 1}» 段譯${i + 1}`);
+    // 對齊回應：每段照樣產生序號標記 + 段譯並用 SEP 串接
+    const parts = userText.split('\n<<<SHINKANSEN_SEP>>>\n').map((_t, i) => `<<<SHINKANSEN_SEG-${i + 1}>>> 段譯${i + 1}`);
     respText = parts.join('\n<<<SHINKANSEN_SEP>>>\n');
   }
   return {
