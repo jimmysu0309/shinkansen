@@ -3,7 +3,8 @@
 // 職責：
 //   1. 從版面 IR 收集所有「送翻譯」類 block(SPEC §17.4.4)
 //   2. 切 chunk(預設 CHUNK_SIZE = 20，跟 content.js 對齊)
-//   3. 逐 chunk 透過 chrome.runtime.sendMessage 送 background 的 TRANSLATE_DOC_BATCH
+//   3. 逐 chunk 透過 chrome.runtime.sendMessage 送 background 的文件翻譯 handler
+//      (Gemini = TRANSLATE_DOC_BATCH / custom provider = TRANSLATE_DOC_BATCH_CUSTOM)
 //   4. 結果寫回 IR(每 block.translation / .translationStatus / .translationError)
 //   5. 每完成一批 emit progress(SPEC §17.5.4 結構)
 //
@@ -25,12 +26,13 @@ const TRANSLATABLE_TYPES = new Set(['paragraph', 'heading', 'list-item', 'captio
  * @param {object}    options
  * @param {string}    [options.modelOverride] — preset 對應的 Gemini model id
  * @param {Array}     [options.glossary]      — 額外術語表(可選)
+ * @param {string}    [options.engine]        — 'gemini' | 'openai-compat'，預設 gemini
  * @param {AbortSignal} [options.signal]      — 取消信號
  * @param {(progress: TranslateProgress) => void} [options.onProgress]
  * @returns {Promise<TranslateSummary>}
  */
 export async function translateDocument(doc, options = {}) {
-  const { modelOverride, glossary, signal, onProgress = () => {} } = options;
+  const { modelOverride, glossary, signal, onProgress = () => {}, engine = 'gemini' } = options;
   const startTime = Date.now();
 
   // 1) 收集所有需翻譯 block(扁平化，保 order 用 readingOrder + page)
@@ -87,10 +89,9 @@ export async function translateDocument(doc, options = {}) {
     const t0 = Date.now();
     let response;
     try {
+      const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
       response = await chrome.runtime.sendMessage({
-        type: 'TRANSLATE_DOC_BATCH',
-        // v1.8.49: preferArticleGlossary 通知 background 用文章術語表 source 去 dedupe
-        // 固定術語表的同 source entry(article 覆蓋 fixed,只在 doc 路徑生效)
+        type: messageType,
         payload: { texts, modelOverride, glossary, preferArticleGlossary: true },
       });
     } catch (err) {
@@ -194,7 +195,7 @@ export async function translateDocument(doc, options = {}) {
         cacheHits,
         durationMs,
         timestamp: Date.now(),
-        engine: 'gemini',
+        engine: engine || 'gemini',
         model: modelOverride || null,
         source: 'translate-doc',
       },
@@ -244,10 +245,11 @@ export async function translateDocument(doc, options = {}) {
  * @param {object} options
  * @param {string} [options.modelOverride]
  * @param {Array}  [options.glossary]
+ * @param {string} [options.engine]
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
 export async function translateSingleBlock(block, options = {}) {
-  const { modelOverride, glossary } = options;
+  const { modelOverride, glossary, engine = 'gemini' } = options;
   if (!block || !block.plainText) return { ok: false, error: 'no plainText' };
 
   console.log('[Shinkansen] retry block', block.blockId, 'modelOverride=', modelOverride || '(default)');
@@ -258,10 +260,9 @@ export async function translateSingleBlock(block, options = {}) {
 
   let response;
   try {
+    const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
     response = await chrome.runtime.sendMessage({
-      type: 'TRANSLATE_DOC_BATCH',
-      // W7:retry 也走 marker 路徑,確保跟主翻譯流程一致
-      // v1.8.49:retry 也帶 preferArticleGlossary 讓 article glossary 覆蓋 fixed
+      type: messageType,
       payload: { texts: [buildMarkedText(block)], modelOverride, glossary, preferArticleGlossary: true },
     });
   } catch (err) {
@@ -297,7 +298,7 @@ export async function translateSingleBlock(block, options = {}) {
         cacheHits: usage.cacheHits || 0,
         durationMs: Date.now() - startTime,
         timestamp: Date.now(),
-        engine: 'gemini',
+        engine: engine || 'gemini',
         model: modelOverride || null,
         source: 'translate-doc-retry',
       },

@@ -43,6 +43,7 @@ let currentPdfDoc = null;    // PDF.js PDFDocumentProxy（記得 destroy）
 let currentDebugPage = 0;
 let currentReaderHandle = null;
 let currentModelOverride = null;
+let currentEngine = 'gemini';
 let currentOriginalArrayBuffer = null; // W6：留 PDF 原 ArrayBuffer 給 pdf-lib 重組譯文 PDF 用
 let lastTranslateSummary = null;       // 翻譯紀錄 modal 顯示用
 // 翻譯設定：選定 preset slot(1 / 2 / 3)，從 storage.local.translateDocPresetSlot 讀，
@@ -100,6 +101,7 @@ function releaseCurrentDoc() {
   currentDoc = null;
   currentDebugPage = 0;
   currentModelOverride = null;
+  currentEngine = 'gemini';
   currentOriginalArrayBuffer = null;
   lastTranslateSummary = null;
   currentArticleGlossary = null;
@@ -1120,15 +1122,17 @@ async function sha1(text) {
   return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// 翻譯設定：讀使用者選定 slot，取對應 preset 的 model 當 modelOverride。
-// 不存在 / Google MT(model 為 null)時 modelOverride = undefined，讓 background
-// 走全域 geminiConfig.model 預設
-async function resolveModelOverride() {
+// 翻譯設定：讀使用者選定 slot，解析 engine + modelOverride。
+// engine='gemini' 時 modelOverride = preset.model（若有）；
+// 其他 engine（google / openai-compat）不走 Gemini model override。
+async function resolvePreset() {
   const presets = await loadPresets();
   const idx = (currentPresetSlot || 1) - 1;
   const p = presets[idx];
-  if (p && p.engine === 'gemini' && p.model) return p.model;
-  return undefined;
+  if (!p) return { engine: 'gemini', modelOverride: undefined };
+  const engine = p.engine || 'gemini';
+  const modelOverride = (engine === 'gemini' && p.model) ? p.model : undefined;
+  return { engine, modelOverride };
 }
 
 async function loadPresets() {
@@ -1440,8 +1444,8 @@ async function openReader() {
     $('reader-col-translated'),
     {
       modelOverride: currentModelOverride,
-      // v1.8.49 起「重試失敗」按鈕搬進「翻譯紀錄」modal,reader toolbar 不再顯示
-      // 失敗段數;onFailedCountChange 用 reader.js 的 default no-op
+      engine: currentEngine,
+      glossary: currentArticleGlossary,
     },
   );
   // 套用 sync toggle + 重設 zoom 顯示
@@ -2001,9 +2005,9 @@ function bindFindReplaceUI() {
 async function startTranslate() {
   if (!currentDoc) return;
 
-  // 從翻譯設定選定的 preset slot 拿 modelOverride
-  const modelOverride = await resolveModelOverride();
+  const { engine, modelOverride } = await resolvePreset();
   currentModelOverride = modelOverride;
+  currentEngine = engine;
 
   showStage('translating');
   setProgress({
@@ -2030,6 +2034,7 @@ async function startTranslate() {
   try {
     summary = await translateDocument(currentDoc, {
       modelOverride,
+      engine,
       glossary,
       signal: translateAbortController.signal,
       onProgress: setProgress,

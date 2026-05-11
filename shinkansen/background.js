@@ -210,6 +210,38 @@ function resolveCustomProviderCachedRate(cp) {
   return getCustomCacheHitRate(cp?.baseUrl);
 }
 
+function buildFixedGlossaryEntries(fixedGlossary, sender) {
+  if (!fixedGlossary) return null;
+  const globalEntries = Array.isArray(fixedGlossary.global)
+    ? fixedGlossary.global.filter((e) => e.source && e.target)
+    : [];
+  let domainEntries = [];
+  if (fixedGlossary.byDomain && sender?.tab?.url) {
+    try {
+      const hostname = new URL(sender.tab.url).hostname;
+      domainEntries = Array.isArray(fixedGlossary.byDomain[hostname])
+        ? fixedGlossary.byDomain[hostname].filter((e) => e.source && e.target)
+        : [];
+    } catch { /* invalid URL */ }
+  }
+  if (globalEntries.length === 0 && domainEntries.length === 0) return null;
+  const merged = new Map();
+  for (const entry of globalEntries) merged.set(entry.source, entry.target);
+  for (const entry of domainEntries) merged.set(entry.source, entry.target);
+  return [...merged.entries()].map(([source, target]) => ({ source, target }));
+}
+
+function preferArticleGlossaryEntries(fixedGlossaryEntries, articleGlossary, enabled) {
+  if (!enabled
+      || !Array.isArray(articleGlossary) || articleGlossary.length === 0
+      || !Array.isArray(fixedGlossaryEntries) || fixedGlossaryEntries.length === 0) {
+    return fixedGlossaryEntries;
+  }
+  const articleSources = new Set(articleGlossary.map((entry) => entry.source));
+  const filtered = fixedGlossaryEntries.filter((entry) => !articleSources.has(entry.source));
+  return filtered.length > 0 ? filtered : null;
+}
+
 // ─── Extension icon badge（已翻譯紅點提示） ─────────────────
 // 使用浮世繪圖示上的旭日紅 #cf3a2c，視覺上延續「太陽」的意象。
 const BADGE_COLOR = '#cf3a2c';
@@ -580,6 +612,21 @@ const messageHandlers = {
       // fixedGlossary entries 仍從 settings.fixedGlossary.global 讀（跟主功能共用)。
       const applyFixedGlossary = td.applyFixedGlossary !== false;
       return handleTranslate(payload, sender, overrides, null, '_doc', applyFixedGlossary);
+    },
+  },
+  TRANSLATE_DOC_BATCH_CUSTOM: {
+    async: true,
+    handler: async (payload, sender) => {
+      const s = await getSettings();
+      const td = s.translateDoc || {};
+      const userPrompt = getEffectiveDocSystemPrompt(s.targetLanguage, td.systemPrompt);
+      const effectivePrompt = userPrompt + DOC_INLINE_MARKER_INSTRUCTION;
+      const overrides = { systemPrompt: effectivePrompt };
+      if (typeof td.temperature === 'number' && Number.isFinite(td.temperature)) {
+        overrides.temperature = td.temperature;
+      }
+      const applyFixedGlossary = td.applyFixedGlossary !== false;
+      return handleTranslateCustom(payload, sender, '_oc_doc', overrides, applyFixedGlossary);
     },
   },
   // commit 5b:Drive 影片字幕走 Google Translate 路徑（獨立 cache key '_gt_drive' 避免跟
@@ -1249,37 +1296,19 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
 
   // v1.0.29: 讀取固定術語表（全域 + 當前網域），合併後傳給 translateBatch
   // v1.5.8: 字幕路徑（applyFixedGlossary=false）跳過讀取，省 prompt token
-  let fixedGlossaryEntries = null;
-  const fg = applyFixedGlossary ? settings.fixedGlossary : null;
-  if (fg) {
-    const globalEntries = Array.isArray(fg.global) ? fg.global.filter(e => e.source && e.target) : [];
-    let domainEntries = [];
-    if (fg.byDomain && sender?.tab?.url) {
-      try {
-        const hostname = new URL(sender.tab.url).hostname;
-        domainEntries = Array.isArray(fg.byDomain[hostname]) ? fg.byDomain[hostname].filter(e => e.source && e.target) : [];
-      } catch { /* 無效 URL，略過 */ }
-    }
-    // 合併：全域先、網域後（網域覆蓋全域同名術語——用 Map 去重，後出現的覆蓋前面的）
-    if (globalEntries.length > 0 || domainEntries.length > 0) {
-      const merged = new Map();
-      for (const e of globalEntries) merged.set(e.source, e.target);
-      for (const e of domainEntries) merged.set(e.source, e.target); // 網域覆蓋全域
-      fixedGlossaryEntries = [...merged.entries()].map(([source, target]) => ({ source, target }));
-    }
-  }
+  let fixedGlossaryEntries = buildFixedGlossaryEntries(
+    applyFixedGlossary ? settings.fixedGlossary : null,
+    sender,
+  );
 
   // v1.8.49: preferArticleGlossary 時（文件翻譯 path 帶來)，把跟文章術語表同 source 的
   // fixed entry 從 fixedGlossary 移除，讓 article 完全 override fixed(不靠 LLM 判斷
   // 優先級，直接從 prompt 拿掉避免衝突)
-  const payloadGlossary = payload?.glossary;
-  if (payload?.preferArticleGlossary
-      && Array.isArray(payloadGlossary) && payloadGlossary.length > 0
-      && fixedGlossaryEntries && fixedGlossaryEntries.length > 0) {
-    const articleSources = new Set(payloadGlossary.map((e) => e.source));
-    fixedGlossaryEntries = fixedGlossaryEntries.filter((e) => !articleSources.has(e.source));
-    if (fixedGlossaryEntries.length === 0) fixedGlossaryEntries = null;
-  }
+  fixedGlossaryEntries = preferArticleGlossaryEntries(
+    fixedGlossaryEntries,
+    payload?.glossary,
+    payload?.preferArticleGlossary,
+  );
 
   // v1.5.6: 中國用語黑名單。從 settings 讀清單後一路傳到 translateBatch（注入到 systemInstruction），
   // 同時計算 hash 加進 cache key 後綴，讓使用者修改清單後既有快取自動失效。
@@ -1548,24 +1577,17 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
 
   // 重用 handleTranslate 內的 fixedGlossary 合併邏輯
   // v1.5.8: 字幕路徑（applyFixedGlossary=false）跳過
-  let fixedGlossaryEntries = null;
-  const fg = applyFixedGlossary ? settings.fixedGlossary : null;
-  if (fg) {
-    const globalEntries = Array.isArray(fg.global) ? fg.global.filter(e => e.source && e.target) : [];
-    let domainEntries = [];
-    if (fg.byDomain && sender?.tab?.url) {
-      try {
-        const hostname = new URL(sender.tab.url).hostname;
-        domainEntries = Array.isArray(fg.byDomain[hostname]) ? fg.byDomain[hostname].filter(e => e.source && e.target) : [];
-      } catch { /* 無效 URL，略過 */ }
-    }
-    if (globalEntries.length > 0 || domainEntries.length > 0) {
-      const merged = new Map();
-      for (const e of globalEntries) merged.set(e.source, e.target);
-      for (const e of domainEntries) merged.set(e.source, e.target);
-      fixedGlossaryEntries = [...merged.entries()].map(([source, target]) => ({ source, target }));
-    }
-  }
+  let fixedGlossaryEntries = buildFixedGlossaryEntries(
+    applyFixedGlossary ? settings.fixedGlossary : null,
+    sender,
+  );
+
+  // preferArticleGlossary dedup: article glossary overrides fixed entries with same source
+  fixedGlossaryEntries = preferArticleGlossaryEntries(
+    fixedGlossaryEntries,
+    payload?.glossary,
+    payload?.preferArticleGlossary,
+  );
 
   // v1.5.8: 字幕路徑（applyForbiddenTerms=false）跳過
   const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
@@ -1593,6 +1615,9 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   const tl = settings.targetLanguage;
   if (tl && tl !== 'zh-TW') {
     suffix += '_lang' + tl.replace(/[^a-z0-9]/gi, '');
+  }
+  if (cacheTag === '_oc_doc' && typeof cp.temperature === 'number' && Number.isFinite(cp.temperature)) {
+    suffix += '_t' + cp.temperature.toFixed(2);
   }
 
   // 1. 撈快取

@@ -41,7 +41,7 @@ const SCROLL_SYNC_RESET_MS = 250;
  * @returns {Promise<ReaderHandle>}
  */
 export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, originalCol, translatedCol, opts = {}) {
-  const { modelOverride, onFailedCountChange = () => {} } = opts;
+  const { modelOverride, engine, glossary, onFailedCountChange = () => {} } = opts;
   let currentZoom = opts.initialZoom || 1.0;
   let syncEnabled = opts.initialSyncEnabled !== false;
 
@@ -179,7 +179,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       }
       let success = 0;
       for (const block of failed) {
-        const r = await translateSingleBlock(block, { modelOverride });
+        const r = await translateSingleBlock(block, { modelOverride, engine, glossary });
         if (r.ok) success++;
       }
       // 至少有 1 個重翻成功 → 重建譯文 PDF + 重 render 右欄

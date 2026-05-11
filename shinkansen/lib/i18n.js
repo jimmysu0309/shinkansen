@@ -615,7 +615,7 @@
 
     'doc.settings.title': '翻譯設定',
     'doc.settings.label.preset': '使用哪組預設',
-    'doc.settings.hint.preset': '三組預設的引擎、模型、標籤在「設定 → 翻譯快速鍵」分頁自訂',
+    'doc.settings.hint.preset': '三組預設的引擎、模型、標籤在「設定 → 翻譯快速鍵」分頁自訂。注意：文件翻譯目前不支援 Google Translate 預設',
     'doc.settings.label.docCache': '本篇翻譯記憶',
     'doc.settings.btn.clearDocCache': '清除本篇翻譯記憶',
     'doc.settings.hint.docCache': '只清掉這份文件的翻譯記憶（其他文件 / 網頁 / 字幕不影響）。清除後下次翻這份會重新呼叫 AI 翻譯。適合「覺得譯文有錯想重來」「想換個翻譯指令重試」的情境',
@@ -1379,7 +1379,7 @@
 
     'doc.settings.title': '翻译设置',
     'doc.settings.label.preset': '使用哪组预设',
-    'doc.settings.hint.preset': '三组预设的引擎、模型、标签可在「设置 → 翻译快捷键」分页中自定义',
+    'doc.settings.hint.preset': '三组预设的引擎、模型、标签可在「设置 → 翻译快捷键」分页中自定义。注意：文档翻译目前不支持 Google Translate 预设',
     'doc.settings.label.docCache': '本篇翻译记忆',
     'doc.settings.btn.clearDocCache': '清除本篇翻译记忆',
     'doc.settings.hint.docCache': '只清除这份文档的翻译记忆（其他文档 / 网页 / 字幕不受影响）。清除后下次翻这份文档会重新调用 AI 翻译。适合「觉得译文有错想重来」「想换个翻译指令重试」的场景',
@@ -2142,7 +2142,7 @@
 
     'doc.settings.title': 'Translation settings',
     'doc.settings.label.preset': 'Which preset to use',
-    'doc.settings.hint.preset': 'Configure the engine, model, and label for each preset in "Settings → Shortcut presets".',
+    'doc.settings.hint.preset': 'Configure the engine, model, and label for each preset in "Settings → Shortcut presets". Note: document translation does not currently support Google Translate presets.',
     'doc.settings.label.docCache': 'This document\'s translation memory',
     'doc.settings.btn.clearDocCache': 'Clear this document\'s translation memory',
     'doc.settings.hint.docCache': 'Clears only this document\'s translation memory (other documents / web pages / subtitles are unaffected). Re-translating this document afterwards will call the AI again. Useful when the translation looks wrong or you want to retry with a different prompt.',
