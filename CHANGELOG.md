@@ -7,6 +7,37 @@
 
 ## v1.9.x
 
+**v1.9.9** — YouTube 字幕翻譯沒字幕影片的 toast / 等待狀態 / SPA 導航體驗修法。四條 fix:
+
+**1. 沒字幕影片的 toast 文字**(`content-youtube.js` + `lib/i18n.js`)
+
+舊訊息「字幕翻譯已開啟。請開啟 YouTube 字幕(CC),翻譯將自動開始。」對沒字幕影片不可能達成,造成混淆。改成「本影片未提供 CC 字幕,無法翻譯字幕」+ `error` kind + `autoHideMs: 5000`(原 `success` 沒帶 autoHideMs 不會自動消失)。8 語 i18n 同步:刪 `toast.subtitleEnabled`,加 `toast.subtitleNotAvailable`。
+
+**2. 早期權威「沒字幕」偵測**(`content-youtube-main.js` + `content-youtube.js`)
+
+不必等 5s 啟發式才判定。MAIN world bridge 讀 `window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks`,captionTracks 缺失 / 空陣列 = 權威確認「影片無字幕」,立即決定 + cancel 1s/5s tick + 不顯示「等待字幕資料」狀態(完全靜默 / 立即 toast 看影片標題語言)。
+
+**3. 標題語言判定 silent 沒字幕 toast**(`content-youtube.js`)
+
+讀 `<meta property="og:title">` + 既有 `SK.isAlreadyInTarget()` 判斷影片標題語言,標題已是 target 語言 → silent skip toast(影片本來就不需要翻譯,toast 是干擾)。
+
+**4. SPA 導航 stale `ytInitialPlayerResponse` 修法**(`content-youtube.js`)
+
+bridge response 加 `videoId` 欄位,isolated world 用 URL `getVideoIdFromUrl()` 比對。對不上 = stale(YouTube SPA 導航後 ytInitialPlayerResponse 可能 lag 於 URL),retry 最多 4 次 × 200ms。**原 bug**:中文無字幕影片 → 英文有字幕影片切過去,bridge 還回舊的 captionTracks=null 被當新影片的權威「沒字幕」訊號 + og:title 還是中文 → 誤判 silent,英文影片完全不翻譯;反向也會殘留「等待字幕資料」狀態。
+
+**5 條新 regression spec**(`test/regression/youtube-no-caption-tracks.spec.js` + `youtube-no-subtitle-toast.spec.js`)
+
+- captionTracks=[] + 中文 og:title → silent + 無等待狀態
+- captionTracks=[] + 英文 og:title → 立即 toast(< 1s,不是 5s)+ 無等待狀態
+- captionTracks 非空 → 不提早決定,顯示等待狀態
+- playerCaptionsTracklistRenderer 整段缺失(實機沒字幕影片形態)+ 中文 og:title → silent
+- stale videoId mismatch URL → 不被當沒字幕 silent,fall through 5s tick + 顯示等待狀態
+- (另)`youtube-no-subtitle-toast` 2 條鎖 fallback path 訊息正確 + 舊 i18n key 已刪
+
+SANITY: 5 條都驗過(暫拔對應 branch / 條件 → 對應 case fail → 還原 pass)。
+
+---
+
 **v1.9.8** — 修 Google MT 在中英混排頁面(X / Threads / Reddit 等)把英文段攪成 garbage 的混批問題 + SPA observer rescan 在虛擬化 timeline 滑動時不斷彈「已翻譯 N 段新內容」toast 的噪音。三條 fix:
 
 **1. Google MT 混批 garbage 修法**(`lib/google-translate.js`)

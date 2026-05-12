@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube no-caption-tracks fixture</title>
+  <!-- og:title 由 spec 動態 setAttribute,預設空字串(無語言訊號) -->
+  <meta property="og:title" content="">
+  <script>
+    // 模擬 content-youtube-main.js(MAIN world)的 ytInitialPlayerResponse bridge。
+    // 因為 fixture 跑在 localhost 不會載真正的 MAIN world content script,在這裡 inline。
+    // 各 spec 在啟動翻譯前 page.evaluate 設 window.ytInitialPlayerResponse 切換情境。
+    window.addEventListener('shinkansen-yt-query-player-response', () => {
+      let captionTracks = null;
+      let playerResponseAvailable = false;
+      let videoId = null;
+      try {
+        playerResponseAvailable = !!window.ytInitialPlayerResponse;
+        videoId = (window.ytInitialPlayerResponse
+          && window.ytInitialPlayerResponse.videoDetails
+          && window.ytInitialPlayerResponse.videoDetails.videoId) || null;
+        const tracks = window.ytInitialPlayerResponse
+          && window.ytInitialPlayerResponse.captions
+          && window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer
+          && window.ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks;
+        if (Array.isArray(tracks)) {
+          captionTracks = tracks.map(function (t) {
+            return {
+              languageCode: (t && t.languageCode) || null,
+              kind: (t && t.kind) || null,
+            };
+          });
+        }
+      } catch (_) { /* keep null */ }
+      window.dispatchEvent(new CustomEvent('shinkansen-yt-player-response', {
+        detail: { captionTracks: captionTracks, playerResponseAvailable: playerResponseAvailable, videoId: videoId },
+      }));
+    });
+  </script>
+</head>
+<body>
+  <!-- 跟 youtube-auto-cc.html 結構一致,差別只在 bridge listener + og:title。 -->
+  <div class="html5-video-player">
+    <button class="ytp-subtitles-button" aria-pressed="false">CC</button>
+    <div class="ytp-caption-window-container"></div>
+    <video></video>
+  </div>
+</body>
+</html>

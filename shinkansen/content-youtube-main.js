@@ -65,4 +65,34 @@
     return response;
   };
 
+  // ─── ytInitialPlayerResponse bridge(v1.9.9)───────────────
+  // isolated world(content-youtube.js)5s「沒字幕」啟發式之前先 query 本 bridge,
+  // 拿 captionTracks 權威訊號決定是否真的沒字幕(不靠 timeout 猜)。
+  // 只回傳 captionTracks 子集合(languageCode + kind),避免 serialize 整個 playerResponse。
+
+  window.addEventListener('shinkansen-yt-query-player-response', () => {
+    let captionTracks = null;
+    let playerResponseAvailable = false;
+    let videoId = null;
+    try {
+      const resp = window.ytInitialPlayerResponse;
+      playerResponseAvailable = !!resp;
+      videoId = resp?.videoDetails?.videoId || null;
+      const tracks = resp?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      if (Array.isArray(tracks)) {
+        captionTracks = tracks.map((t) => ({
+          languageCode: t?.languageCode || null,
+          kind:         t?.kind || null,
+        }));
+      }
+      // videoId 給 isolated world 跟 URL videoId 比對:SPA 導航後 ytInitialPlayerResponse
+      // 不一定立即更新到新影片,videoId 對不上 = stale,isolated 端會 retry。
+    } catch (_) {
+      captionTracks = null;
+    }
+    window.dispatchEvent(new CustomEvent('shinkansen-yt-player-response', {
+      detail: { captionTracks, playerResponseAvailable, videoId },
+    }));
+  });
+
 })();

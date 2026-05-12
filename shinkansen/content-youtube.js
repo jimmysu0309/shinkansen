@@ -2719,6 +2719,26 @@
 
   SK.stopYouTubeTranslation = stopYouTubeTranslation;
 
+  // 沒字幕 toast 顯示前先看影片標題語言:若標題已是目標語言 → silent skip
+  // (影片大概就是 target 語言發音,使用者本來就不需要翻譯字幕,toast 變干擾)。
+  // og:title YouTube 每個 watch page 都有,內容是純標題不含 " - YouTube" 後綴。
+  function _maybeShowNoSubtitleToast() {
+    const target = SK.STATE?.targetLanguage || 'zh-TW';
+    const ogEl = document.querySelector('meta[property="og:title"]');
+    const ogTitle = (ogEl && ogEl.getAttribute('content')) || '';
+    const titleIsTarget = ogTitle
+      && typeof SK.isAlreadyInTarget === 'function'
+      && SK.isAlreadyInTarget(ogTitle, target);
+    if (titleIsTarget) {
+      SK.sendLog('info', 'youtube', 'no-subtitle toast silenced (title already in target)', {
+        target, ogTitleSample: ogTitle.slice(0, 40),
+      });
+      return;
+    }
+    SK.showToast('error', SK.t('toast.subtitleNotAvailable'), { autoHideMs: 5000 });
+  }
+  SK._maybeShowNoSubtitleToast = _maybeShowNoSubtitleToast;  // 暴露給 spec
+
   // ─── 主入口:popup toggle / SPA auto-restart ─────────────
   // 字幕翻譯由 popup「翻譯字幕」勾選驅動,或由 content-script init / SPA nav 在
   // 自動續啟動偏好開啟時觸發。Alt+S 是「頁面文字翻譯」(handleTranslatePreset),
@@ -2794,25 +2814,102 @@
     } else {
       // 尚未攔截到字幕：CC 可能還沒開，或播放器尚未發出 XHR
       // → shinkansen-yt-captions 事件的 handler 會在字幕到來時接手翻譯
-      showCaptionStatus('等待字幕資料…');
+
+      // v1.9.9 早期判定 + 等待狀態延後:
+      //   A) ytInitialPlayerResponse bridge poll(videoId 對 URL 比對防 stale):
+      //      確認沒字幕 → 立即 silent / toast + 不顯示「等待字幕資料」+ cancel 1s/5s tick。
+      //   B) bridge 確認「有字幕」/「給上(unknown)」→ 顯示等待狀態,跑原 1s + 5s tick。
+      //
+      // SPA 導航後 ytInitialPlayerResponse 可能 lag 於 URL — 不重 retry 會把舊影片資料
+      // 當新影片的權威訊號用(例:中文無字幕影片 → 英文有字幕影片,bridge 還回舊的
+      // captionTracks=null,新影片被誤判為「沒字幕 + 中文標題 silent」,完全不翻)。
+      let noCaptionsConfirmed = false;
+      let bridgeFinalDecision = false; // 任何 trust 的 bridge response(no-captions / has-captions)都算「不必再 retry」
+      let tick1Handle = null;
+      let tick5Handle = null;
+      let bridgeAttempts = 0;
+      const MAX_BRIDGE_ATTEMPTS = 4;
+      const BRIDGE_RETRY_MS = 200;
+      const activateVideoId = getVideoIdFromUrl();
+
+      const showWaitingStatus = () => {
+        // 只有「已確認沒字幕」才該禁止 show;「有字幕」決定要 show 等待是預期行為
+        if (noCaptionsConfirmed || !SK.YT.active) return;
+        if (SK.YT.rawSegments.length > 0) return; // captions 已到達(skip/translate)
+        showCaptionStatus('等待字幕資料…');
+      };
+
+      const queryAndDecide = () => {
+        if (bridgeFinalDecision || !SK.YT.active) return;
+        if (bridgeAttempts >= MAX_BRIDGE_ATTEMPTS) {
+          showWaitingStatus(); // 給上 → 顯示等待狀態,讓 1s/5s tick 接手
+          return;
+        }
+        bridgeAttempts++;
+        const handler = (e) => {
+          window.removeEventListener('shinkansen-yt-player-response', handler);
+          if (bridgeFinalDecision || !SK.YT.active) return;
+          const detail = e?.detail || {};
+          const currentVideoId = getVideoIdFromUrl();
+          // videoId mismatch / playerResponse 不可用 → stale,retry
+          const videoIdMatch = detail.videoId
+            && currentVideoId
+            && detail.videoId === currentVideoId
+            && currentVideoId === activateVideoId; // activate 後若 URL 又變過,放棄這次決定
+          if (!videoIdMatch || !detail.playerResponseAvailable) {
+            setTimeout(queryAndDecide, BRIDGE_RETRY_MS);
+            return;
+          }
+          // videoId 對上 + playerResponse 可讀 = trust 此 response
+          const tracks = detail.captionTracks;
+          const hasCaptions = Array.isArray(tracks) && tracks.length > 0;
+          bridgeFinalDecision = true; // trust 之後就不再 retry
+          if (hasCaptions) {
+            showWaitingStatus(); // 有字幕要等 → 顯示等待狀態
+            return;
+          }
+          // 確認沒字幕(playerCaptionsTracklistRenderer 缺失或 captionTracks=[])
+          noCaptionsConfirmed = true;
+          if (tick1Handle) clearTimeout(tick1Handle);
+          if (tick5Handle) clearTimeout(tick5Handle);
+          hideCaptionStatus(); // 防呆:萬一前一輪 attempt 已 fall back showStatus 過
+          _maybeShowNoSubtitleToast();
+          SK.sendLog('info', 'youtube', 'no-captions confirmed via ytInitialPlayerResponse', {
+            videoId: currentVideoId, attempts: bridgeAttempts,
+          });
+        };
+        window.addEventListener('shinkansen-yt-player-response', handler);
+        window.dispatchEvent(new CustomEvent('shinkansen-yt-query-player-response'));
+        // bridge listener 沒回(test fixture without bridge) safety net
+        setTimeout(() => {
+          window.removeEventListener('shinkansen-yt-player-response', handler);
+          if (bridgeFinalDecision || !SK.YT.active) return;
+          if (bridgeAttempts >= MAX_BRIDGE_ATTEMPTS) {
+            showWaitingStatus();
+            return;
+          }
+          setTimeout(queryAndDecide, BRIDGE_RETRY_MS);
+        }, BRIDGE_RETRY_MS);
+      };
+      queryAndDecide();
 
       // 1 秒後若仍無 XHR → 主動 toggle CC 讓播放器重新抓字幕
-      setTimeout(() => {
+      // (noCaptionsConfirmed 在 no-captions branch 已 cancel 此 tick;走到 = 有字幕 / 未決,
+      //  讓 forceSubtitleReload 觸發 XHR)
+      tick1Handle = setTimeout(() => {
         if (SK.YT.active && SK.YT.rawSegments.length === 0) {
           forceSubtitleReload();
         }
       }, 1000);
 
-      // 5 秒後若仍無資料 → 判斷是否 CC 根本沒開
-      setTimeout(() => {
+      // 5 秒後若仍無資料 → fallback 判定「沒字幕」並考慮 toast
+      tick5Handle = setTimeout(() => {
         if (SK.YT.active && SK.YT.rawSegments.length === 0) {
           if (SK.YT.captionMap.size > 0) {
-            // on-the-fly 在運作 → 提示由 hideCaptionStatus 自然消失
             hideCaptionStatus();
           } else {
-            // captionMap 也是空的 → CC 可能真的沒開
             hideCaptionStatus();
-            SK.showToast('success', SK.t('toast.subtitleEnabled'));
+            _maybeShowNoSubtitleToast();
           }
         }
       }, 5000);

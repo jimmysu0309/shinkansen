@@ -88,7 +88,7 @@
     'toast.translateFailed': '翻譯失敗：{error}',
     'toast.restored': '已還原原文',
     'toast.subtitleRestored': '已還原原文字幕',
-    'toast.subtitleEnabled': '字幕翻譯已開啟。請開啟 YouTube 字幕（CC），翻譯將自動開始。',
+    'toast.subtitleNotAvailable': '本影片未提供 CC 字幕，無法翻譯字幕',
     'toast.modeChanged': '顯示模式已切換為「{desc}」，請按快速鍵重新翻譯以套用',
 
     // ── lang 名稱（toast 動態插入「此頁面已是X」用）──────
@@ -855,7 +855,7 @@
     'toast.translateFailed': '翻译失败：{error}',
     'toast.restored': '已还原原文',
     'toast.subtitleRestored': '已还原原文字幕',
-    'toast.subtitleEnabled': '字幕翻译已开启。请打开 YouTube 字幕（CC），翻译将自动开始。',
+    'toast.subtitleNotAvailable': '本视频未提供 CC 字幕，无法翻译字幕',
     'toast.modeChanged': '显示模式已切换为「{desc}」，请按快捷键重新翻译以应用',
 
     // ── lang 名稱 ──────────────────────────────────────────
@@ -1620,7 +1620,7 @@
     'toast.translateFailed': 'Translation failed: {error}',
     'toast.restored': 'Original restored',
     'toast.subtitleRestored': 'Original subtitles restored',
-    'toast.subtitleEnabled': 'Subtitle translation enabled. Please turn on YouTube subtitles (CC), translation will start automatically.',
+    'toast.subtitleNotAvailable': 'This video has no CC subtitles available',
     'toast.modeChanged': 'Display mode switched to "{desc}", press shortcut to re-translate to apply',
 
     // ── lang names ────────────────────────────────────────
@@ -2385,7 +2385,7 @@
     'toast.translateFailed': '翻訳に失敗：{error}',
     'toast.restored': '原文を復元しました',
     'toast.subtitleRestored': '字幕の原文を復元しました',
-    'toast.subtitleEnabled': '字幕翻訳を有効にしました。YouTube の字幕（CC）をオンにすると自動的に開始します。',
+    'toast.subtitleNotAvailable': 'この動画には CC 字幕が提供されていません',
     'toast.modeChanged': '表示モードを「{desc}」に変更しました。ショートカットで再翻訳して反映してください',
 
     // ── lang 名称（toast 動的挿入「このページは既に X」用）──────
@@ -3150,7 +3150,7 @@
     'toast.translateFailed': '번역 실패: {error}',
     'toast.restored': '원문 복원됨',
     'toast.subtitleRestored': '원문 자막 복원됨',
-    'toast.subtitleEnabled': '자막 번역이 켜졌습니다. YouTube 자막(CC)을 켜면 번역이 자동으로 시작됩니다.',
+    'toast.subtitleNotAvailable': '이 영상에는 CC 자막이 제공되지 않습니다',
     'toast.modeChanged': '표시 모드가 "{desc}"(으)로 변경되었습니다. 단축키로 다시 번역하여 적용하세요',
 
     // ── lang 이름 (toast 동적 삽입 "이 페이지는 이미 X" 용) ──────
@@ -3914,7 +3914,7 @@
     'toast.translateFailed': 'Error de traducción: {error}',
     'toast.restored': 'Original restaurado',
     'toast.subtitleRestored': 'Subtítulos originales restaurados',
-    'toast.subtitleEnabled': 'Traducción de subtítulos activada. Activa los subtítulos de YouTube (CC) y la traducción comenzará automáticamente.',
+    'toast.subtitleNotAvailable': 'Este vídeo no tiene subtítulos CC disponibles',
     'toast.modeChanged': 'Modo de visualización cambiado a "{desc}", pulsa el atajo para volver a traducir y aplicarlo',
 
     // ── nombre de idioma (inserción dinámica en toast "Esta página ya está en X") ──────
@@ -4678,7 +4678,7 @@
     'toast.translateFailed': 'Échec de la traduction : {error}',
     'toast.restored': 'Original restauré',
     'toast.subtitleRestored': 'Sous-titres originaux restaurés',
-    'toast.subtitleEnabled': 'Traduction de sous-titres activée. Activez les sous-titres YouTube (CC), la traduction démarre automatiquement.',
+    'toast.subtitleNotAvailable': 'Cette vidéo n\'a pas de sous-titres CC disponibles',
     'toast.modeChanged': 'Mode d\'affichage changé en « {desc} », appuyez sur le raccourci pour retraduire et appliquer',
 
     // ── nom de langue (insertion dynamique « Cette page est déjà en X » dans le toast) ──────
@@ -5442,7 +5442,7 @@
     'toast.translateFailed': 'Übersetzung fehlgeschlagen: {error}',
     'toast.restored': 'Original wiederhergestellt',
     'toast.subtitleRestored': 'Original-Untertitel wiederhergestellt',
-    'toast.subtitleEnabled': 'Untertitel-Übersetzung aktiviert. Aktiviere YouTube-Untertitel (CC), die Übersetzung startet automatisch.',
+    'toast.subtitleNotAvailable': 'Für dieses Video sind keine CC-Untertitel verfügbar',
     'toast.modeChanged': 'Anzeigemodus geändert zu „{desc}", drücke das Tastenkürzel zum erneuten Übersetzen',
 
     // ── Sprachname (dynamisch in toast „Diese Seite ist bereits auf X" eingefügt) ──────

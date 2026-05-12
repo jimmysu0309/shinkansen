@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Shinkansen",
-  "version": "1.9.8",
+  "version": "1.9.9",
   "description": "快速、流暢的網頁、YouTube 字幕翻譯擴充功能。支援 8 種目標語言與多種 AI 引擎，資料不經過第三方。",
   "default_locale": "zh_TW",
   "browser_specific_settings": {
