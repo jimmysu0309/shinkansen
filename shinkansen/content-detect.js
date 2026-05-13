@@ -503,7 +503,13 @@
       return result;
     }
 
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+    // v1.9.13: open Shadow DOM 支援。walker + 4 條補抓抽進 processScope，
+    // 主 root(document.body)跑一次,再對 root subtree 內每個 open shadow root
+    // 各跑一次。closed shadow root 受 web spec 限制無法 traverse,直接跳過。
+    // 共用 seen / excludedMemo / fragmentExtracted / blockAncestorMemo,避免 host
+    // 與 shadow 重複計算或 inject 衝突。
+    function processScope(scopeRoot) {
+    const walker = document.createTreeWalker(scopeRoot, NodeFilter.SHOW_ELEMENT, {
       acceptNode(el) {
         if (SK.HARD_EXCLUDE_TAGS.has(el.tagName)) {
           if (stats) stats.hardExcludeTag = (stats.hardExcludeTag || 0) + 1;
@@ -751,7 +757,8 @@
     }
 
     // 補抓 selector 指定的特殊元素
-    document.querySelectorAll(SK.INCLUDE_BY_SELECTOR).forEach(el => {
+    // v1.9.13: scopeRoot.querySelectorAll(主 root 是 document.body,shadow 路徑是 ShadowRoot)
+    scopeRoot.querySelectorAll(SK.INCLUDE_BY_SELECTOR).forEach(el => {
       if (seen.has(el)) return;
       if (el.hasAttribute('data-shinkansen-translated')) return;
       if (isInsideExcludedContainer(el, excludedMemo)) return;
@@ -763,7 +770,7 @@
     });
 
     // v0.42: leaf content anchor 補抓
-    document.querySelectorAll('a').forEach(a => {
+    scopeRoot.querySelectorAll('a').forEach(a => {
       if (seen.has(a)) return;
       if (a.hasAttribute('data-shinkansen-translated')) return;
       if (hasBlockAncestor(a)) return;
@@ -786,7 +793,7 @@
     // querySelectorAll('div, span') 可能回傳幾萬個 element，新版只回傳數百個葉節點，
     // 後續 isVisible / textContent / isCandidateText 等檢查減少 95% 以上呼叫次數。
     // :has() 支援：Chrome 105+ / Firefox 121+ / Safari 15.4+，皆已是 stable 多年。
-    document.querySelectorAll('div:not(:has(*)), span:not(:has(*))').forEach(d => {
+    scopeRoot.querySelectorAll('div:not(:has(*)), span:not(:has(*))').forEach(d => {
       if (seen.has(d)) return;
       if (d.hasAttribute('data-shinkansen-translated')) return;
       // d.children.length > 0 過濾已由 :not(:has(*)) selector 取代，移除
@@ -820,7 +827,7 @@
     });
 
     // v1.0.22: grid cell leaf text 補抓
-    document.querySelectorAll('table[role="grid"] td').forEach(td => {
+    scopeRoot.querySelectorAll('table[role="grid"] td').forEach(td => {
       // v1.6.9: textContent 取代 innerText
       const tdText = (td.textContent || '').trim();
       if (tdText.length < 20) return;
@@ -845,8 +852,49 @@
         seen.add(el);
       });
     });
+    }  // end processScope
+
+    // 主 scope:document.body(或 caller 指定的 root)
+    processScope(root);
+
+    // v1.9.13: open Shadow DOM descent。對 root subtree 內所有 open shadow root 各跑
+    // 一次 processScope。host 端 ancestor exclude(footer / role=contentinfo 等)在
+    // shadow boundary 自然斷掉(parentElement 走到 shadowRoot 時為 null)— 這對 web
+    // component 的隔離語意是預期行為,shadow content 自身結構若含 EXCLUDE_ROLES 仍會被擋。
+    if (typeof SK.findOpenShadowRoots === 'function') {
+      const shadowRoots = SK.findOpenShadowRoots(root);
+      for (const sr of shadowRoots) {
+        if (stats) stats.shadowRootsScanned = (stats.shadowRootsScanned || 0) + 1;
+        processScope(sr);
+      }
+    }
 
     return results;
+  };
+
+  // v1.9.13: 找出 root subtree 內所有 open shadow root,遞迴進去再找(shadow 內可能還有
+  // shadow)。closed shadow root 受 web spec 安全限制,從 JS 完全不可達,只能跳過。
+  SK.findOpenShadowRoots = function findOpenShadowRoots(root) {
+    if (!root) return [];
+    const found = [];
+    function walk(node) {
+      if (!node || node.nodeType !== 1) return;  // 只 traverse Element
+      if (node.shadowRoot && node.shadowRoot.mode === 'open') {
+        found.push(node.shadowRoot);
+        let inner = node.shadowRoot.firstElementChild;
+        while (inner) { walk(inner); inner = inner.nextElementSibling; }
+      }
+      let c = node.firstElementChild;
+      while (c) { walk(c); c = c.nextElementSibling; }
+    }
+    if (root.nodeType === 1) {
+      walk(root);
+    } else if (root.firstElementChild) {
+      // ShadowRoot / DocumentFragment 等:直接從 firstElementChild 開始
+      let c = root.firstElementChild;
+      while (c) { walk(c); c = c.nextElementSibling; }
+    }
+    return found;
   };
 
   // ─── 術語表輸入萃取 ──────────────────────────────────

@@ -7,6 +7,28 @@
 
 ## v1.9.x
 
+**v1.9.13** — open Shadow DOM 內容偵測與翻譯支援(web component / Datawrapper 等)。
+
+**對使用者可見改動**:
+- 用 `<custom-element>` + open Shadow DOM 渲染的網站(例 CSIS / The Atlantic 等用 Datawrapper `<datawrapper-visualization>` 圖表的網站,以及越來越多 Lit / Stencil / Svelte web-component 設計系統)的 shadow 內容(標題、表格、註解、引用來源等)現在也會被偵測 + 翻譯。先前整片內容對 Shinkansen 不可見,完全留在原文
+- 還原原文時 shadow 內容也會跟著還原回原文
+
+**root cause**:
+- `document.createTreeWalker` / `document.querySelectorAll` 預設不穿透 shadow root,Shinkansen 的 `collectParagraphs` 看不到 shadow 內 element。closed shadow root 受 web spec 安全限制完全不可達(任何 extension 都無解),只處理 open shadow root
+
+**修法**(`shinkansen/content-detect.js`):
+- `collectParagraphs` walker + 4 條補抓 pass 抽進內部 `processScope(scopeRoot)` helper,主 root(`document.body`)跑一次後,新增 `SK.findOpenShadowRoots(root)` 遞迴找出 root subtree 內所有 open shadow root,各自再跑一次 `processScope`。`seen` / `excludedMemo` / `fragmentExtracted` 跨 scope 共用 state,避免重複偵測或注入衝突
+- 結構性通則(對應硬規則 §8):任何 web component + open shadow 都受惠,不靠站點 / class 黑白名單
+
+**已知限制**(後續 patch 處理):
+- SPA observer(`content-spa.js` MutationObserver)目前只觀察 `document.body`,shadow root 內後續動態新增內容(svelte hydration 補資料 / lit 重 render 等)還不會即時翻譯。Datawrapper 等渲染完才回應使用者操作的 case 不受影響(初始翻譯就抓得到)
+- 雙語對照模式注入到 shadow 內 element 時,`<shinkansen-translation>` wrapper 的 CSS rule(注入在 `document.head`)受 shadow CSS scope 隔離不會套用,譯文文字會出現但沒視覺標記樣式。文字內容仍正確
+- shadow 內 element 的祖先 exclude 檢查(`isInsideExcludedContainer`)在 shadow boundary 自然中斷;若 web component 被包在 host 端 `<footer>` / `role="contentinfo"` 等被排除容器內,shadow 內容仍會被翻譯。屬罕見邊界 case
+
+**測試**:
+- `test/regression/detect-shadow-dom-web-component.spec.js` 三條 case(detection / inject + restore / `findOpenShadowRoots` helper)鎖死行為。SANITY 已驗:暫時拔 shadow descent 整段 → spec 1 fail / 還原 → 全綠
+- `npm test` 全 784 spec 全綠
+
 **v1.9.12** — icon-48 漢字 brand alignment + macOS Safari Mac App Store 上架前置 Phase 2 完整收尾。
 
 **對 Chrome / Firefox 使用者可見改動**:

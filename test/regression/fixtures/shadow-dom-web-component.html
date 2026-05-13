@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadow DOM web component fixture</title>
+</head>
+<body>
+<article>
+  <h1 id="control-h1">Last Rounds: Status of Key Munitions</h1>
+  <p id="control-para">An analysis of seven key munitions shows that under any reasonable scenarios, the United States has sufficient inventory to continue the war. The real risk lies in future possible wars, and that risk persists for years.</p>
+
+  <!-- web component 模擬 Datawrapper / generic open shadow component -->
+  <chart-embed id="chart-1"></chart-embed>
+
+  <p id="control-after">Beyond the table, additional considerations include industrial base capacity and production lead times across multiple defense programs.</p>
+</article>
+
+<script>
+class ChartEmbed extends HTMLElement {
+  constructor() {
+    super();
+    const sr = this.attachShadow({ mode: 'open' });
+    sr.innerHTML = `
+      <style>
+        :host { display: block; min-height: 400px; padding: 20px; border: 1px solid #ccc; }
+        h2 { font-size: 24px; margin: 0 0 10px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { padding: 8px; border: 1px solid #eee; text-align: left; }
+        .note { font-size: 12px; color: #666; margin-top: 16px; }
+      </style>
+      <h2 id="shadow-headline">Table 1: Status of Key Munitions</h2>
+      <table id="shadow-table">
+        <thead>
+          <tr>
+            <th id="shadow-th-munition">Munition</th>
+            <th id="shadow-th-cost">Estimated Prewar Inventory and Production Cost Summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td id="shadow-td-tomahawk">Tomahawk Land Attack Missile</td>
+            <td id="shadow-td-tomahawk-detail">A long-range cruise missile fired from sea against ground targets.</td>
+          </tr>
+          <tr>
+            <td id="shadow-td-jassm">JASSM extended range cruise missile</td>
+            <td id="shadow-td-jassm-detail">An air-launched stand-off missile used widely throughout the conflict.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note" id="shadow-note">Note: This table was updated after publication to incorporate reporting on Tomahawk and JASSM expenditures across the entire campaign.</p>
+      <span class="source" id="shadow-source">Source: Authors' calculations based on Defense Budget Materials, U.S. Department of Defense.</span>
+    `;
+  }
+}
+customElements.define('chart-embed', ChartEmbed);
+</script>
+</body>
+</html>
