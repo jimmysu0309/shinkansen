@@ -717,7 +717,7 @@
       </label>
 
       <details>
-        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;" data-i18n="options.cp.advSummary">進階：思考強度 / 段序號 / 自訂 body</summary>
+        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;" data-i18n="options.cp.advSummary">進階：思考強度 / 段序號 / 逾時 / 自訂 body</summary>
 
         <label>
           <span data-i18n="options.cp.thinkingLabel">思考強度</span>
@@ -754,12 +754,18 @@
           <span data-i18n="options.cp.extraBodyLabel">自訂 request body 額外參數（JSON，覆蓋上方思考強度）</span>
           <textarea id="cp-extra-body-json" rows="4" placeholder='e.g. {"reasoning":{"max_tokens":4000},"top_k":40}' style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
           <small class="muted" data-i18n-html="options.cp.extraBodyHint.html">
-            內容會深層 merge 進 chat.completions request body，可用來：
+            內容會深層合併進 chat.completions request body，可用來：
             （1）強制覆蓋上方「思考強度」自動產生的設定；
             （2）加 provider 專屬參數（例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、
             Anthropic 的 <code>metadata</code>）。
             格式錯誤會在 Debug 分頁 log 一條 warn 並忽略，翻譯不會中斷
           </small>
+        </label>
+
+        <label style="margin-top: 8px;">
+          <span data-i18n="options.cp.timeoutLabel">API 逾時時間（秒）</span>
+          <input type="number" id="cp-fetchTimeout" step="1" min="5" max="600" placeholder="15">
+          <small class="muted" data-i18n="options.cp.timeoutHint">每次 API 請求等待回應的最長時間。本機 LLM（Ollama 等）冷啟動載入模型可能需要 120-300 秒，請視硬體調高；商用 API 通常不需更改</small>
         </label>
       </details>
     </section>

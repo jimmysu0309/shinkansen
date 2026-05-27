@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.12** —— **自訂模型 API 逾時時間可調**。新增 `customProvider.fetchTimeoutSec` 設定（預設 15 秒，範圍 5–600 秒），本機 LLM（Ollama 等）冷啟動載入模型到 VRAM 時可自行調高，避免逾時失敗。設定位於「自訂模型」分頁 → 進階。順修「深層 merge」晶晶體→「深層合併」
+
 **v1.10.11** —— **雙語對照模式 X 推文修正**。(1) 「顯示更多」展開後譯文不更新：`injectDual` 缺少 `snapshotOnce` 呼叫導致 `STATE.originalText` 未設定,`detectAndUnmarkExpandedDual` 偵測不到展開,wrapper 不更新。(2) inline 元素 wrapper 反序：多個 inline 元素共用同一 block ancestor 時,每次 `afterend` 都插在 ancestor 緊鄰後方,新 wrapper 推擠舊 wrapper → 視覺完全反序;改為走到 wrapper chain 尾端再 append。(3) X tweetText 碎片翻譯：Case F 收集的 leaf SPAN 各自獨立翻譯 + 各自產 wrapper → 失去上下文 + 底色割裂;新增 `consolidateDualInlineUnits` 在 dual mode 下把共用 block ancestor 的 inline unit 合併成一個 element unit,LLM 拿到完整推文翻譯,只產一個 wrapper。
 
 **v1.10.10** —— **Google MT 評論標題未翻譯修正**。(1) Google MT 序列化器的 v1.9.31 atomic anchor 規則（含 element child 的 `<a>` 整段不翻）誤殺 block element 唯一 child 的 `<a>`（Amazon 評論標題 H5 > A > {I 星星 icon, SPAN 標題}），標題完全不送 Google MT。收窄條件：block 元素唯一 child 的 `<a>` 走 paired marker，內部有 element child 的子元素（icon `<i>` 等）走 atomic 保留，leaf text/span 走 walk 翻譯，空 spacer span 走 atomic 保留 CSS 間距。(2) 防禦性 echo 偵測：注入後 textContent 沒變就不標 `data-shinkansen-translated`，避免 LLM 回音造成元素被永久標記「已翻」但文字沒變。(3) 快取 echo 過濾：`cache.setBatch` 不存跟原文一模一樣的「翻譯」，防止回音汙染快取。

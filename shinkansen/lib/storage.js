@@ -686,6 +686,9 @@ export const DEFAULT_SETTINGS = {
     // 預設 true 對本機 LLM 使用者開箱即用;商用 API 使用者可關閉省 token。
     // 既有使用者升級後 undefined,lib/openai-compat.js 用 `=== false` 判斷,等同預設 true。
     useStrongSegMarker: true,
+    // API 請求逾時（秒）。預設 15 對齊 Gemini 路徑;本機 LLM(Ollama 等)冷啟動
+    // 載入模型到 VRAM 可能需 60-300 秒,使用者可自行調高
+    fetchTimeoutSec: 15,
   },
 };
 

@@ -476,7 +476,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.10.11;
+				CURRENT_PROJECT_VERSION = 1.10.12;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -491,7 +491,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
-				MARKETING_VERSION = 1.10.11;
+				MARKETING_VERSION = 1.10.12;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -511,7 +511,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1.10.11;
+				CURRENT_PROJECT_VERSION = 1.10.12;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -526,7 +526,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
-				MARKETING_VERSION = 1.10.11;
+				MARKETING_VERSION = 1.10.12;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -549,7 +549,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1.10.11;
+				CURRENT_PROJECT_VERSION = 1.10.12;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -566,7 +566,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.11;
+				MARKETING_VERSION = 1.10.12;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -592,7 +592,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1.10.11;
+				CURRENT_PROJECT_VERSION = 1.10.12;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -609,7 +609,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.11;
+				MARKETING_VERSION = 1.10.12;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,

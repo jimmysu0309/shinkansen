@@ -14,14 +14,14 @@ const __dirname = path.dirname(__filename);
 const SRC_PATH = path.resolve(__dirname, '../../shinkansen/lib/openai-compat.js');
 const SRC = fs.readFileSync(SRC_PATH, 'utf-8');
 
-test('FETCH_TIMEOUT_MS 常數為 15_000(對齊 Gemini 主翻譯)', () => {
+test('DEFAULT_FETCH_TIMEOUT_MS 常數為 15_000(對齊 Gemini 主翻譯)', () => {
   expect(
     SRC,
-    'openai-compat.js 缺 `const FETCH_TIMEOUT_MS = 15_000`',
-  ).toMatch(/const\s+FETCH_TIMEOUT_MS\s*=\s*15_000\s*;/);
+    'openai-compat.js 缺 `const DEFAULT_FETCH_TIMEOUT_MS = 15_000`',
+  ).toMatch(/const\s+DEFAULT_FETCH_TIMEOUT_MS\s*=\s*15_000\s*;/);
 });
 
-test('fetchWithRetry 內含 AbortController + setTimeout(abort, FETCH_TIMEOUT_MS)', () => {
+test('fetchWithRetry 內含 AbortController + setTimeout(abort, timeoutMs)', () => {
   const fnStart = SRC.indexOf('async function fetchWithRetry');
   expect(fnStart, 'openai-compat.js 找不到 fetchWithRetry').toBeGreaterThan(-1);
   const fnBody = SRC.slice(fnStart, fnStart + 2000);
@@ -29,8 +29,8 @@ test('fetchWithRetry 內含 AbortController + setTimeout(abort, FETCH_TIMEOUT_MS
   expect(fnBody, '缺 AbortController').toMatch(/new\s+AbortController\s*\(\s*\)/);
   expect(
     fnBody,
-    '缺 `setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)`',
-  ).toMatch(/setTimeout\s*\(\s*\(\s*\)\s*=>\s*controller\.abort\s*\(\s*\)\s*,\s*FETCH_TIMEOUT_MS\s*\)/);
+    '缺 `setTimeout(() => controller.abort(), timeoutMs)`',
+  ).toMatch(/setTimeout\s*\(\s*\(\s*\)\s*=>\s*controller\.abort\s*\(\s*\)\s*,\s*timeoutMs\s*\)/);
 });
 
 test('fetch 帶 `signal: controller.signal`', () => {
@@ -69,4 +69,28 @@ test('extractGlossary 預設 fetchTimeoutMs 為 15_000(對齊主翻譯,跟 Gemin
     fnBody,
     'extractGlossary 預設 fetchTimeoutMs 應為 15_000,不應是 55_000 / 60_000',
   ).toMatch(/fetchTimeoutMs\s*=\s*gc\.fetchTimeoutMs\s*\?\?\s*15_000/);
+});
+
+test('fetchWithRetry 接受 timeoutMs 參數(使用者可透過 customProvider.fetchTimeoutSec 覆蓋)', () => {
+  const fnStart = SRC.indexOf('async function fetchWithRetry');
+  expect(fnStart, 'openai-compat.js 找不到 fetchWithRetry').toBeGreaterThan(-1);
+  const fnSignature = SRC.slice(fnStart, fnStart + 200);
+  expect(
+    fnSignature,
+    'fetchWithRetry 簽名缺 timeoutMs 參數（預設 DEFAULT_FETCH_TIMEOUT_MS）',
+  ).toMatch(/timeoutMs\s*=\s*DEFAULT_FETCH_TIMEOUT_MS/);
+});
+
+test('translateChunk 從 customProvider.fetchTimeoutSec 讀取逾時設定', () => {
+  const fnStart = SRC.indexOf('async function translateChunk');
+  expect(fnStart, 'openai-compat.js 找不到 translateChunk').toBeGreaterThan(-1);
+  const fnBody = SRC.slice(fnStart, fnStart + 4000);
+  expect(
+    fnBody,
+    'translateChunk 缺 fetchTimeoutSec 讀取邏輯',
+  ).toMatch(/fetchTimeoutSec/);
+  expect(
+    fnBody,
+    'translateChunk 缺 fetchWithRetry timeoutMs 傳遞',
+  ).toMatch(/fetchWithRetry\s*\(.*timeoutMs/s);
 });

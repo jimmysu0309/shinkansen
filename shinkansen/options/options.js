@@ -218,6 +218,7 @@ async function load() {
   $('cp-model').value = cp.model || '';
   $('cp-systemPrompt').value = cp.systemPrompt || '';
   $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : 0.7;
+  $('cp-fetchTimeout').value = (typeof cp.fetchTimeoutSec === 'number') ? cp.fetchTimeoutSec : 15;
   $('cp-inputPerMTok').value = cp.inputPerMTok != null ? cp.inputPerMTok : '';
   $('cp-outputPerMTok').value = cp.outputPerMTok != null ? cp.outputPerMTok : '';
   // v1.9.2: cache 命中折扣 — UI 顯示百分比(0-100),儲存仍為比例(0-1);null/undefined → 空白
@@ -975,6 +976,7 @@ async function _saveImpl() {
       systemPrompt: $('cp-systemPrompt').value || '',
       // v1.8.20: temperature 改 parseUserNum 避免 0 被當 falsy；單價 0 是合法值改 parseUserNum 0
       temperature: parseUserNum($('cp-temperature').value, DEFAULTS.customProvider?.temperature ?? 0.7),
+      fetchTimeoutSec: parseUserNum($('cp-fetchTimeout').value, 15),
       inputPerMTok: parseUserNum($('cp-inputPerMTok').value, 0),
       outputPerMTok: parseUserNum($('cp-outputPerMTok').value, 0),
       // v1.9.2: UI 0-100% → 儲存比例 0-1;空白 → null(讓 background 走 baseUrl 自動推導)
@@ -1654,6 +1656,7 @@ function sanitizeImport(raw) {
     if (typeof cp.temperature === 'number' && cp.temperature >= 0 && cp.temperature <= 2) {
       cpClean.temperature = cp.temperature;
     }
+    if (typeof cp.fetchTimeoutSec === 'number' && cp.fetchTimeoutSec >= 5 && cp.fetchTimeoutSec <= 600) cpClean.fetchTimeoutSec = cp.fetchTimeoutSec;
     if (typeof cp.inputPerMTok === 'number' && cp.inputPerMTok >= 0) cpClean.inputPerMTok = cp.inputPerMTok;
     if (typeof cp.outputPerMTok === 'number' && cp.outputPerMTok >= 0) cpClean.outputPerMTok = cp.outputPerMTok;
     // v1.9.2: cachedDiscount 0-1,null 表示走 baseUrl 自動推導

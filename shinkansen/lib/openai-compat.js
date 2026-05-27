@@ -35,18 +35,16 @@ function sleep(ms) {
  * 與 lib/gemini.js 的 fetchWithRetry 邏輯對齊（除了 quota dimension 提取，
  * OpenAI-compatible provider 的 429 body 結構不一致，這裡只做純退避）。
  */
-// 主翻譯 fetch 層級 timeout。15s = Flash 系列慢 case 的 2x margin。跟 gemini.js
-// fetchWithRetry 對齊;OpenAI 相容 provider(OpenRouter / DeepSeek / 本機 llama.cpp 等)
-// 同樣可能 hang,timeout 後 AbortError 走網路錯誤 retry path。
-const FETCH_TIMEOUT_MS = 15_000;
+// 主翻譯 fetch 層級 timeout 預設值。使用者可透過 customProvider.fetchTimeoutSec 覆蓋
+const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 
-async function fetchWithRetry(url, headers, body, { maxRetries = 3 } = {}) {
+async function fetchWithRetry(url, headers, body, { maxRetries = 3, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS } = {}) {
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     let resp;
     const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       resp = await fetch(url, {
         method: 'POST',
@@ -57,8 +55,8 @@ async function fetchWithRetry(url, headers, body, { maxRetries = 3 } = {}) {
     } catch (err) {
       clearTimeout(abortTimer);
       const isTimeout = err.name === 'AbortError';
-      const errMsg = isTimeout ? `逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
-      await debugLog('error', 'api', isTimeout ? 'openai-compat fetch timeout' : 'openai-compat fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? FETCH_TIMEOUT_MS : undefined });
+      const errMsg = isTimeout ? `逾時(${timeoutMs}ms)` : err.message;
+      await debugLog('error', 'api', isTimeout ? 'openai-compat fetch timeout' : 'openai-compat fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? timeoutMs : undefined });
       if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
       await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
       attempt += 1;
@@ -212,7 +210,11 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   const t0 = Date.now();
   const maxRetries = typeof settings?.maxRetries === 'number' ? settings.maxRetries : 3;
-  const resp = await fetchWithRetry(url, headers, body, { maxRetries });
+  const fetchTimeoutSec = cp.fetchTimeoutSec;
+  const timeoutMs = (typeof fetchTimeoutSec === 'number' && fetchTimeoutSec > 0)
+    ? fetchTimeoutSec * 1000
+    : DEFAULT_FETCH_TIMEOUT_MS;
+  const resp = await fetchWithRetry(url, headers, body, { maxRetries, timeoutMs });
 
   let json;
   try {
