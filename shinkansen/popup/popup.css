@@ -2,6 +2,9 @@
   /* 同 column 兄弟元件對齊基準寬（CLAUDE.md §1）——.display-mode-toggle + .row select
      共用同一寬，所有 locale 內 toggle 自然寬都 ≤ 此值（zh-TW 139px / en 132px 量過）。 */
   --popup-row-control-w: 140px;
+  /* issue #57:純淺色頁面,同 options.css — 不宣告時 macOS 深色模式下 WebKit
+     給表單控制項套近白文字,白底上看不見。 */
+  color-scheme: light;
 }
 
 body {
@@ -75,6 +78,7 @@ button.secondary:hover { background: #f0f4ff; }
   border-radius: 6px;
   font-size: 12px;
   background: #fff;
+  color: #1d1d1f; /* issue #57:背景寫死就必須一起寫死前景 */
   width: var(--popup-row-control-w);
 }
 

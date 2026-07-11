@@ -2435,7 +2435,9 @@
       //   - 'heuristic'   = F:啟發式合句 + 既有 TRANSLATE_SUBTITLE_BATCH(逐句翻)。延遲低、精度中。
       //   - 'llm'         = D':LLM 自由合句 + timestamp mode(_runAsrWindow)。延遲高、精度最高。
       //   - 'progressive' = E:先 heuristic 顯示(秒出),同時 fire-and-forget LLM 跑覆蓋。
-      const asrMode = config.asrMode || 'progressive';  // 預設 progressive(混合模式)
+      // issue #58:engine='google' 強制 heuristic(SK.resolveAsrMode,content-ns.js)——
+      // llm/progressive 的 LLM 路徑會忽略 google 設定 fallback Gemini 燒付費 API。
+      const asrMode = SK.resolveAsrMode(config.engine, config.asrMode);  // 預設 progressive(混合模式)
 
       // v1.9.22:seek / 緊急場景的 ASR 加速 — 算 wallLead(視窗起點距影片當前位置的
       // wall-clock ms,負數=video 已過視窗起點;這是 seek 進入此視窗的特徵)。
@@ -3732,13 +3734,18 @@
     SK.sendLog('info', 'youtube', 'SPA navigation reset', { wasActive, newVideoId: YT.videoId });
 
     // v1.3.1: SPA 導航後自動重啟字幕翻譯
-    // 條件：之前字幕翻譯已啟動（wasActive），或 ytSubtitle.autoTranslate 設定開啟
+    // 條件：ytSubtitle.autoTranslate 設定開啟；或未設定過但之前字幕翻譯已啟動（wasActive）
     // 若導航到非 watch 頁（例如首頁），略過。
     // 延遲 500ms 等 YouTube 播放器初始化並發出新字幕 XHR
     if (!SK.isYouTubePage?.()) return;
     try {
       const saved = await browser.storage.sync.get('ytSubtitle');
-      const shouldRestart = wasActive || saved.ytSubtitle?.autoTranslate;
+      // issue #58(CHANGELOG v1.4.21 記載的獨立 bug,至此才修):明確 false 優先於
+      // wasActive — 使用者關掉自動翻譯後,同分頁換影片不得因「剛才有在翻」而重啟。
+      // 未設定(undefined)沿用舊語意:wasActive 才重啟(手動啟動的跨影片延續)。
+      const shouldRestart = saved.ytSubtitle?.autoTranslate === false
+        ? false
+        : (wasActive || saved.ytSubtitle?.autoTranslate);
       if (shouldRestart) {
         SK.sendLog('info', 'youtube', 'SPA nav: will restart subtitle translation', {
           wasActive, autoTranslate: saved.ytSubtitle?.autoTranslate,

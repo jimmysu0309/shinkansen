@@ -1,3 +1,10 @@
+:root {
+  /* issue #57:本頁是純淺色設計。不宣告 color-scheme 時,macOS 深色模式下 WebKit
+     會給表單控制項套系統深色文字(近白)→ 疊在寫死的白底上 = 白字白底,輸入框
+     看起來是空的。明確聲明 light,控制項一律用淺色渲染。 */
+  color-scheme: light;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
@@ -49,6 +56,7 @@ textarea {
   font: 13px -apple-system, 'PingFang TC', monospace;
   box-sizing: border-box;
   background: #fff;
+  color: #1d1d1f; /* issue #57:背景寫死就必須一起寫死前景,不依賴 UA 預設 */
 }
 
 textarea { resize: vertical; font-family: -apple-system, 'PingFang TC', sans-serif; }

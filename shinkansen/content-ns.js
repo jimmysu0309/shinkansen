@@ -374,6 +374,17 @@ if (window.__shinkansen_loaded) {
     return 'TRANSLATE_SUBTITLE_BATCH';
   };
 
+  // ASR 合句模式解析 — issue #58:engine='google' 強制 heuristic。
+  // 'llm' 的 JSON timestamp 翻譯與 'progressive' 的 LLM overlay(_runAsrWindow)都是
+  // LLM 任務,上方 getSubtitleBatchType 的 ASR 分支對 google 只能 fallback Gemini
+  // (Google MT 不支援 JSON 包裝,既定路由)→ 使用者選免費引擎仍靜默燒付費 API。
+  // 單點收斂在模式解析:google 一律 heuristic 合句(逐句翻,走
+  // TRANSLATE_SUBTITLE_BATCH_GOOGLE 免費端點),其餘引擎維持既有預設 progressive。
+  SK.resolveAsrMode = function resolveAsrMode(engine, asrMode) {
+    if (engine === 'google') return 'heuristic';
+    return asrMode || 'progressive';
+  };
+
   // 術語表抽取訊息類型路由 — 對齊字幕路由的單一資料源原則。
   // engine='openai-compat' 走 EXTRACT_GLOSSARY_CUSTOM(自訂 Provider chat.completions);
   // 其餘（含 google，因為術語表抽取是 LLM 任務，Google MT 不適用）走 EXTRACT_GLOSSARY(Gemini)。

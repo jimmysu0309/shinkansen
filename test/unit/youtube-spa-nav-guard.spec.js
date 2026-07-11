@@ -134,3 +134,104 @@ test.describe('content-youtube.js: yt-navigate-finish listener 同 videoId guard
     expect(body).toMatch(/['"]SPA nav skipped[^'"]*['"]/);
   });
 });
+
+// ─── issue #58:SPA 導航尊重「明確關閉的 autoTranslate」──────────────────
+//
+// CHANGELOG v1.4.21 已記載但當時未修的獨立 bug(上游 issue #58 症狀 1):重啟條件
+// `wasActive || autoTranslate` 讓 wasActive 短路掉使用者明確設為 false 的
+// ytSubtitle.autoTranslate — 只要本分頁字幕翻譯曾啟動過(安裝預設 true 的首次載入、
+// 或手動啟動),之後把設定關掉,同分頁換影片(SPA 導航)仍會繼續翻譯並燒 API。
+//
+// 修正語意:明確 false 一律不重啟;true 重啟;未設定(undefined)沿用舊行為
+// (wasActive 才重啟 — 手動啟動的跨影片延續)。
+//
+// 測法:extractListenerBody 抽出 handler body,AsyncFunction 注入 stub 依賴後直接
+// 呼叫,驗「translateYouTubeSubtitles 是否在 500ms 重啟排程後被呼叫」的行為層 —
+// 不是 static check,是真的執行 handler 原始碼。
+//
+// 驗到 / 沒驗到:
+//   ✅ 五種 (autoTranslate × wasActive) 組合的重啟決策(執行層)
+//   ❌ 真實 YouTube fire yt-navigate-finish 的時序 — 同上方 static check 區塊的限制
+//
+// SANITY 紀錄(已驗證):修正前(`wasActive || autoTranslate`)「false + wasActive=true
+// → 不重啟」case fail(實際重啟了);套上明確 false 優先後五條全綠。
+
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
+function buildHandlerFromSource() {
+  const body = extractListenerBody(readFile('shinkansen/content-youtube.js'));
+  // body 是含外層 {} 的 block statement,直接當 function body 執行語意相同
+  return new AsyncFunction(
+    'SK', 'browser', 'getVideoIdFromUrl', 'stopYouTubeTranslation',
+    'hideCaptionStatus', '_debugRemove', '_setAsrHidingMode', '_removeOverlay',
+    'attachVideoListener',
+    body
+  );
+}
+
+function makeHarness({ active, ytSubtitle }) {
+  const startCalls = [];
+  const SK = {
+    YT: { active, videoId: 'video-OLD' },
+    isYouTubePage: () => true,
+    sendLog: () => {},
+    translateYouTubeSubtitles: (opts) => { startCalls.push(opts); return Promise.resolve(); },
+  };
+  const browser = {
+    storage: { sync: { get: async () => (ytSubtitle === undefined ? {} : { ytSubtitle }) } },
+  };
+  const handler = buildHandlerFromSource();
+  const invoke = () => handler(
+    SK, browser,
+    () => 'video-NEW',                       // getVideoIdFromUrl:模擬切到不同影片
+    () => { SK.YT.active = false; },         // stopYouTubeTranslation
+    () => {},                                // hideCaptionStatus
+    () => {},                                // _debugRemove
+    () => {},                                // _setAsrHidingMode
+    () => {},                                // _removeOverlay
+    () => {},                                // attachVideoListener
+  );
+  return { startCalls, invoke };
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// handler 內部重啟走 setTimeout(500ms)。正負向都等固定 900ms:
+// 正向給排程足夠餘裕,負向依 create-env.cjs 慣例用固定等待驗「事情沒發生」。
+const RESTART_WAIT_MS = 900;
+
+test.describe('_onYtSpaNavigate 行為:autoTranslate 明確 false 不得重啟(issue #58)', () => {
+  test('autoTranslate=false + wasActive=true → 不重啟(本 issue 的核心 bug)', async () => {
+    const h = makeHarness({ active: true, ytSubtitle: { autoTranslate: false } });
+    await h.invoke();
+    await sleep(RESTART_WAIT_MS);
+    expect(h.startCalls.length).toBe(0);
+  });
+
+  test('autoTranslate=false + wasActive=false → 不重啟', async () => {
+    const h = makeHarness({ active: false, ytSubtitle: { autoTranslate: false } });
+    await h.invoke();
+    await sleep(RESTART_WAIT_MS);
+    expect(h.startCalls.length).toBe(0);
+  });
+
+  test('autoTranslate=true + wasActive=false → 重啟', async () => {
+    const h = makeHarness({ active: false, ytSubtitle: { autoTranslate: true } });
+    await h.invoke();
+    await sleep(RESTART_WAIT_MS);
+    expect(h.startCalls.length).toBe(1);
+  });
+
+  test('ytSubtitle 未設定 + wasActive=true → 重啟(手動啟動的跨影片延續)', async () => {
+    const h = makeHarness({ active: true, ytSubtitle: undefined });
+    await h.invoke();
+    await sleep(RESTART_WAIT_MS);
+    expect(h.startCalls.length).toBe(1);
+  });
+
+  test('ytSubtitle 未設定 + wasActive=false → 不重啟', async () => {
+    const h = makeHarness({ active: false, ytSubtitle: undefined });
+    await h.invoke();
+    await sleep(RESTART_WAIT_MS);
+    expect(h.startCalls.length).toBe(0);
+  });
+});
