@@ -18,6 +18,32 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      - name: Inject Instapaper consumer keys
+        # lib/instapaper-keys.js 是 gitignored（public repo 不 commit 金鑰），
+        # 所以乾淨 checkout 裡沒有這個檔 → 過去所有 release ZIP 都缺金鑰，
+        # 商店版使用者連結 Instapaper 一律吃「尚未設定 consumer 金鑰」（issue #61）。
+        # 這裡從 repo Secrets 產生金鑰檔，後面三個 ZIP（Chrome / Firefox / AMO source）
+        # 都會包到。檔案格式同本機模板：classic script 掛 globalThis.__SK
+        # （options/popup 路徑），且含 consumerKey: '…' 字面（service worker 的
+        # regex 路徑，見 background.js ensureInstapaperKeys）。
+        # Secrets 未設定 → 跳過並警告，行為同現狀（功能停用），不會弄壞 release。
+        env:
+          IP_KEY: ${{ secrets.INSTAPAPER_CONSUMER_KEY }}
+          IP_SECRET: ${{ secrets.INSTAPAPER_CONSUMER_SECRET }}
+        run: |
+          if [ -z "$IP_KEY" ] || [ -z "$IP_SECRET" ]; then
+            echo "::warning::INSTAPAPER_CONSUMER_KEY / INSTAPAPER_CONSUMER_SECRET secrets not set — Instapaper stays disabled in released builds (issue #61)"
+          elif [[ ! "$IP_KEY$IP_SECRET" =~ ^[0-9A-Za-z_-]+$ ]]; then
+            # 金鑰是 hex（見 background.js ensureInstapaperKeys 註解）。貼 secret 時誤帶
+            # 空白 / 換行 / 引號會產出 JS 語法壞掉的金鑰檔——比缺檔更難診斷的 silent
+            # failure（檔案存在但 classic script throw）。這裡改成 loud skip，行為退回
+            # 「功能停用」＝現狀。（[[ =~ ]] 對整串匹配；grep 是行導向會漏掉換行）
+            echo "::warning::Instapaper consumer key secrets contain unexpected characters (stray whitespace/quotes from copy-paste?) — skipping injection, Instapaper stays disabled"
+          else
+            printf "// Generated at release time from repo secrets (see release.yml). Do not commit.\nglobalThis.__SK = globalThis.__SK || {};\nglobalThis.__SK.INSTAPAPER_KEYS = { consumerKey: '%s', consumerSecret: '%s' };\n" "$IP_KEY" "$IP_SECRET" > shinkansen/lib/instapaper-keys.js
+            echo "Instapaper consumer keys injected"
+          fi
+
       - name: Zip shinkansen folder (Chrome)
         run: |
           zip -r shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen/
