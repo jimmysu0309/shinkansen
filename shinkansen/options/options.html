@@ -804,7 +804,12 @@
       <button type="button" id="cp-reset-prompt" class="secondary" data-i18n="options.cp.resetPrompt">重置為預設 Prompt（與 Gemini 同）</button>
       <label>
         <span data-i18n="options.cp.tempLabel">Temperature</span>
-        <input type="number" id="cp-temperature" step="0.1" min="0" max="2" placeholder="0.7">
+        <!-- issue #60:移除 placeholder="0.7" — 留空的語意已從「用 0.7」改為「不送參數」，
+             灰字 0.7 會誤導使用者以為留空仍等於 0.7 -->
+        <input type="number" id="cp-temperature" step="0.1" min="0" max="2">
+        <small class="muted" data-i18n="options.cp.tempHint">
+          留空 = 不送 temperature 參數（由模型 API 預設值決定；GPT-5 / o 系列等推理模型建議留空）
+        </small>
       </label>
 
       <details>
