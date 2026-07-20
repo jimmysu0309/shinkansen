@@ -268,6 +268,7 @@ async function load() {
   const ytEngineEl = $('ytEngine');
   if (ytEngineEl) ytEngineEl.value = yt.engine || 'gemini';
   $('ytAutoTranslate').checked       = yt.autoTranslate       === true;
+  $('ytSkipSimplifiedAutoTranslate').checked = yt.skipSimplifiedAutoTranslate === true;
   // v1.6.23: ASR 分句改單一 toggle——開啟=progressive（混合模式）、關閉=heuristic（預設分句）。
   // 舊 'llm' 值視為 progressive（行為相近，LLM 結果仍會顯示；只是改成漸進方式）。
   $('ytAsrProgressive').checked = yt.asrMode !== 'heuristic';
@@ -1044,6 +1045,7 @@ async function _saveImpl() {
       ...(existing.ytSubtitle || {}),
       engine: ($('ytEngine')?.value || 'gemini'),  // v1.4.0
       autoTranslate:      $('ytAutoTranslate').checked,
+      skipSimplifiedAutoTranslate: $('ytSkipSimplifiedAutoTranslate').checked,
       // v1.6.23: ASR 分句單一 toggle——checked=progressive（混合）、unchecked=heuristic
       asrMode: $('ytAsrProgressive').checked ? 'progressive' : 'heuristic',
       // v1.5.8: 字幕是否套用固定術語表 / 黑名單
@@ -2075,12 +2077,13 @@ function sanitizeImport(raw) {
     if (cleanPresets.length > 0) clean.translatePresets = cleanPresets;
   }
 
-  // issue #48 fix：ytSubtitle 子物件（YouTube 字幕翻譯設定，14 個欄位）
+  // issue #48 fix：ytSubtitle 子物件（YouTube 字幕翻譯設定；欄位新增時須同步收留）
   if (raw.ytSubtitle && typeof raw.ytSubtitle === 'object') {
     const yt = raw.ytSubtitle;
     const ytClean = {};
     const ytRules = {
       autoTranslate:       { type: 'boolean' },
+      skipSimplifiedAutoTranslate: { type: 'boolean' },
       temperature:         { type: 'number', min: 0, max: 2 },
       systemPrompt:        { type: 'string' },
       windowSizeS:         { type: 'number', min: 10, max: 120 },

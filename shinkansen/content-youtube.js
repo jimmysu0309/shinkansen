@@ -23,6 +23,7 @@
     lookaheadS:  10,
     debugToast:  false,
     onTheFly:    false,          // v1.2.49: cache miss 時是否送 on-the-fly API 翻譯
+    skipSimplifiedAutoTranslate: false,
     // preserveLineBreaks 已移除 toggle（v1.2.38），永遠 true（見 translateWindowFrom）
   };
 
@@ -239,6 +240,7 @@
     batchTimer:       null,
     flushing:         false,
     active:           false,
+    automaticActivation: false, // true=由載入 / SPA autoTranslate 自動啟動；手動 popup 啟動為 false
     videoId:          null,
     isAsr:            false,        // 本影片字幕是否為 YouTube 自動產生（kind=asr）。
                                     //   true → translateWindowFrom 走 ASR 合句路徑（D' 模式,timestamp mode）。
@@ -246,7 +248,8 @@
     captionLang:      null,         // v1.8.40: caption URL 的 lang 參數,例如 'en' / 'zh-Hant' / 'zh-CN' / 'ja'
                                     //   用於 translateWindowFrom 判斷是否該 skip(已是繁中字幕就不送 Gemini 翻譯)。
                                     //   shinkansen-yt-captions listener 從 URL searchParams.get('lang') 抓。
-    captionSourceId:  null,         // v1.10.46: 字幕來源身份 `videoId|lang|kind`。XHR listener 比對：
+    captionTlang:     null,         // YouTube 自翻譯軌的 tlang（例 lang=en&tlang=zh-Hans）
+    captionSourceId:  null,         // v1.10.46: 字幕來源身份 `videoId|lang|tlang|kind`。XHR listener 比對：
                                     //   身份變更（使用者手動切 CC 軌 / chooser 切軌）= 舊軌視窗簿記與譯文全部失效，
                                     //   重置 translatedWindows / captionMap / displayCues 等；同軌 re-fetch(seek /
                                     //   CC toggle 重抓）身份相同 → 不重置，保留已翻進度。
@@ -420,14 +423,16 @@
       const u = new URL(url, location.href);
       YT.isAsr = u.searchParams.get('kind') === 'asr';
       YT.captionLang = u.searchParams.get('lang') || null;
+      YT.captionTlang = u.searchParams.get('tlang') || null;
     } catch (_) {
       YT.isAsr = false;
       YT.captionLang = null;
+      YT.captionTlang = null;
     }
     // v1.10.46: 來源身份比對——使用者手動切 CC 軌（雙語流程官方指引就是教這樣切）時，
     // 舊軌的 translatedWindows 純時間 key 會讓新軌在已翻視窗被誤跳過（完全不翻）、
     // 舊軌譯文 / displayCues 殘顯。身份變更即重置；同軌 re-fetch 身份相同不受影響。
-    const _sourceId = `${getVideoIdFromUrl() || ''}|${YT.captionLang || ''}|${YT.isAsr ? 'asr' : 'manual'}`;
+    const _sourceId = `${getVideoIdFromUrl() || ''}|${YT.captionLang || ''}|${YT.captionTlang || ''}|${YT.isAsr ? 'asr' : 'manual'}`;
     if (YT.captionSourceId && YT.captionSourceId !== _sourceId) {
       _resetCaptionSourceBookkeeping('source switched', { from: YT.captionSourceId, to: _sourceId });
     }
@@ -449,6 +454,7 @@
       lastMs,
       isAsr: YT.isAsr,
       captionLang: YT.captionLang,
+      captionTlang: YT.captionTlang,
       urlSnippet: url ? url.substring(url.indexOf('/api/timedtext'), Math.min(url.length, url.indexOf('/api/timedtext') + 60)) : '',
     });
 
@@ -1003,6 +1009,7 @@
     'fr':    ['fr', 'fr-FR', 'fr-CA'],
     'de':    ['de', 'de-DE'],
   };
+  const _SIMPLIFIED_CAPTION_LANGS = new Set(['zh-hans', 'zh-cn', 'zh-sg']);
 
   // 模糊 base-lang:URL / track metadata 不足以分辨繁簡(YouTube 對部分人工字幕只標
   // base lang `zh`,不附 -Hant / -Hans variant),target=zh-TW / zh-CN 時必須看字幕
@@ -1023,10 +1030,20 @@
   // tracks: [{ languageCode, kind: '' | 'asr', isTranslatable?, vssId?, name? }]
   // activeTrack: { languageCode, kind, translationLanguageCode } | null
   // targetLanguage: 'zh-TW' / 'zh-CN' / 'en' / ...
-  // 回傳： { action: 'skip' | 'switch' | 'switch-to-native' | 'noop', track?: <選中的 track>, reason }
-  function _chooseBestCaptionTrack(tracks, activeTrack, targetLanguage) {
+  // options.skipSimplifiedForZhTw=true：自動 session 若播放器目前已顯示簡中軌（含
+  // languageCode=zh-Hans 原生軌、languageCode=en + translationLanguageCode=zh-Hans
+  // 的 YT 自翻譯軌），在切回原始字幕之前先 return skip-simplified。
+  // 回傳： { action: 'skip' | 'skip-simplified' | 'switch' | 'switch-to-native' | 'noop', track?, reason }
+  function _chooseBestCaptionTrack(tracks, activeTrack, targetLanguage, options = {}) {
     if (!Array.isArray(tracks) || tracks.length === 0) {
       return { action: 'noop', reason: 'no-tracks' };
+    }
+    if (targetLanguage === 'zh-TW' && options.skipSimplifiedForZhTw === true && activeTrack) {
+      const activeLang = String(activeTrack.languageCode || '').toLowerCase();
+      const activeTlang = String(activeTrack.translationLanguageCode || '').toLowerCase();
+      if (_SIMPLIFIED_CAPTION_LANGS.has(activeLang) || _SIMPLIFIED_CAPTION_LANGS.has(activeTlang)) {
+        return { action: 'skip-simplified', reason: 'active-simplified-allowed' };
+      }
     }
     const targetLangs = _resolveTargetNativeLangs(targetLanguage);
 
@@ -1102,8 +1119,8 @@
 
   // 包裹 pure function 的 side-effectful wrapper:dispatch 兩條 bridge event,
   // 處理 retry / timeout，在 'switch' / 'switch-to-native' 命中時實際呼叫 setOption。
-  // 回傳：'skip' / 'switch' / 'switch-to-native' / 'noop'（由 caller 決定接續行為）。
-  async function _runCaptionTrackChooser(targetLanguage) {
+  // 回傳：'skip' / 'skip-simplified' / 'switch' / 'switch-to-native' / 'noop'。
+  async function _runCaptionTrackChooser(targetLanguage, options = {}) {
     // Step 1:query player response bridge 拿 tracks + activeTrack
     const detail = await bridgeRequest('shinkansen-yt-query-player-response', 'shinkansen-yt-player-response', null, 1500);
     if (!detail || !detail.playerResponseAvailable) {
@@ -1117,7 +1134,7 @@
     }
 
     // Step 2：跑 pure function
-    const decision = _chooseBestCaptionTrack(detail.captionTracks, detail.activeTrack, targetLanguage);
+    const decision = _chooseBestCaptionTrack(detail.captionTracks, detail.activeTrack, targetLanguage, options);
     SK.sendLog('info', 'youtube', 'caption track chooser', {
       action:         decision.action,
       reason:         decision.reason,
@@ -1585,8 +1602,8 @@
     //   non-ASR + 純中文:不藏(native segment 內已被替換成中文)
     // 動態例外:caption 已是 target lang(skip-translate 路徑)→ overlay 不會有內容,
     //         強制不藏 native CC,避免整片空白(OHAjc-ayhus 類:全 manual + active=target + bilingual)
-    const captionInTarget = _shouldSkipBecauseAlreadyInTarget();
-    const shouldHideNative = (bilingual || SK.YT.isAsr) && !captionInTarget;
+    const captionShouldSkip = _shouldSkipCaptionTranslation();
+    const shouldHideNative = (bilingual || SK.YT.isAsr) && !captionShouldSkip;
     _setAsrHidingMode(shouldHideNative);
     // 確保 host 存在(ASR 在 captionsXHR 已 _ensureOverlay 過,non-ASR 雙語進入這條路徑首次需要)
     if (bilingual) _ensureOverlay();
@@ -2578,6 +2595,27 @@
     }
     return false;
   }
+  function _isSimplifiedChineseCaption() {
+    const lang = String(SK.YT.captionLang || '').toLowerCase();
+    const tlang = String(SK.YT.captionTlang || '').toLowerCase();
+    if (_SIMPLIFIED_CAPTION_LANGS.has(lang) || _SIMPLIFIED_CAPTION_LANGS.has(tlang)) return true;
+    // YouTube 部分人工中文字幕只標 base lang=zh；這時沿用既有繁簡內容偵測。
+    if (lang === 'zh' && typeof SK.detectTextLang === 'function') {
+      const sample = _sampleCaptionText();
+      return !!sample && SK.detectTextLang(sample) === 'zh-Hans';
+    }
+    return false;
+  }
+  function _shouldSkipBecauseSimplifiedAutoTranslate(config = SK.YT.config) {
+    if (SK.YT.automaticActivation !== true) return false;
+    if (config?.skipSimplifiedAutoTranslate !== true) return false;
+    const target = SK.STATE?.targetLanguage || 'zh-TW';
+    return target === 'zh-TW' && _isSimplifiedChineseCaption();
+  }
+  function _shouldSkipCaptionTranslation(config = SK.YT.config) {
+    return _shouldSkipBecauseAlreadyInTarget()
+      || _shouldSkipBecauseSimplifiedAutoTranslate(config);
+  }
   // P1 deprecation alias:既有 spec(youtube-skip-already-zh-hant.spec.js)reference 此舊名
   function _shouldSkipBecauseAlreadyTraditionalChinese() {
     return _shouldSkipBecauseAlreadyInTarget();
@@ -2587,7 +2625,7 @@
   // replaceSegmentEl 的 cached 永遠 undefined → hideCaptionStatus 永不觸發,
   // 「翻譯中…」status 永遠殘留。在 show 觸發點預先擋掉。
   function _shouldShowTranslatingStatus() {
-    if (_shouldSkipBecauseAlreadyTraditionalChinese()) return false;
+    if (_shouldSkipCaptionTranslation()) return false;
     if (_hasVisibleChineseCaption()) return false;
     return true;
   }
@@ -2608,11 +2646,18 @@
     const YT = SK.YT;
     if (YT.translatingWindows.has(windowStartMs)) return;  // v1.2.54: per-window 防重入
     if (!YT.active) return;
-    // v1.8.40: 字幕原文已是繁中 → 跳過整個翻譯流程,記一次 log 讓使用者在 debug 面板看得到原因
-    if (_shouldSkipBecauseAlreadyTraditionalChinese()) {
+    // 先取得設定，讓自動啟動的簡中略過條件不受 captions XHR / storage 讀取競態影響。
+    const config = await getYtConfig();
+    const skipSimplifiedAuto = _shouldSkipBecauseSimplifiedAutoTranslate(config);
+    // 字幕已是 target，或使用者選擇讓自動啟動略過簡中 → 保留原生字幕、不送 API。
+    if (_shouldSkipBecauseAlreadyTraditionalChinese() || skipSimplifiedAuto) {
       if (!YT._skipLoggedForLang) {
-        SK.sendLog('info', 'youtube', 'skip translate: caption already traditional chinese', {
+        SK.sendLog('info', 'youtube', skipSimplifiedAuto
+          ? 'skip auto-translate: simplified chinese captions allowed'
+          : 'skip translate: caption already in target language', {
           captionLang: YT.captionLang,
+          captionTlang: YT.captionTlang,
+          automaticActivation: YT.automaticActivation,
           videoId: YT.videoId,
         });
         YT._skipLoggedForLang = true;
@@ -2627,8 +2672,6 @@
     // 結尾不得把 windowStartMs 標進（新軌的）translatedWindows，否則新軌該視窗被誤跳過。
     const _myCaptionGen = YT.captionSourceGen || 0;
 
-    // 取得設定
-    const config = await getYtConfig();
     const windowSizeMs = (config.windowSizeS || 30) * 1000;
     const windowEndMs  = windowStartMs + windowSizeMs;
 
@@ -3651,6 +3694,7 @@
       YT.videoEl = null;
     }
     YT.active             = false;
+    YT.automaticActivation = false;
     // 世代 bump:stop / SPA 換片後 500ms auto-restart 會把 active 翻回 true,
     // 只靠 active 檢查擋不住舊影片 in-flight 批次寫進新 session——所有 async
     // 寫回點(_runAsrSubBatch / heuristic _runBatch / _injectBatchResult /
@@ -3665,6 +3709,7 @@
     YT.flushing           = false;       // v1.8.20: 確保下個 session 重啟後 flushOnTheFly 不被舊 flag 卡住
     YT.isAsr              = false;
     YT.captionLang        = null;       // v1.10.46: 補漏——殘留會讓下支影片 activation 早期用舊 lang 跑 already-in-target 判斷
+    YT.captionTlang       = null;
     YT.captionSourceId    = null;       // v1.10.46: 來源身份隨 session 結束失效
     YT.displayCues        = [];         // G 路徑:清 overlay 顯示單位
     YT.asrSegConsumed     = new Set();  // v2.0.54: captionMap 已清,取用紀錄留著會讓重啟後片段永遠不再送翻
@@ -3713,7 +3758,10 @@
   //   'manual'(預設,popup toggle / SET_SUBTITLE):active 時 toggle 還原(再按一次語義)
   //   'auto'(content-script init / SPA nav restart):active 時 no-op,
   //     避免兩條自動鬧鐘在 reload 後 race 互相關掉對方。
-  SK.translateYouTubeSubtitles = async function translateYouTubeSubtitles({ source = 'manual' } = {}) {
+  SK.translateYouTubeSubtitles = async function translateYouTubeSubtitles({
+    source = 'manual',
+    automatic = source === 'auto',
+  } = {}) {
     const YT = SK.YT;
 
     if (YT.active) {
@@ -3729,6 +3777,7 @@
     }
 
     YT.active  = true;
+    YT.automaticActivation = automatic === true;
     YT.videoId = getVideoIdFromUrl();
     YT.config  = null; // 強制重新讀取設定
     // v1.2.39: 重置用量累積器
@@ -3773,7 +3822,17 @@
     // 而是 YT 已翻譯後 zh-Hans 字幕的問題（_chooseBestCaptionTrack 註解詳述）。
     if (config.preferOriginalTrack !== false) {
       const { targetLanguage = 'zh-TW' } = await browser.storage.sync.get('targetLanguage');
-      const action = await _runCaptionTrackChooser(targetLanguage);
+      const action = await _runCaptionTrackChooser(targetLanguage, {
+        skipSimplifiedForZhTw: YT.automaticActivation === true
+          && config.skipSimplifiedAutoTranslate === true,
+      });
+      if (action === 'skip-simplified') {
+        SK.sendLog('info', 'youtube', 'auto activation stopped: active captions are simplified chinese', {
+          targetLanguage,
+        });
+        stopYouTubeTranslation();
+        return;
+      }
       // skip / switch-to-native:YT 顯示 native target,Shinkansen 沒翻譯工作
       // - 單語:stopYouTubeTranslation 清監聽(target 顯示就是終點)
       // - 雙語:留 Shinkansen 監聽,等使用者手動切到非 target 軌 → XHR interceptor 抓到後
@@ -3971,6 +4030,7 @@
       return;
     }
     const wasActive = YT.active;  // v1.3.1: 記錄是否需要在新影片自動重啟
+    const wasAutomaticActivation = YT.automaticActivation === true;
     if (YT.active) stopYouTubeTranslation(); // stopYouTubeTranslation 內已呼叫 hideCaptionStatus + _debugRemove
     hideCaptionStatus(); // v1.2.55: 確保 SPA 導航後殘留的提示也清掉
     _debugRemove(); // 確保即使非 active 狀態也清掉面板（內含 _debugMissedKeys.clear()）
@@ -3982,6 +4042,7 @@
     YT.translatingWindows = new Set();      // v1.3.5: 防止 SPA nav 期間的殘留視窗阻塞
     YT.isAsr              = false;
     YT.captionLang        = null;           // v1.10.46: 補漏——新影片 activation 早期不可用前一支影片的 lang
+    YT.captionTlang       = null;
     YT.captionSourceId    = null;           // v1.10.46: 來源身份跨影片失效
     YT.displayCues        = [];             // G 路徑:SPA nav 清 overlay 顯示單位
     _setAsrHidingMode(false);
@@ -4000,14 +4061,19 @@
       const shouldRestart = wasActive || saved.ytSubtitle?.autoTranslate;
       if (shouldRestart) {
         SK.sendLog('info', 'youtube', 'SPA nav: will restart subtitle translation', {
-          wasActive, autoTranslate: saved.ytSubtitle?.autoTranslate,
+          wasActive, wasAutomaticActivation, autoTranslate: saved.ytSubtitle?.autoTranslate,
         });
         setTimeout(() => {
           // v1.8.16: 改傳 source: 'auto',若 active 走 no-op 而非 toggle stop。
           //   原本就有 !SK.YT.active 前置 guard,但兩條保險(前置 guard + source='auto')
           //   覆蓋 setTimeout 排隊期間 active 才被另一條 caller 拉起的 race。
           if (SK.isYouTubePage?.()) {
-            SK.translateYouTubeSubtitles?.({ source: 'auto' }).catch(err => {
+            SK.translateYouTubeSubtitles?.({
+              source: 'auto',
+              // 手動啟動後跨影片續翻仍視為手動 session；只有 autoTranslate 自己拉起的
+              // session 才套用「略過簡中」條件。source='auto' 仍負責防雙鬧鐘 toggle race。
+              automatic: wasActive ? wasAutomaticActivation : true,
+            }).catch(err => {
               SK.sendLog('warn', 'youtube', 'SPA nav auto-subtitle restart failed', { error: err.message });
             });
           }
@@ -4027,7 +4093,12 @@
     if (area !== 'sync' || !changes.ytSubtitle) return;
     const newVal = changes.ytSubtitle.newValue || {};
     const newBilingual = newVal.bilingualMode === true;
-    if (SK.YT.config) SK.YT.config.bilingualMode = newBilingual;
+    if (SK.YT.config) {
+      SK.YT.config.bilingualMode = newBilingual;
+      if ('skipSimplifiedAutoTranslate' in newVal) {
+        SK.YT.config.skipSimplifiedAutoTranslate = newVal.skipSimplifiedAutoTranslate === true;
+      }
+    }
     if (SK.YT.active) {
       _applyBilingualMode(newBilingual);
       SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual, isAsr: SK.YT.isAsr });

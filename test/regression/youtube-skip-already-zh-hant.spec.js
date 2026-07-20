@@ -388,3 +388,126 @@ test.describe('youtube-skip-already-zh-hant', () => {
     await page.close();
   });
 });
+
+test.describe('youtube auto-translate: 可選擇略過簡體中文字幕', () => {
+  async function setupCase({
+    context,
+    localServer,
+    source = 'auto',
+    target = 'zh-TW',
+    skipSimplified = true,
+    lang = 'zh-Hans',
+    tlang = '',
+    fixtureJson = MOCK_JSON3_SIMP_CONTENT,
+  }) {
+    const page = await context.newPage();
+    await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.ytp-caption-window-container', { timeout: 10_000, state: 'attached' });
+
+    const { evaluate } = await getShinkansenEvaluator(page);
+    await evaluate(`window.__SK.isYouTubePage = () => true`);
+    await evaluate(`window.__SK.STATE.targetLanguage = ${JSON.stringify(target)}`);
+    await evaluate(`
+      browser.storage.sync.set({
+        targetLanguage: ${JSON.stringify(target)},
+        ytSubtitle: {
+          autoTranslate: false,
+          skipSimplifiedAutoTranslate: ${JSON.stringify(skipSimplified)},
+          preferOriginalTrack: false,
+          bilingualMode: false
+        }
+      })
+    `);
+
+    await evaluate(`
+      window.__translateBatchCalled = 0;
+      chrome.runtime.sendMessage = async function(msg) {
+        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH') {
+          window.__translateBatchCalled++;
+          const texts = (msg.payload && msg.payload.texts) || [];
+          return { ok: true, result: texts.map(t => '[translated] ' + t),
+            usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0,
+                     billedInputTokens: 1, billedCostUSD: 0, cacheHits: 0 }};
+        }
+        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH_STREAM') {
+          return { ok: false, error: 'streaming disabled in test' };
+        }
+        return { ok: true };
+      };
+    `);
+
+    await evaluate(`window.__SK.translateYouTubeSubtitles({ source: ${JSON.stringify(source)} })`);
+    const query = `v=${VIDEO_ID}&lang=${encodeURIComponent(lang)}${tlang ? `&tlang=${encodeURIComponent(tlang)}` : ''}`;
+    await evaluate(`
+      window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
+        detail: {
+          url: 'https://www.youtube.com/api/timedtext?${query}',
+          responseText: ${fixtureJson}
+        }
+      }))
+    `);
+    return { page, evaluate };
+  }
+
+  async function waitForBatchCall(page, evaluate) {
+    const start = Date.now();
+    while (Date.now() - start < 5000) {
+      if (await evaluate(`window.__translateBatchCalled`) > 0) return;
+      await page.waitForTimeout(50);
+    }
+  }
+
+  test('自動啟動 + 選項開啟 + lang=zh-Hans → 保留簡中字幕、不送翻譯', async ({ context, localServer }) => {
+    const { page, evaluate } = await setupCase({ context, localServer });
+    await page.waitForTimeout(800);
+
+    expect(await evaluate(`window.__translateBatchCalled`)).toBe(0);
+    expect(await evaluate(`window.__SK.YT.automaticActivation`)).toBe(true);
+    expect(await evaluate(`document.getElementById('__sk-yt-caption-status')?.textContent || null`)).toBeNull();
+    await page.close();
+  });
+
+  test('自動啟動 + lang=zh + 簡中內容 → 內容偵測後略過', async ({ context, localServer }) => {
+    const { page, evaluate } = await setupCase({ context, localServer, lang: 'zh' });
+    await page.waitForTimeout(800);
+
+    expect(await evaluate(`window.__translateBatchCalled`)).toBe(0);
+    await page.close();
+  });
+
+  test('自動啟動 + lang=en&tlang=zh-Hans → 辨識 YouTube 自翻譯簡中軌並略過', async ({ context, localServer }) => {
+    const { page, evaluate } = await setupCase({
+      context, localServer, lang: 'en', tlang: 'zh-Hans', fixtureJson: MOCK_JSON3,
+    });
+    await page.waitForTimeout(800);
+
+    expect(await evaluate(`window.__translateBatchCalled`)).toBe(0);
+    expect(await evaluate(`window.__SK.YT.captionTlang`)).toBe('zh-Hans');
+    await page.close();
+  });
+
+  test('同一選項開啟，但手動啟動 → 仍可簡轉繁', async ({ context, localServer }) => {
+    const { page, evaluate } = await setupCase({ context, localServer, source: 'manual' });
+    await waitForBatchCall(page, evaluate);
+
+    expect(await evaluate(`window.__translateBatchCalled`)).toBeGreaterThan(0);
+    expect(await evaluate(`window.__SK.YT.automaticActivation`)).toBe(false);
+    await page.close();
+  });
+
+  test('自動啟動但目標不是 zh-TW → 簡中字幕仍照常翻譯', async ({ context, localServer }) => {
+    const { page, evaluate } = await setupCase({ context, localServer, target: 'en' });
+    await waitForBatchCall(page, evaluate);
+
+    expect(await evaluate(`window.__translateBatchCalled`)).toBeGreaterThan(0);
+    await page.close();
+  });
+
+  test('選項關閉（預設相容行為）→ 自動啟動仍會簡轉繁', async ({ context, localServer }) => {
+    const { page, evaluate } = await setupCase({ context, localServer, skipSimplified: false });
+    await waitForBatchCall(page, evaluate);
+
+    expect(await evaluate(`window.__translateBatchCalled`)).toBeGreaterThan(0);
+    await page.close();
+  });
+});

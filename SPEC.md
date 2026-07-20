@@ -667,6 +667,7 @@ shinkansen/
   "translationMarkStyle": "tint",
   "ytSubtitle": {
     "autoTranslate": true,
+    "skipSimplifiedAutoTranslate": false,
     "temperature": 0.1,
     "systemPrompt": "（見 DEFAULT_SUBTITLE_SYSTEM_PROMPT）",
     "windowSizeS": 30,

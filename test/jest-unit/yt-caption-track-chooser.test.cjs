@@ -59,6 +59,30 @@ describe('_chooseBestCaptionTrack', () => {
     expect(typeof chooser).toBe('function');
   });
 
+  test('auto skip 簡中：active YT 自翻譯軌 en→zh-Hans 時先略過，不切回原始字幕', () => {
+    const tracks = [
+      { languageCode: 'en', kind: 'asr' },
+      { languageCode: 'en', kind: '' },
+    ];
+    const activeTrack = {
+      languageCode: 'en', kind: 'asr', translationLanguageCode: 'zh-Hans',
+    };
+    expect(chooser(tracks, activeTrack, 'zh-TW', { skipSimplifiedForZhTw: true }))
+      .toMatchObject({ action: 'skip-simplified', reason: 'active-simplified-allowed' });
+  });
+
+  test('auto skip 簡中：選項關閉時同一 en→zh-Hans 軌維持既有 switch 行為', () => {
+    const tracks = [
+      { languageCode: 'en', kind: 'asr' },
+      { languageCode: 'en', kind: '' },
+    ];
+    const activeTrack = {
+      languageCode: 'en', kind: 'asr', translationLanguageCode: 'zh-Hans',
+    };
+    expect(chooser(tracks, activeTrack, 'zh-TW', { skipSimplifiedForZhTw: false }).action)
+      .toBe('switch');
+  });
+
   // ─── P1:target lang 原生 track ─────
   //   active 已是 native → skip;active 不是(包含 null=CC off / 別軌)→ switch-to-native
 

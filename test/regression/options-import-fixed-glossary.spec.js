@@ -193,6 +193,7 @@ test('匯入設定時 12 條 audit 漏掉的 key 必須全部 round-trip', async
     // ytSubtitle 大物件
     ytSubtitle: {
       autoTranslate: false,
+      skipSimplifiedAutoTranslate: true,
       temperature: 0.5,
       systemPrompt: '客製字幕 prompt',
       windowSizeS: 60,
@@ -246,6 +247,7 @@ test('匯入設定時 12 條 audit 漏掉的 key 必須全部 round-trip', async
   // ytSubtitle
   expect(stored.ytSubtitle).toEqual({
     autoTranslate: false,
+    skipSimplifiedAutoTranslate: true,
     temperature: 0.5,
     systemPrompt: '客製字幕 prompt',
     windowSizeS: 60,

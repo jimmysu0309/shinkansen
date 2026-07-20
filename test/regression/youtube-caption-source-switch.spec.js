@@ -7,7 +7,7 @@
 //   - in-flight 舊軌批次完成後仍把 windowStartMs 標進 translatedWindows（同上誤跳過）
 //
 // 修法位置：shinkansen/content-youtube.js
-//   1. SK.YT 新欄位 captionSourceId(videoId|lang|kind)/ captionSourceGen
+//   1. SK.YT 新欄位 captionSourceId(videoId|lang|tlang|kind)/ captionSourceGen
 //   2. shinkansen-yt-captions listener 比對來源身份，變更即 _resetCaptionSourceBookkeeping
 //      (translatedWindows / translatingWindows / captionMap / pendingQueue / displayCues /
 //       translatedUpToMs / captionMapCoverageUpToMs 全清 + gen bump)
@@ -15,7 +15,7 @@
 //   4. chooser 'switch' 分支同步走 _resetCaptionSourceBookkeeping
 //   5. stop / SPA reset 清 captionLang + captionSourceId(3-10，新影片不可殘留前一支的 lang)
 //
-// 結構通則：鎖「來源身份（videoId+lang+kind）變更 → 簿記重置」行為，不依賴站點 class/id。
+// 結構通則：鎖「來源身份（videoId+lang+tlang+kind）變更 → 簿記重置」行為，不依賴站點 class/id。
 // 同軌 re-fetch（seek / CC toggle 重抓，身份相同）不得重置——case 2 反向保護。
 //
 // 訊號層界定：本 spec 驗 isolated world 內的 state 轉移與完整 translateWindowFrom 路徑
@@ -229,29 +229,36 @@ test.describe('youtube-caption-source-switch', () => {
     await page.close();
   });
 
-  test('case 4(3-10): stopYouTubeTranslation 應清 captionLang + captionSourceId', async ({ context, localServer }) => {
+  test('case 4(3-10): stopYouTubeTranslation 應清 captionLang / captionTlang / captionSourceId', async ({ context, localServer }) => {
     const { page, evaluate } = await setupPage(context, localServer);
 
     await evaluate(dispatchCaptions('en', JSON3_EN));
     await page.waitForTimeout(100);
     expect(await evaluate(`window.__SK.YT.captionLang`)).toBe('en');
+    await evaluate(`window.__SK.YT.captionTlang = 'zh-Hans'`);
 
     await evaluate(`window.__SK.stopYouTubeTranslation()`);
     const r = await evaluate(`
-      ({ captionLang: window.__SK.YT.captionLang, captionSourceId: window.__SK.YT.captionSourceId })
+      ({
+        captionLang: window.__SK.YT.captionLang,
+        captionTlang: window.__SK.YT.captionTlang,
+        captionSourceId: window.__SK.YT.captionSourceId
+      })
     `);
     expect(r.captionLang, 'stop 後 captionLang 應為 null').toBeNull();
+    expect(r.captionTlang, 'stop 後 captionTlang 應為 null').toBeNull();
     expect(r.captionSourceId, 'stop 後 captionSourceId 應為 null').toBeNull();
 
     await page.close();
   });
 
-  test('case 5(3-10): SPA reset 應清 captionLang + captionSourceId', async ({ context, localServer }) => {
+  test('case 5(3-10): SPA reset 應清 captionLang / captionTlang / captionSourceId', async ({ context, localServer }) => {
     const { page, evaluate } = await setupPage(context, localServer);
 
     await evaluate(dispatchCaptions('en', JSON3_EN));
     await page.waitForTimeout(100);
     expect(await evaluate(`window.__SK.YT.captionLang`)).toBe('en');
+    await evaluate(`window.__SK.YT.captionTlang = 'zh-Hans'`);
 
     // active=false + videoId 不同 → 不走 skip path，走 reset path
     await evaluate(`window.__SK.YT.videoId = 'otherVideo99'`);
@@ -259,9 +266,14 @@ test.describe('youtube-caption-source-switch', () => {
     await page.waitForTimeout(300);
 
     const r = await evaluate(`
-      ({ captionLang: window.__SK.YT.captionLang, captionSourceId: window.__SK.YT.captionSourceId })
+      ({
+        captionLang: window.__SK.YT.captionLang,
+        captionTlang: window.__SK.YT.captionTlang,
+        captionSourceId: window.__SK.YT.captionSourceId
+      })
     `);
     expect(r.captionLang, 'SPA reset 後 captionLang 應為 null').toBeNull();
+    expect(r.captionTlang, 'SPA reset 後 captionTlang 應為 null').toBeNull();
     expect(r.captionSourceId, 'SPA reset 後 captionSourceId 應為 null').toBeNull();
 
     await page.close();

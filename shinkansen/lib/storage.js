@@ -589,6 +589,10 @@ export const DEFAULT_SETTINGS = {
   // v1.2.11: YouTube 字幕翻譯設定
   ytSubtitle: {
     autoTranslate: true,         // 偵測到 YouTube 影片時自動翻譯字幕
+    // 只影響 source='auto' 的 YouTube 自動啟動 session。目標為 zh-TW 且字幕是
+    // zh-Hans / zh-CN / zh-SG（或 lang=zh 經內容判為簡中）時保留原生字幕；
+    // popup 手動啟動仍可簡轉繁。預設 false 維持既有使用者行為。
+    skipSimplifiedAutoTranslate: false,
     temperature:   1,             // 字幕翻譯 temperature 預設值
     systemPrompt:  DEFAULT_SUBTITLE_SYSTEM_PROMPT,
     windowSizeS:   30,           // 每批翻譯涵蓋的秒數（預設 30 秒）
