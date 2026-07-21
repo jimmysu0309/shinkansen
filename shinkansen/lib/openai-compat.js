@@ -236,7 +236,12 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
       { role: 'system', content: effectiveSystem },
       { role: 'user', content: joined },
     ],
-    temperature: typeof temperature === 'number' ? temperature : 0.7,
+    // issue #60:null = 使用者明確留空 → 不送 temperature(GPT-5 / o 系列等推理模型
+    // 不吃自訂值,官方建議不帶);undefined(舊資料無此鍵)維持 0.7 不變。
+    // 條件 spread 保持在 thinkingPayload 之前,extraBodyJson 仍可覆蓋(刻意設計)。
+    ...(temperature !== null
+      ? { temperature: typeof temperature === 'number' ? temperature : 0.7 }
+      : {}),
     stream: false,
     ...thinkingPayload,
   };

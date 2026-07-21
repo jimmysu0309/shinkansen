@@ -243,7 +243,8 @@ async function load() {
   refreshFirefoxShortcutWarn();
   $('cp-model').value = cp.model || '';
   $('cp-systemPrompt').value = cp.systemPrompt || '';
-  $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : 0.7;
+  // issue #60:null(明確留空 = 不送 temperature)→ 顯示空白;數字照舊
+  $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : '';
   $('cp-fetchTimeout').value = (typeof cp.fetchTimeoutSec === 'number') ? cp.fetchTimeoutSec : 15;
   $('cp-inputPerMTok').value = cp.inputPerMTok != null ? cp.inputPerMTok : '';
   $('cp-outputPerMTok').value = cp.outputPerMTok != null ? cp.outputPerMTok : '';
@@ -1163,7 +1164,13 @@ async function _saveImpl() {
       model: ($('cp-model').value || '').trim(),
       systemPrompt: $('cp-systemPrompt').value || '',
       // v1.8.20: temperature 改 parseUserNum 避免 0 被當 falsy；單價 0 是合法值改 parseUserNum 0
-      temperature: parseUserNum($('cp-temperature').value, DEFAULTS.customProvider?.temperature ?? 0.7),
+      // issue #60:空白 = 明確不送 temperature(存 null,同 cachedDiscount 的 sentinel 設計;
+      // GPT-5 / o 系列等推理模型建議留空)。有值仍走 parseUserNum(0 是合法值)。
+      temperature: (() => {
+        const raw = ($('cp-temperature').value || '').trim();
+        if (raw === '') return null;
+        return parseUserNum(raw, DEFAULTS.customProvider?.temperature ?? 0.7);
+      })(),
       fetchTimeoutSec: parseUserNum($('cp-fetchTimeout').value, DEFAULTS.customProvider?.fetchTimeoutSec ?? 15),
       // 單價空欄 fallback 0 是刻意 sentinel（空 = 無計價，費用顯示 $0），不引 DEFAULTS 的
       // OpenRouter 校準單價——清空欄位不該悄悄用別人的價格估費
@@ -1980,7 +1987,9 @@ function sanitizeImport(raw) {
     if (typeof cp.baseUrl === 'string') cpClean.baseUrl = cp.baseUrl.trim();
     if (typeof cp.model === 'string') cpClean.model = cp.model.trim();
     if (typeof cp.systemPrompt === 'string') cpClean.systemPrompt = cp.systemPrompt;
-    if (typeof cp.temperature === 'number' && cp.temperature >= 0 && cp.temperature <= 2) {
+    // issue #60:null = 留空(不送 temperature),匯出的留空設定要能 round-trip
+    if (cp.temperature === null) cpClean.temperature = null;
+    else if (typeof cp.temperature === 'number' && cp.temperature >= 0 && cp.temperature <= 2) {
       cpClean.temperature = cp.temperature;
     }
     if (typeof cp.fetchTimeoutSec === 'number' && cp.fetchTimeoutSec >= 5 && cp.fetchTimeoutSec <= 600) cpClean.fetchTimeoutSec = cp.fetchTimeoutSec;
