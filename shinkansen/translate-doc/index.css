@@ -2,6 +2,9 @@
  * 視覺基調對齊 options.css / popup.css（深灰白底、Apple 藍主色 #0071e3） */
 
 :root {
+  /* issue #57 同根因:純淺色頁 + 寫死白底,不宣告 color-scheme 時 macOS 深色模式
+     下 WebKit 給表單控制項套近白文字 → 白字白底。同 options.css / popup.css。 */
+  color-scheme: light;
   --bg: #ffffff;
   --bg-soft: #f7f7f8;
   --bg-zone: #fbfbfc;
