@@ -47,9 +47,9 @@ async function callOnce(system) {
     systemInstruction: { parts: [{ text: system }] },
     generationConfig: { temperature: 1.0, maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: 'minimal' } },
   };
-  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`, {
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY },
     body: JSON.stringify(body),
   });
   const json = await resp.json();
