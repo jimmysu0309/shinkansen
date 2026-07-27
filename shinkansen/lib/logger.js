@@ -39,6 +39,16 @@ const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'translate']);
 const PERSIST_KEY = 'yt_debug_log';
 const PERSIST_MAX = 100;
 
+// ─── 異常事件 ring（2026-07-27）──────────────────────────────
+// 帶 data._anomaly 標記的 log 另存低流量 ring。動機：一般 persisted ring 100 筆
+// 被 translate / api 高頻 log 快速擠掉（一次整頁翻譯 ~40 筆），使用者回報「翻好
+// 的字被覆蓋」等偶發異常時，隔幾小時再查 GET_PERSISTED_LOGS 已無痕跡
+//（scotto.me 排查實例）。異常 ring 只收顯式標記的低頻事件，可保留數天等級的
+// 回查窗口。上限 30 筆夠用——這類事件一天通常個位數
+const ANOMALY_KEY = 'anomaly_log';
+const ANOMALY_MAX = 30;
+let _pendingAnomaly = [];
+
 // v1.8.20: 序列化寫入避免平行 read-modify-write race(promise chain 排隊)。
 // 2026-07-08: 加 debounce 批次 flush——翻譯熱路徑每批產多筆 translate/api
 // log，原本每筆都是「get 整包 100 筆陣列 → push → set 整包寫回」，一分鐘內上百次
@@ -52,9 +62,11 @@ const PERSIST_FLUSH_MS = 300;
 
 function flushPersistLogs() {
   _persistFlushTimer = null;
-  if (_pendingPersist.length === 0) return;
+  if (_pendingPersist.length === 0 && _pendingAnomaly.length === 0) return;
   const batch = _pendingPersist;
   _pendingPersist = [];
+  const anomalyBatch = _pendingAnomaly;
+  _pendingAnomaly = [];
   _persistQueue = _persistQueue.then(async () => {
     try {
       const result = await browser.storage.local.get(PERSIST_KEY);
@@ -63,10 +75,28 @@ function flushPersistLogs() {
       if (logs.length > PERSIST_MAX) logs.splice(0, logs.length - PERSIST_MAX);
       await browser.storage.local.set({ [PERSIST_KEY]: logs });
     } catch (_) { /* 寫入失敗不影響記憶體 buffer 也不卡 queue */ }
+    if (anomalyBatch.length === 0) return;
+    try {
+      const result = await browser.storage.local.get(ANOMALY_KEY);
+      const logs = result[ANOMALY_KEY] || [];
+      logs.push(...anomalyBatch);
+      if (logs.length > ANOMALY_MAX) logs.splice(0, logs.length - ANOMALY_MAX);
+      await browser.storage.local.set({ [ANOMALY_KEY]: logs });
+    } catch (_) { /* 同上 */ }
   });
 }
 
 function persistLog(entry) {
+  // 異常 ring 分流：顯式標記優先於分類過濾（異常事件不受 PERSIST_CATEGORIES 限制）
+  if (entry.data && entry.data._anomaly === true) {
+    _pendingAnomaly.push(entry);
+    if (_pendingAnomaly.length > ANOMALY_MAX) {
+      _pendingAnomaly.splice(0, _pendingAnomaly.length - ANOMALY_MAX);
+    }
+    if (!_persistFlushTimer) {
+      _persistFlushTimer = setTimeout(flushPersistLogs, PERSIST_FLUSH_MS);
+    }
+  }
   if (!PERSIST_CATEGORIES.has(entry.category)) return;
   _pendingPersist.push(entry);
   if (_pendingPersist.length > PERSIST_MAX) {
@@ -87,13 +117,24 @@ export async function getPersistedLogs() {
   return result[PERSIST_KEY] || [];
 }
 
-/** 清除持久化 log storage。 */
+/** 取得異常事件 ring（帶 data._anomaly 標記的低頻事件，見 ANOMALY_KEY 註解）。 */
+export async function getAnomalyLogs() {
+  if (_persistFlushTimer) { clearTimeout(_persistFlushTimer); }
+  flushPersistLogs();
+  await _persistQueue;
+  const result = await browser.storage.local.get(ANOMALY_KEY);
+  return result[ANOMALY_KEY] || [];
+}
+
+/** 清除持久化 log storage（含異常 ring）。 */
 export async function clearPersistedLogs() {
   // pending 批次一併丟棄——否則清除後 300ms flush 會把剛清掉的 log 寫回 storage
   _pendingPersist = [];
+  _pendingAnomaly = [];
   if (_persistFlushTimer) { clearTimeout(_persistFlushTimer); _persistFlushTimer = null; }
   await _persistQueue;
   await browser.storage.local.remove(PERSIST_KEY);
+  await browser.storage.local.remove(ANOMALY_KEY);
 }
 
 /**

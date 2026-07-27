@@ -34,7 +34,10 @@ test('匯入設定時 fixedGlossary.global 與 byDomain 都要保留', async ({ 
 
   const page = await context.newPage();
   // 接住 importOk / importPartial 的 alert
-  page.on('dialog', d => d.accept());
+  // accept 加 catch：匯入成功 alert 與測試收尾 page close 有 race，dialog 在關閉
+  // 瞬間已失效時 accept() reject（'Target page ... has been closed'），未接住會把
+  // 綠測試標成 fail（2026-07-27 兩輪 full gate 各炸本檔不同 case，錯誤簽名相同）
+  page.on('dialog', d => d.accept().catch(() => {}));
 
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#import-input', { state: 'attached' });
@@ -102,7 +105,10 @@ test('匯入 fixedGlossary 時髒資料（非字串 / 空 entry / 空陣列 doma
   });
 
   const page = await context.newPage();
-  page.on('dialog', d => d.accept());
+  // accept 加 catch：匯入成功 alert 與測試收尾 page close 有 race，dialog 在關閉
+  // 瞬間已失效時 accept() reject（'Target page ... has been closed'），未接住會把
+  // 綠測試標成 fail（2026-07-27 兩輪 full gate 各炸本檔不同 case，錯誤簽名相同）
+  page.on('dialog', d => d.accept().catch(() => {}));
 
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#import-input', { state: 'attached' });
@@ -168,7 +174,10 @@ test('匯入設定時 12 條 audit 漏掉的 key 必須全部 round-trip', async
   });
 
   const page = await context.newPage();
-  page.on('dialog', d => d.accept());
+  // accept 加 catch：匯入成功 alert 與測試收尾 page close 有 race，dialog 在關閉
+  // 瞬間已失效時 accept() reject（'Target page ... has been closed'），未接住會把
+  // 綠測試標成 fail（2026-07-27 兩輪 full gate 各炸本檔不同 case，錯誤簽名相同）
+  page.on('dialog', d => d.accept().catch(() => {}));
 
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#import-input', { state: 'attached' });
@@ -279,7 +288,10 @@ test('匯入設定時 customProvider 進階欄位與 glossary.model 必須 round
   });
 
   const page = await context.newPage();
-  page.on('dialog', d => d.accept());
+  // accept 加 catch：匯入成功 alert 與測試收尾 page close 有 race，dialog 在關閉
+  // 瞬間已失效時 accept() reject（'Target page ... has been closed'），未接住會把
+  // 綠測試標成 fail（2026-07-27 兩輪 full gate 各炸本檔不同 case，錯誤簽名相同）
+  page.on('dialog', d => d.accept().catch(() => {}));
 
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#import-input', { state: 'attached' });
@@ -331,7 +343,10 @@ test('匯入設定時非法 customProvider.thinkingLevel 會被過濾', async ({
   });
 
   const page = await context.newPage();
-  page.on('dialog', d => d.accept());
+  // accept 加 catch：匯入成功 alert 與測試收尾 page close 有 race，dialog 在關閉
+  // 瞬間已失效時 accept() reject（'Target page ... has been closed'），未接住會把
+  // 綠測試標成 fail（2026-07-27 兩輪 full gate 各炸本檔不同 case，錯誤簽名相同）
+  page.on('dialog', d => d.accept().catch(() => {}));
 
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#import-input', { state: 'attached' });

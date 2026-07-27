@@ -7,7 +7,7 @@ import { translateBatch, extractGlossary, extractTermRenderings, translateBatchS
 import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettings, getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt, LANG_LABELS } from './lib/storage.js';
-import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
+import { debugLog, getLogs, clearLogs, getPersistedLogs, getAnomalyLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
@@ -1091,7 +1091,10 @@ const messageHandlers = {
     async: true,
     handler: async () => {
       const logs = await getPersistedLogs();
-      return { logs, count: logs.length };
+      // anomalies：低流量異常 ring（stream 重翻覆蓋等偶發事件），不被日常
+      // translate / api log 擠掉，供事後排查（2026-07-27 scotto.me 排查缺口）
+      const anomalies = await getAnomalyLogs();
+      return { logs, count: logs.length, anomalies };
     },
   },
   CLEAR_PERSISTED_LOGS: {

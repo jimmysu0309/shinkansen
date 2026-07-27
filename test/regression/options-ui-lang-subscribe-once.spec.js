@@ -26,7 +26,8 @@ test('UI 語系變動訂閱只註冊一次,即使 load() 被多次呼叫', async
   });
 
   const page = await context.newPage();
-  page.on('dialog', d => d.accept());
+  // accept 加 catch：dialog 與 page close race 防護（同 options-import-fixed-glossary）
+  page.on('dialog', d => d.accept().catch(() => {}));
 
   // 在頁面任何 script 跑之前,包住 onChanged 的 add / remove 以計淨 listener 數
   await page.addInitScript(() => {

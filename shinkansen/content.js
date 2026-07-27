@@ -876,7 +876,11 @@
           // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming（整批 resolve 後一次 split)。
           // segment 0 可能已被 streaming 注入合併譯文（A 已 sanitize),retry 會用乾淨版本覆蓋。
           if (message.payload.hadMismatch) {
-            SK.sendLog('warn', 'translate', `batch 1/${jobs.length} stream DONE with hadMismatch, triggering retry`, { elapsed, totalSegments: message.payload.totalSegments });
+            // _anomaly：進低流量異常 ring（lib/logger.js），供「翻好的字被另一版
+            // 中文覆蓋」類回報事後排查（2026-07-27 scotto.me 排查缺口——一般
+            // persisted ring 100 筆數小時內被日常 log 擠光）。injectedSoFar =
+            // 已串流上屏、即將被 non-streaming 重翻覆蓋的段數
+            SK.sendLog('warn', 'translate', `batch 1/${jobs.length} stream DONE with hadMismatch, triggering retry`, { elapsed, totalSegments: message.payload.totalSegments, injectedSoFar: batch0StreamDone, _anomaly: true });
             _clearIdleWatchdog();
             browser.runtime.onMessage.removeListener(onMessage);
             firstChunkResolve(true);
@@ -975,9 +979,11 @@
             // streaming 中途失敗 — fallback 對 batch 0 重送 non-streaming。
             // 先扣回 streaming 已計入的 done(runBatch 會對整批重新累計)，否則
             // done 重複累計讓進度顯示超過 total
+            const injectedSoFar = batch0StreamDone;
             done -= batch0StreamDone;
             batch0StreamDone = 0;
-            SK.sendLog('warn', 'translate', 'streaming mid-failure, retrying batch 0 non-streaming', { error: streamErr.message });
+            // _anomaly + injectedSoFar：同 hadMismatch 路徑——重翻會覆蓋已上屏譯文
+            SK.sendLog('warn', 'translate', 'streaming mid-failure, retrying batch 0 non-streaming', { error: streamErr.message, injectedSoFar, _anomaly: true });
             await runBatch(jobs[0]);
           }
           await parallelP;
@@ -987,7 +993,7 @@
           // → 中斷 streaming,fallback 走 v1.7.x 序列 batch 0 + 並行 batch 1+
           stream.cleanup();
           if (r.kind === 'timeout') {
-            SK.sendLog('warn', 'translate', 'streaming first_chunk timeout, falling back to non-streaming', { streamId: stream.streamId });
+            SK.sendLog('warn', 'translate', 'streaming first_chunk timeout, falling back to non-streaming', { streamId: stream.streamId, _anomaly: true });
             SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
           }
           batch0NeedsFallback = true;

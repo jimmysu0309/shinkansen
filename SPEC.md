@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.67
+- 目前 Extension 版本：2.0.68
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.67 為止）
+### 2.1 已實作（v2.0.68 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -811,6 +811,7 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 
 - **記憶體 buffer**：最近 1000 筆環形，Service Worker 重啟即丟失。設定頁「Debug」分頁可瀏覽（分類 / 等級篩選、搜尋、匯出 JSON）
 - **持久化 buffer**（`yt_debug_log`）：`chrome.storage.local` key，最近 100 筆環形，**跨 Service Worker 重啟仍在**。只持久化 `youtube` / `api` / `translate` 三類（v1.8.56 起加入 translate，讓翻譯主流程的 main flow start / batch start / batch done / stream firstChunkOrTimeout 等訊號跨 SW 重啟可查），其他類別（`cache` / `spa` / `system` / `glossary`）只在記憶體 buffer
+- **異常事件 ring**（`anomaly_log`）：`chrome.storage.local` key，最近 30 筆環形。log `data` 帶 `_anomaly: true` 標記的低頻異常事件另存此 ring，不受 100 筆主 ring 被日常 translate / api log 快速擠掉影響（一次整頁翻譯 ~40 筆，偶發事件數小時後即無痕跡），保留數天等級的回查窗口。目前標記的事件：串流 batch 0 的 hadMismatch 重翻（含 `injectedSoFar` = 已上屏即將被覆蓋段數——「翻好的字被另一版中文覆蓋」症狀的直接訊號）、串流 mid-failure 重翻（同帶 `injectedSoFar`）、first_chunk timeout fallback。`GET_PERSISTED_LOGS` 回應含 `anomalies` 欄位一併回傳；`CLEAR_PERSISTED_LOGS` 兩個 ring 一起清
 - **「Debug」分頁載入**（v1.8.56 起）：分頁啟動時先呼叫 `GET_PERSISTED_LOGS` 載入持久化那段（SW 重啟前的紀錄），再開始 polling 記憶體 buffer。dedup 用 `timestamp + category + message` 三元 key（SW 重啟後 logSeq 重置會撞號，純 seq 去重會漏）
 - **「清除」按鈕**（v1.8.56 起）：同時送 `CLEAR_LOGS` + `CLEAR_PERSISTED_LOGS`，兩層 buffer 都清。原本只清記憶體，persisted 還在 storage.local，下次 SW 重啟分頁載入時舊 log 又冒出來
 - **DevTools Console**：設定頁可選啟用同步輸出
