@@ -39,8 +39,11 @@ function sleep(ms) {
  * 與 lib/gemini.js 的 fetchWithRetry 邏輯對齊（除了 quota dimension 提取，
  * OpenAI-compatible provider 的 429 body 結構不一致，這裡只做純退避）。
  */
-// 主翻譯 fetch 層級 timeout 預設值。使用者可透過 customProvider.fetchTimeoutSec 覆蓋
-const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+// 主翻譯 fetch 層級 timeout 預設值。使用者可透過 customProvider.fetchTimeoutSec 覆蓋。
+// 2026-07-27 從 15s 調成 90s：OpenRouter 上的 reasoning 模型（GPT / Claude 旗艦）
+// 非 streaming 要等整批生成完才回 body，15s 對一批 20 段幾乎必逾時（Jimmy 實測
+// ~openai/gpt-latest 網頁翻譯每批三連 body read timeout）
+const DEFAULT_FETCH_TIMEOUT_MS = 90_000;
 
 async function fetchWithRetry(url, headers, body, { maxRetries = 3, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS } = {}) {
   let attempt = 0;

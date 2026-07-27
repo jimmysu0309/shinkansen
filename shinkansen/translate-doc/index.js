@@ -102,6 +102,10 @@ let epubScanIgnoredDrift = new Set(); // term 字串
 let epubBookHash = null;
 // EPUB 本書獨立禁用詞（2026-07-10）：與 options 共通清單合併注入，隨 session 持久化
 let currentBookForbidden = [];
+// 本文件額外翻譯指令（2026-07-27）：per-document 補充 prompt，附加在
+// translateDoc.systemPrompt 之後送 LLM（background 端組裝）。PDF 只存在記憶體
+//（換檔即清）；EPUB 隨工作階段持久化並進「匯出工作階段」JSON
+let currentDocExtraPrompt = '';
 // EPUB 預覽狀態：原文對照 toggle + 目前預覽範圍（章節物件或 'all'）
 let epubPreviewCompare = false;
 let epubPreviewScope = null;
@@ -179,6 +183,7 @@ function releaseCurrentDoc() {
   epubCumulativeCostUSD = 0;
   epubBookHash = null;
   currentBookForbidden = [];
+  currentDocExtraPrompt = '';
   epubPreviewScope = null;
   epubScanGen++; // 取消 in-flight 一致性掃描
   epubScanState = null;
@@ -1357,6 +1362,9 @@ async function openSettingsDialog() {
   }
   // 每批段數（2026-07-10）：載入現值
   $('settings-doc-batch-size').value = String(await resolveDocBatchSize());
+  // 本文件額外翻譯指令（2026-07-27）：per-document state 載入現值
+  const extraPromptEl = $('settings-doc-extra-prompt');
+  if (extraPromptEl) extraPromptEl.value = currentDocExtraPrompt;
   // 段落間距 + 一致性掃描 toggle（EPUB 專屬，PDF 隱藏）
   const spacingSection = $('settings-epub-paragraph-spacing')?.closest('.settings-section');
   if (spacingSection) spacingSection.hidden = currentDoc?.kind !== 'epub';
@@ -1401,6 +1409,16 @@ function bindSettingsDialogUI() {
       if (fixCb) merged.epubAutoFixSpacing = fixCb.checked === true;
       await chrome.storage.sync.set({ translateDoc: merged });
     } catch (_) { /* ignore */ }
+    // 本文件額外翻譯指令（2026-07-27）：per-document state，不進 chrome.storage
+    //（換文件不該帶著走）；EPUB 隨工作階段落地，匯出工作階段也帶
+    const extraPromptEl = $('settings-doc-extra-prompt');
+    if (extraPromptEl) {
+      const next = extraPromptEl.value.trim();
+      if (next !== currentDocExtraPrompt) {
+        currentDocExtraPrompt = next;
+        if (currentDoc?.kind === 'epub') scheduleEpubSessionSave();
+      }
+    }
     // v1.9.6: 改 preset 後清掉「Google MT 不支援」banner（讓使用者切到 Gemini / 自訂後不留殘影）
     clearResultError();
     // 換 preset / 模型後每章預估費用要跟著重算（2026-07-10 Jimmy 回報）
@@ -1644,6 +1662,7 @@ async function openReader() {
       modelOverride: currentModelOverride,
       engine: currentEngine,
       glossary: injectableArticleGlossary(),
+      extraPrompt: currentDocExtraPrompt || null,
     },
   );
   // await 期間使用者換檔 / 重新上傳(releaseCurrentDoc bump gen)→ 這輪作廢：
@@ -2259,6 +2278,7 @@ async function startTranslate() {
       signal: translateAbortController.signal,
       onProgress: setProgress,
       batchSize: await resolveDocBatchSize(),
+      extraPrompt: currentDocExtraPrompt || null,
     });
   } catch (err) {
     console.error('[Shinkansen] translateDocument 失敗', err);
@@ -2934,6 +2954,7 @@ async function handleEpubFile(file) {
         currentArticleGlossary = session.glossary;
       }
       if (Array.isArray(session.forbidden)) currentBookForbidden = session.forbidden;
+      if (typeof session.extraPrompt === 'string') currentDocExtraPrompt = session.extraPrompt;
       if (Number.isFinite(session.costUSD)) epubCumulativeCostUSD = session.costUSD;
       if (Array.isArray(session.scanIgnored)) epubScanIgnored = hydrateScanIgnored(session.scanIgnored);
       if (Array.isArray(session.scanIgnoredDrift)) epubScanIgnoredDrift = new Set(session.scanIgnoredDrift.filter((x) => typeof x === 'string'));
@@ -3190,6 +3211,7 @@ async function startEpubTranslate() {
       // _b hash 由合併後清單計算 → 書級清單變更快取自動失效
       extraForbiddenTerms: currentBookForbidden.length > 0 ? currentBookForbidden : null,
       batchSize: await resolveDocBatchSize(),
+      extraPrompt: currentDocExtraPrompt || null,
     });
   } catch (err) {
     console.error('[Shinkansen] translateDocument(epub) 失敗', err);
@@ -4640,6 +4662,8 @@ async function persistEpubSession() {
     title: currentDoc.meta.title || '',
     glossary: Array.isArray(currentArticleGlossary) ? currentArticleGlossary : null,
     forbidden: currentBookForbidden,
+    // 本文件額外翻譯指令（2026-07-27）：翻譯設定的一部分，隨 session 持久化
+    extraPrompt: currentDocExtraPrompt || '',
     // 本書累計翻譯費用也是進度的一部分（2026-07-10 Jimmy 確認）
     costUSD: epubCumulativeCostUSD,
     // 一致性掃描的略過清單（2026-07-10）：人工 review 決策也是工作成果
@@ -4725,6 +4749,9 @@ function exportEpubSession() {
     exportedAt: new Date().toISOString(),
     glossary: Array.isArray(currentArticleGlossary) ? currentArticleGlossary : null,
     forbidden: currentBookForbidden,
+    // 本文件額外翻譯指令（2026-07-27）：翻譯設定隨匯出工作階段帶走；
+    // 舊版匯入忽略未知欄位，向下相容
+    extraPrompt: currentDocExtraPrompt || '',
     costUSD: epubCumulativeCostUSD,
     scanIgnored: [...epubScanIgnored.values()],
     scanIgnoredDrift: [...epubScanIgnoredDrift],
@@ -4769,6 +4796,7 @@ async function importEpubSession(file) {
     const restored = hydrateSessionBlocks(currentDoc, data.blocks);
     if (Array.isArray(data.glossary)) currentArticleGlossary = data.glossary;
     if (Array.isArray(data.forbidden)) currentBookForbidden = data.forbidden;
+    if (typeof data.extraPrompt === 'string') currentDocExtraPrompt = data.extraPrompt;
     if (Number.isFinite(data.costUSD)) epubCumulativeCostUSD = data.costUSD;
     epubScanIgnored = hydrateScanIgnored(Array.isArray(data.scanIgnored) ? data.scanIgnored : []);
     epubScanIgnoredDrift = new Set((Array.isArray(data.scanIgnoredDrift) ? data.scanIgnoredDrift : []).filter((x) => typeof x === 'string'));

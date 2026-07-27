@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.66
+- 目前 Extension 版本：2.0.67
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.66 為止）
+### 2.1 已實作（v2.0.67 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -183,7 +183,7 @@ v1.5.7 新增。除了 Gemini 與 Google Translate 兩條既有引擎，使用�
 
 **systemPrompt 行為**：使用者可在「自訂 Provider」分頁填獨立 `systemPrompt`，作為 `buildEffectiveSystemInstruction` 的 base（不繼承 Gemini 分頁的 `geminiConfig.systemInstruction`）。但 `fixedGlossary` 與 `forbiddenTerms` 仍由共用注入機制處理，自訂 Provider 自動享有兩者 — 改一處（術語表 / 禁用詞清單分頁）兩邊同步生效。
 
-**API 逾時 `fetchTimeoutSec`（預設 15）**：每次 API 請求等待回應的最長秒數。本機 LLM（Ollama 等）冷啟動從硬碟載入模型到 VRAM 可能需要 120–300 秒，使用者可在「自訂模型」分頁自行調高。`lib/openai-compat.js` 的 `fetchWithRetry` 讀取此值乘以 1000 作為 `AbortController` timeout（ms）。範圍 5–600 秒。
+**API 逾時 `fetchTimeoutSec`（預設 90）**：每次 API 請求等待回應的最長秒數。預設 90 秒是為 reasoning 模型（GPT / Claude 旗艦等，非 streaming 要等整批生成完才回應）留的空間；本機 LLM（Ollama 等）冷啟動從硬碟載入模型到 VRAM 可能需要 120–300 秒，使用者可在「自訂模型」分頁自行調高。`lib/openai-compat.js` 的 `fetchWithRetry` 讀取此值乘以 1000 作為 `AbortController` timeout（ms）。範圍 5–600 秒。
 
 **429 處理**：`fetchWithRetry` 的退避重試（OpenRouter 等 provider 端自行管理配額）。
 
@@ -675,7 +675,7 @@ shinkansen/
     "inputPerMTok": 0.75,
     "outputPerMTok": 4.5,
     "thinkingLevel": "off",
-    "fetchTimeoutSec": 15
+    "fetchTimeoutSec": 90
   }
 }
 ```
@@ -715,8 +715,9 @@ shinkansen/
 - **`_m<baseUrlHash6>_<safeModel>`**（v1.5.7，自訂 Provider 路徑）：baseUrl SHA-1 前 6 字元 + safe model — 避免不同 provider（OpenRouter vs Together vs 自架 Ollama）的同 model name 共用快取
 - **`_lang<targetLang>`**（v1.8.59 新增）：非 zh-TW target 加此 suffix（如 `_langzhcn` / `_langen`），避免不同目標語言撞 cache。zh-TW target **不加**此 suffix，向下相容 v1.8.58 之前的 cache（既有 zh-TW 使用者升級 cache 仍 hit）
 - **`_t<n.nn>`**（W7 起，文件翻譯路徑 `_doc` / `_oc_doc` 限定）：文件翻譯獨立 temperature 以 `toFixed(2)` 納入 key，改設定後立即生效不吃舊 temp 快取。網頁／字幕路徑不加（避免 cache 多分裂）
+- **`_x<hash>`**（文件翻譯路徑 `_doc` / `_oc_doc` 限定）：「本文件額外翻譯指令」（`payload.extraPrompt`，trim 後非空時）的前 12 字元 SHA-1。改指令後既有快取自動失效；清空回沒有額外指令的原 key，舊快取直接可用
 
-完整可能形式範例：`tc_<sha1>_g<g>_b<b>_m<m>_lang<x>_t<t>`，部分後綴可省略。
+完整可能形式範例：`tc_<sha1>_g<g>_b<b>_m<m>_lang<x>_t<t>_x<x>`，部分後綴可省略。
 
 **Glossary cache（`gloss_` prefix）同款區隔**：v1.8.59 起 `cache.getGlossary(inputHash, suffix)` / `setGlossary(inputHash, glossary, suffix)` 接 suffix 參數，background.js 的 `handleExtractGlossary*` 兩條入口傳 `_lang<x>`（非 zh-TW target）。
 
@@ -1142,7 +1143,7 @@ File → ArrayBuffer
 - 每批回應依索引 map 回對應 block 的 `translation` 欄位
 - 失敗段落 `translation = null` + `translationStatus = 'failed'` + 記錄錯誤訊息
 - 整批請求失敗（v2.0.53 起）：依 `response.errorCode` 分流——**可對切碼**（`timeout` / `readTimeout` / `blocked` / `empty*` / `customEmptyContent`，縮小批次有機會通過的類型）遞迴切半重送（長度 1 自然收斂），把觸發段隔離、救回其餘段；**不可對切碼**（`network` / `apiKeyMissing` 等縮批無效的）與無錯誤碼者維持整批標 failed、不追加請求。語言驗證失敗維持單次重試上限（v2.0.52 決策），不對切
-- 批次 fetch 逾時（v2.0.53 起）：文件翻譯路徑 120 秒（`background.js` `DOC_FETCH_TIMEOUT_MS`，經 `geminiConfig.fetchTimeoutMs` / 自訂 Provider `fetchTimeoutSec` 覆蓋，後者尊重使用者設定的更大值）、逾時重試 1 次（`timeoutRetries`，交對切縮批處理）；網頁翻譯維持 15 秒預設不變
+- 批次 fetch 逾時（v2.0.53 起）：文件翻譯路徑 120 秒（`background.js` `DOC_FETCH_TIMEOUT_MS`，經 `geminiConfig.fetchTimeoutMs` / 自訂 Provider `fetchTimeoutSec` 覆蓋，後者尊重使用者設定的更大值）、逾時重試 1 次（`timeoutRetries`，交對切縮批處理）；網頁翻譯走 `fetchTimeoutSec` 預設（90 秒）
 - 譯文接收後處理（v2.0.53 起，`repairDocLlmArtifacts` + `alignTrailingPeriodWithSource`，批次寫回 / 單段重試 / session 載入三接收點共用）：畸形佔位符修復（`⟦/2»` → `⟦/2⟧`）→ 段尾批次分隔符殘片清理 → 標記周邊與 CJK 內文 ASCII 空格收斂（全形空格 / 中英空格 / 換行不動）→ 雙重書名號收斂（`collapseDoubledTitleMarks`，「《《雷霆谷》》」→「《雷霆谷》」——術語表 target 已含《》時模型偶發外包一層；只收「開閉都緊鄰重複」的完整雙包，巢狀書名「《《紅樓夢》研究》」不命中）→ 句尾句號對齊原文（原文句尾無終止標點時刪掉譯文自補的「。」，只刪不加、手動編輯不碰）。快取命中也走同一條，舊壞快取自動治癒
 
 #### 17.5.2 引擎選擇
@@ -1366,8 +1367,8 @@ File → fflate.unzipSync（lib/vendor/fflate/，MIT）
 - **譯文空格自動校正**（開啟章節 / 全書預覽與下載譯本 EPUB 時自動執行，僅 target 為中文時；翻譯設定 modal 有「譯文空格自動校正」toggle，`translateDoc.epubAutoFixSpacing`，預設開啟＝缺值視為開）：規則在 `epub-scan.js` `addCjkLatinSpacing`（與掃描替換共用同組 CJK / 拉丁邊界字元集合），皆冪等：1) **補**——CJK↔拉丁直接相鄰缺漏的空格（LLM 輸出偶發漏掉，如「批評F1是無謂」→「批評 F1 是無謂」）；2) **移**——全形標點符號與中英文之間的多餘 `[ \t]`（「F1 ，」→「F1，」；標點集合取 U+3001-303F ＋全形 ASCII 標點，刻意不含 U+3000 全形空格與 `…` `—`——後兩者在內嵌英文句也合法使用）。跨 text node 相鄰靠 prevChar context 在後節點前緣補 / 移；空格落在前節點尾端的移除案例搆不到（不跨節點改字）。CJK↔全形標點側與譯文接收鏈 `collapseCjkAsciiSpaces` 部分重疊——接收鏈只治新譯文，本規則是預覽 / 下載時機對全書（含舊 session / editedHtml）補掃。作用範圍 = 全書已翻段落（`index.js` `autoFixCjkSpacing` 逐 block 離屏渲染），改動走 `editedHtml` 語意（同搜尋取代，下載 / session 存檔都吃得到）；預覽開啟時有修正在搜尋取代狀態列顯示「已補 N 處空格（M 段）」
 - 重勾已翻章節 → confirm 警告「以目前術語表與設定重翻並重新計費」，確認後**清掉該批段落的翻譯快取**（`clearEpubBlocksCache`，以 `epubSerializedText` 的 sha1 為 prefix 掃 suffix 變體）——重勾語意 = 真重翻，不吃 cache；正常續翻 / 中斷恢復不走這條，快取仍有效
 - 「本書累計費用」跨輪加總顯示，**含全書術語表抽取費用**（抽取回應的 `usage.billedCostUSD` 累進，快取命中為 0）；「下載譯本 EPUB」在任一章節完成後出現，未翻章節保留原文（部分譯本天然支援）
-- **工作階段存檔**（2026-07-10）：翻譯進度（done block 的譯文 / 手動編輯）+ 全書術語表 + 本書禁用詞 + 本書累計費用整包存 IndexedDB（`epub-session-db.js`，db `shinkansen-epub-sessions`，key = 書指紋）。重開同檔自動還原、還原章節預設不勾；**不受「清除翻譯記憶」影響**（工作成果與機器翻譯快取分離）。存檔時機：翻譯完成（showStage 前 await）、預覽編輯 / 搜尋取代（800ms debounce）、術語表 / 禁用詞儲存。還原（hydrate）時自癒（v2.0.53）：raw 過協定殘片修復 + 句尾句號對齊後，`translation` 依「editedHtml 優先」導出——有手動編輯的段落從 editedHtml 取純文字（不可從 raw 重算，否則已修正段落被機器原譯蓋回，掃描重複列違規）；無編輯的從修好的 raw 重新 strip
-- **工作階段匯出 / 匯入**（2026-07-10）：匯出成 `<原檔名>-session.json`（type `shinkansen-epub-session`，含書指紋 / 術語表 / 本書禁用詞 / 累計費用 / done blocks / `failures` 失敗診斷欄——failed block 的 blockId、章節、錯誤訊息、原文，僅供診斷，匯入端不 hydrate）；匯入以檔案內容整包取代目前進度，**書指紋不符直接拒絕**（blockId 由內容派生，跨書匯入只會得到垃圾對映）
+- **工作階段存檔**（2026-07-10）：翻譯進度（done block 的譯文 / 手動編輯）+ 全書術語表 + 本書禁用詞 + 本文件額外翻譯指令（`extraPrompt`）+ 本書累計費用整包存 IndexedDB（`epub-session-db.js`，db `shinkansen-epub-sessions`，key = 書指紋）。重開同檔自動還原、還原章節預設不勾；**不受「清除翻譯記憶」影響**（工作成果與機器翻譯快取分離）。存檔時機：翻譯完成（showStage 前 await）、預覽編輯 / 搜尋取代（800ms debounce）、術語表 / 禁用詞儲存。還原（hydrate）時自癒（v2.0.53）：raw 過協定殘片修復 + 句尾句號對齊後，`translation` 依「editedHtml 優先」導出——有手動編輯的段落從 editedHtml 取純文字（不可從 raw 重算，否則已修正段落被機器原譯蓋回，掃描重複列違規）；無編輯的從修好的 raw 重新 strip
+- **工作階段匯出 / 匯入**（2026-07-10）：匯出成 `<原檔名>-session.json`（type `shinkansen-epub-session`，含書指紋 / 術語表 / 本書禁用詞 / 本文件額外翻譯指令（`extraPrompt`，翻譯設定隨匯出帶走）/ 累計費用 / done blocks / `failures` 失敗診斷欄——failed block 的 blockId、章節、錯誤訊息、原文，僅供診斷，匯入端不 hydrate）；匯入以檔案內容整包取代目前進度，**書指紋不符直接拒絕**（blockId 由內容派生，跨書匯入只會得到垃圾對映）
 - **放棄本書翻譯**（主功能按鈕，紅字、confirm 後執行）：清掉這本書**全部** work in progress——翻譯進度（含手動編輯）、全書翻譯快取、累計費用、術語表、本書禁用詞、session 紀錄（含舊版 `bookgloss_` fallback key）、本書的 `gloss_` 抽取輪快取（含任何 target 後綴，前綴比對；否則重開同書「先建立術語表」逐輪秒回快取，看似沒清乾淨）——並**立即離開本頁回到選取檔案畫面**。想留備份先「匯出工作階段」，匯入即整包還原。取代翻譯設定 dialog 的「清除本篇翻譯記憶」（EPUB 時該區塊隱藏——其 plainText hash 算法對 EPUB 段落不正確）
 - 術語表按鈕動態標籤：沒建過 =「先建立全書術語表」、已有 =「編輯全書術語表」
 - **輸出格式**：來源是 EPUB 2 時下載旁顯示「輸出格式」select（原檔版本 / EPUB 3）；EPUB 3 來源不顯示（兩者等價）。升級動作見 §17.10.6
@@ -1409,6 +1410,7 @@ File → fflate.unzipSync（lib/vendor/fflate/，MIT）
 #### 17.10.8 翻譯設定（dialog）增補
 
 - **每批段數**（`settings.translateDoc.batchSize`，1-100，預設 50）：每次 AI 請求包含的段落數。translate-doc 端以此切批並隨 `payload.docBatchSize` 送 background，覆蓋該請求的 `maxUnitsPerBatch`（gemini / openai-compat 的 `packChunks` 以此切 API 請求）——「一批」= 一次 API 請求。只影響文件翻譯（PDF + EPUB），網頁 / 字幕不受影響；字元上限（`maxCharsPerBatch`）保護仍在，超長段落仍會被切小
+- **本文件額外翻譯指令**（per-document，PDF + EPUB 都顯示）：只套用在目前文件的補充 prompt。隨 `payload.extraPrompt` 送 background，`TRANSLATE_DOC_BATCH` / `TRANSLATE_DOC_BATCH_CUSTOM` 附加在 `translateDoc.systemPrompt`（effective doc prompt）之後、`DOC_INLINE_MARKER_INSTRUCTION` 之前（marker 協定永遠收尾）；trim 後非空時以 `_x<hash12>` 進 cache key（§9.1），改動後重翻自動重新呼叫 AI。**不進 chrome.storage**（換文件不帶著走）：PDF 只存記憶體（換檔即清）；EPUB 隨工作階段持久化（session `extraPrompt` 欄），並跟「匯出 / 匯入工作階段」JSON 一起帶走。單段 retry（PDF reader「重試失敗段落」）同樣帶此指令，與主翻譯同 cache key
 - **Google MT preset 禁選**：文件翻譯不支援 Google Translate，preset 列表照常顯示該 slot 但 radio disabled + 紅字標注（原本可選、按開始翻譯才撞 runtime banner）
 - **換 preset / 模型儲存後**：EPUB 章節清單的每章預估費用即時重算
 - **段落間距至少 0.5em**（`translateDoc.epubParagraphSpacing`，EPUB 才顯示，預設關）：對有譯文的章節 `<head>` 尾端注入 `p { margin-top: 0.5em !important }`。「最少」語意靠 CSS margin collapse——相鄰段落間距 = max(前段 margin-bottom, 0.5em)，原書段距 ≥0.5em 時排版不變、`margin:0` 傳統排版變 0.5em。已知邊角：罕見的 top-margin-only 排版會被壓到 0.5em。idempotent（每次 build 先移除舊注入）

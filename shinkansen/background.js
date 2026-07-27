@@ -375,6 +375,8 @@ function preferArticleGlossaryEntries(fixedGlossaryEntries, articleGlossary, ena
 //   + '_lang<tl>'（targetLanguage 非 zh-TW 時；zh-TW 不加維持向下相容）
 //   + '_t<temp>'（docTemperature 為有限數值時；只有文件翻譯路徑傳入，讓使用者改
 //     文件獨立 temperature 後立即生效，網頁／字幕路徑不加避免 cache 多分裂）
+//   + '_x<hash12>'（docExtraPrompt 非空時；只有文件翻譯路徑傳入——本文件額外翻譯
+//     指令改動後既有快取自動失效，清空回沒有額外指令的原 key，舊快取直接可用）
 async function buildCacheKeySuffix({
   cacheTag = '',
   glossary = null,
@@ -383,6 +385,7 @@ async function buildCacheKeySuffix({
   modelKeyPart = 'unknown',
   targetLanguage = '',
   docTemperature = undefined,
+  docExtraPrompt = '',
 }) {
   let suffix = cacheTag;
   const allGlossaryForHash = [
@@ -404,7 +407,17 @@ async function buildCacheKeySuffix({
   if (typeof docTemperature === 'number' && Number.isFinite(docTemperature)) {
     suffix += '_t' + docTemperature.toFixed(2);
   }
+  if (typeof docExtraPrompt === 'string' && docExtraPrompt.trim()) {
+    suffix += '_x' + (await cache.hashText(docExtraPrompt.trim())).slice(0, 12);
+  }
   return suffix;
+}
+
+// 本文件額外翻譯指令（2026-07-27）：translate-doc 隨 payload 送的 per-document
+// 補充 prompt。trim 後回空字串 = 沒有額外指令（prompt 組裝與 cache key 都不動）
+function docExtraPromptOf(payload) {
+  const p = payload?.extraPrompt;
+  return (typeof p === 'string') ? p.trim() : '';
 }
 
 // ─── Extension icon badge（已翻譯紅點提示） ─────────────────
@@ -796,7 +809,12 @@ const messageHandlers = {
       const td = s.translateDoc || {};
       // P1: 依 target 切 universal/zh-TW;使用者自訂(td.systemPrompt)不為空且非預設視為客製
       const userPrompt = getEffectiveDocSystemPrompt(s.targetLanguage, td.systemPrompt);
-      const effectivePrompt = userPrompt + DOC_INLINE_MARKER_INSTRUCTION;
+      // 本文件額外翻譯指令（2026-07-27）：附加在使用者 doc prompt 之後、marker 協定
+      // 之前（協定規則永遠收尾，不被 per-document 指令蓋掉）。cache key 走 _x hash
+      const extraPrompt = docExtraPromptOf(payload);
+      const effectivePrompt = userPrompt
+        + (extraPrompt ? '\n\n' + extraPrompt : '')
+        + DOC_INLINE_MARKER_INSTRUCTION;
       const overrides = { systemInstruction: effectivePrompt };
       // v2.0.53:文件批次逾時 120s——每批可達 50 段長文,輸出遠超網頁翻譯的 15s
       // 假設(日文書實例:850 段逾時失敗,abort 的請求 Google 端照樣計費)。
@@ -820,7 +838,11 @@ const messageHandlers = {
       const s = await getSettings();
       const td = s.translateDoc || {};
       const userPrompt = getEffectiveDocSystemPrompt(s.targetLanguage, td.systemPrompt);
-      const effectivePrompt = userPrompt + DOC_INLINE_MARKER_INSTRUCTION;
+      // 本文件額外翻譯指令：同 TRANSLATE_DOC_BATCH 的附加位置與 cache key 規則
+      const extraPrompt = docExtraPromptOf(payload);
+      const effectivePrompt = userPrompt
+        + (extraPrompt ? '\n\n' + extraPrompt : '')
+        + DOC_INLINE_MARKER_INSTRUCTION;
       const overrides = { systemPrompt: effectivePrompt };
       // v2.0.53:同 TRANSLATE_DOC_BATCH 的批次逾時放寬。openai-compat 走秒制
       // fetchTimeoutSec;使用者在自訂模型設定填了更大的值就尊重使用者
@@ -1667,6 +1689,8 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     targetLanguage: effectiveSettings.targetLanguage,
     // W7：只有文件翻譯路徑帶 temperature 進 key（改文件獨立 temperature 後立即生效）
     docTemperature: cacheTag === '_doc' ? effectiveSettings.geminiConfig?.temperature : undefined,
+    // 本文件額外翻譯指令（2026-07-27）：只有文件翻譯路徑帶進 key
+    docExtraPrompt: cacheTag === '_doc' ? docExtraPromptOf(payload) : '',
   });
 
   // 1. 先撈快取
@@ -1974,6 +1998,8 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
     modelKeyPart: `${baseUrlHash}_${safeModel}`,
     targetLanguage: settings.targetLanguage,
     docTemperature: cacheTag === '_oc_doc' ? cp.temperature : undefined,
+    // 本文件額外翻譯指令（2026-07-27）：只有文件翻譯路徑帶進 key
+    docExtraPrompt: cacheTag === '_oc_doc' ? docExtraPromptOf(payload) : '',
   });
 
   // 1. 撈快取

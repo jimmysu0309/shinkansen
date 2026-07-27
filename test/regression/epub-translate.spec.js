@@ -2686,3 +2686,63 @@ test('預覽對照 toggle 捲動錨定：切換前後停在同一段落的視覺
   expect(Math.abs((await topOf(probe.id)) - probe.top)).toBeLessThanOrEqual(4);
   await page.close();
 });
+
+// SANITY 紀錄（已驗證，2026-07-27）：
+//   ⑯ 本文件額外翻譯指令：index.js 翻譯設定儲存 handler 的
+//     `currentDocExtraPrompt = next` 註解掉 → payload.extraPrompt 斷言 fail
+//     （'' ≠ '語氣請古典一點'）→ 還原後 pass
+test('本文件額外翻譯指令：payload 全路徑 + session 持久化 + 匯出匯入帶著走', async ({ context, extensionId }) => {
+  const page = await openDocPage(context, extensionId);
+  page.on('dialog', (d) => d.accept());
+  await page.evaluate(() => chrome.storage.sync.set({ targetLanguage: 'zh-TW' }));
+  await uploadEpub(page);
+
+  // 翻譯設定 dialog 輸入額外指令（帶前後空白，驗 trim）→ 儲存
+  await page.click('#chapters-settings-btn');
+  await page.waitForSelector('#translate-settings-dialog[open]', { timeout: 10_000 });
+  expect(await page.locator('#settings-doc-extra-prompt').inputValue()).toBe('');
+  await page.fill('#settings-doc-extra-prompt', '  語氣請古典一點  ');
+  await page.click('#translate-settings-save-btn');
+
+  // 翻 ch1 → 每個 TRANSLATE_DOC_BATCH payload.extraPrompt = trim 後的指令
+  await selectOnlyChapter(page, 2);
+  await page.click('#chapters-translate-btn');
+  await page.waitForSelector('#stage-chapters:not([hidden])', { timeout: 15_000 });
+  const sentExtra = await page.evaluate(() => window.__sentMessages
+    .filter((m) => m.type === 'TRANSLATE_DOC_BATCH').map((m) => m.payload.extraPrompt));
+  expect(sentExtra.length).toBeGreaterThan(0);
+  for (const x of sentExtra) expect(x).toBe('語氣請古典一點');
+
+  // 匯出工作階段 → JSON 帶 extraPrompt（翻譯設定隨匯出帶走）
+  const dlPromise = page.waitForEvent('download');
+  await page.click('#chapters-export-session-btn');
+  const dl = await dlPromise;
+  const sessionPath = await dl.path();
+  const fs = await import('node:fs');
+  const exported = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+  expect(exported.extraPrompt).toBe('語氣請古典一點');
+
+  // 重開同書 → session 還原，dialog 顯示現值
+  await uploadEpub(page);
+  await page.click('#chapters-settings-btn');
+  await page.waitForSelector('#translate-settings-dialog[open]', { timeout: 10_000 });
+  expect(await page.locator('#settings-doc-extra-prompt').inputValue()).toBe('語氣請古典一點');
+
+  // 清空 → 儲存 → 重開同書驗清空也持久化（'' 是有效狀態，不被舊值復活）
+  await page.fill('#settings-doc-extra-prompt', '');
+  await page.click('#translate-settings-save-btn');
+  await page.waitForTimeout(200);
+  await uploadEpub(page); // releaseCurrentDoc 會先 flush debounce 中的 session 存檔
+  await page.click('#chapters-settings-btn');
+  await page.waitForSelector('#translate-settings-dialog[open]', { timeout: 10_000 });
+  expect(await page.locator('#settings-doc-extra-prompt').inputValue()).toBe('');
+  await page.click('#translate-settings-cancel-btn');
+
+  // 匯入工作階段 → extraPrompt 跟著整包還原
+  await page.setInputFiles('#epub-session-import-file', sessionPath);
+  await page.waitForTimeout(500);
+  await page.click('#chapters-settings-btn');
+  await page.waitForSelector('#translate-settings-dialog[open]', { timeout: 10_000 });
+  expect(await page.locator('#settings-doc-extra-prompt').inputValue()).toBe('語氣請古典一點');
+  await page.close();
+});

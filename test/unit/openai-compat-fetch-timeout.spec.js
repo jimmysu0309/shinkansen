@@ -1,9 +1,11 @@
-// Unit test: openai-compat fetchWithRetry 必含 15s fetch-level timeout(v1.9.21)
+// Unit test: openai-compat fetchWithRetry 必含 fetch-level timeout(v1.9.21)
 //
 // 背景:lib/openai-compat.js 有自己一份 fetchWithRetry,跟 lib/gemini.js 結構對齊但
 // 獨立維護(註解明寫「跟 gemini.js fetchWithRetry 對齊」)。Gemini 主翻譯補 15s timeout
 // 同時,OpenAI 相容路徑也補,避免 OpenRouter / DeepSeek / 本機 llama.cpp 等 provider
 // hang 住卡死。SANITY 同步驗:拔 `signal: controller.signal` → 對應 case fail。
+// 2026-07-27:預設從 15_000 調成 90_000——OpenRouter reasoning 模型非 streaming
+// 生成整批 >15s,舊預設造成必逾時(Jimmy 實測 ~openai/gpt-latest)。
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,11 +16,11 @@ const __dirname = path.dirname(__filename);
 const SRC_PATH = path.resolve(__dirname, '../../shinkansen/lib/openai-compat.js');
 const SRC = fs.readFileSync(SRC_PATH, 'utf-8');
 
-test('DEFAULT_FETCH_TIMEOUT_MS 常數為 15_000(對齊 Gemini 主翻譯)', () => {
+test('DEFAULT_FETCH_TIMEOUT_MS 常數為 90_000(reasoning 模型非 streaming 生成留空間)', () => {
   expect(
     SRC,
-    'openai-compat.js 缺 `const DEFAULT_FETCH_TIMEOUT_MS = 15_000`',
-  ).toMatch(/const\s+DEFAULT_FETCH_TIMEOUT_MS\s*=\s*15_000\s*;/);
+    'openai-compat.js 缺 `const DEFAULT_FETCH_TIMEOUT_MS = 90_000`',
+  ).toMatch(/const\s+DEFAULT_FETCH_TIMEOUT_MS\s*=\s*90_000\s*;/);
 });
 
 test('fetchWithRetry 內含 AbortController + setTimeout(abort, timeoutMs)', () => {

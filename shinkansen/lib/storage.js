@@ -785,7 +785,7 @@ export const DEFAULT_SETTINGS = {
     useStrongSegMarker: true,
     // API 請求逾時（秒）。預設 15 對齊 Gemini 路徑;本機 LLM(Ollama 等)冷啟動
     // 載入模型到 VRAM 可能需 60-300 秒,使用者可自行調高
-    fetchTimeoutSec: 15,
+    fetchTimeoutSec: 90,
   },
 };
 

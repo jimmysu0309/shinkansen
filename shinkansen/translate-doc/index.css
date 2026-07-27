@@ -1489,6 +1489,18 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
   background: var(--bg);
   color: var(--text);
 }
+.settings-extra-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
 
 /* 術語表欄位排序 header（2026-07-10） */
 .g-header.g-sortable {

@@ -199,6 +199,13 @@
         <input type="number" id="settings-doc-batch-size" min="1" max="100" step="1" class="settings-batch-input">
         <p class="settings-hint" data-i18n="doc.settings.hint.batchSize">每次 AI 請求包含的段落數（1-100，預設 50）。段數大 = 請求少、prompt 開銷省；段數小 = 單一請求失敗影響範圍小。只影響文件翻譯，網頁與字幕翻譯不受影響</p>
       </div>
+      <!-- 本文件額外翻譯指令（per-document，2026-07-27）：附加在文件翻譯 system prompt 之後；
+           EPUB 隨工作階段持久化並進「匯出工作階段」JSON -->
+      <div class="settings-section">
+        <div class="settings-label" data-i18n="doc.settings.label.extraPrompt">本文件額外翻譯指令</div>
+        <textarea id="settings-doc-extra-prompt" rows="3" class="settings-extra-prompt"></textarea>
+        <p class="settings-hint" data-i18n="doc.settings.hint.extraPrompt">只套用在目前這份文件的補充指令，會附加在「文件翻譯設定」的翻譯指令之後——例如「這是十九世紀小說，語氣請古典一點」。EPUB 會隨工作階段儲存，並跟著「匯出工作階段」一起帶走；改動後重翻會重新呼叫 AI（不會用舊的翻譯記憶）</p>
+      </div>
       <div class="settings-section">
         <label class="g-opt">
           <input type="checkbox" id="settings-epub-paragraph-spacing">

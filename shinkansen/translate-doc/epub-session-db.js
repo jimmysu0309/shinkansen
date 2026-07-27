@@ -14,6 +14,7 @@
 //   { title, updatedAt,
 //     glossary: [...] | null,        // 全書術語表（含選項 flag）
 //     forbidden: [...] | null,       // 本書獨立禁用詞
+//     extraPrompt: string,           // 本文件額外翻譯指令（2026-07-27）
 //     blocks: { [blockId]: { raw, plain, edited, status } } }  // 只存 done block
 
 // LLM 協定殘片修復 / 句尾句號對齊 / strip（v2.0.53 hydrate 自癒用；

@@ -50,6 +50,6 @@ describe('5-6: parseUserNum fallback 引用 DEFAULTS', () => {
   });
 
   test('cp-fetchTimeout fallback 引用 DEFAULTS.customProvider.fetchTimeoutSec', () => {
-    expect(SRC).toMatch(/parseUserNum\(\$\('cp-fetchTimeout'\)\.value, DEFAULTS\.customProvider\?\.fetchTimeoutSec \?\? 15\)/);
+    expect(SRC).toMatch(/parseUserNum\(\$\('cp-fetchTimeout'\)\.value, DEFAULTS\.customProvider\?\.fetchTimeoutSec \?\? 90\)/);
   });
 });

@@ -25,6 +25,10 @@
  *     「cacheTag 起頭」case fail；還原 → pass
  *   - 暫時把 buildFixedGlossaryEntries 的 Map dedup 改回 concat →「同 source dedup」
  *     case fail；還原 → pass
+ *
+ * SANITY 紀錄（已驗證，2026-07-27，docExtraPrompt _x suffix）：
+ *   - 暫時把 buildCacheKeySuffix 的 `_x` append 條件改成 `if (false && …)` →
+ *     兩個 _x case fail；還原 → 14 pass
  */
 
 const fs = require('fs');
@@ -143,6 +147,40 @@ describe('buildCacheKeySuffix 組裝行為', () => {
       cacheTag: '', glossary: [{ source: 'a', target: 'c' }], modelKeyPart: 'm1',
     });
     expect(a).not.toBe(b);
+  });
+});
+
+describe('docExtraPrompt（本文件額外翻譯指令，2026-07-27）_x suffix', () => {
+  test('非空加 _x<hash12> 且附加在 _t 之後（固定順序）；空 / 空白 / 未傳不加（清空回原 key，舊快取直接可用）', async () => {
+    const base = { cacheTag: '_doc', modelKeyPart: 'm1', docTemperature: 0.5 };
+    const withX = await buildCacheKeySuffix({ ...base, docExtraPrompt: '語氣請古典一點' });
+    expect(withX).toMatch(/_t0\.50_x[0-9a-f]{12}$/);
+    const noX = await buildCacheKeySuffix(base);
+    const emptyX = await buildCacheKeySuffix({ ...base, docExtraPrompt: '' });
+    const blankX = await buildCacheKeySuffix({ ...base, docExtraPrompt: '   \n ' });
+    expect(noX.includes('_x')).toBe(false);
+    expect(emptyX).toBe(noX);
+    expect(blankX).toBe(noX);
+  });
+
+  test('trim 後相同內容 → 同 hash（前後空白不分裂快取）；內容不同 → hash 不同', async () => {
+    const base = { cacheTag: '_doc', modelKeyPart: 'm1' };
+    const a = await buildCacheKeySuffix({ ...base, docExtraPrompt: '人名一律音譯' });
+    const b = await buildCacheKeySuffix({ ...base, docExtraPrompt: '  人名一律音譯  ' });
+    const c = await buildCacheKeySuffix({ ...base, docExtraPrompt: '人名保留原文' });
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+  });
+
+  test('handler 接線：兩條 doc handler（gemini / openai-compat）prompt 組裝與 cache key 都讀 payload.extraPrompt，且 marker 協定收尾', () => {
+    // docExtraPromptOf(payload) 應出現 ≥4 次：2 條 handler 的 prompt 組裝 + 2 條翻譯
+    // 路徑（handleTranslate / handleTranslateCustom）的 buildCacheKeySuffix 傳參
+    const calls = SRC.match(/docExtraPromptOf\(payload\)/g) || [];
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    // 附加位置：extraPrompt 在前、DOC_INLINE_MARKER_INSTRUCTION 收尾（協定規則不被
+    // per-document 指令蓋掉）——兩條 handler 都要是這個順序
+    const orderRe = /extraPrompt ? \? '\\n\\n' \+ extraPrompt : ''\)\s*\+ DOC_INLINE_MARKER_INSTRUCTION/g;
+    expect((SRC.match(orderRe) || []).length).toBeGreaterThanOrEqual(2);
   });
 });
 

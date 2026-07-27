@@ -116,6 +116,9 @@ export async function translateDocument(doc, options = {}) {
     blockFilter, filterGlossary,
     // EPUB 本書獨立禁用詞（2026-07-10）：background 與 options 共通清單合併注入
     extraForbiddenTerms = null,
+    // 本文件額外翻譯指令（2026-07-27）：background 附加在 translateDoc.systemPrompt
+    // 之後（inline marker 協定之前），並以 _x hash 進 cache key
+    extraPrompt = null,
     // 每批段數（2026-07-10）：settings.translateDoc.batchSize（預設 50）。
     // 同一值也隨 payload.docBatchSize 送 background 覆蓋 maxUnitsPerBatch，
     // 讓「一批」= 一次 API 請求（否則 adapter 端仍按預設 20 重切）
@@ -275,7 +278,7 @@ export async function translateDocument(doc, options = {}) {
     const chunkGlossary = filterGlossary
       ? filterGlossaryForTexts(glossary, texts)
       : glossary;
-    const payload = { texts, modelOverride, glossary: chunkGlossary, preferArticleGlossary: true, extraForbiddenTerms, docBatchSize: chunkSize };
+    const payload = { texts, modelOverride, glossary: chunkGlossary, preferArticleGlossary: true, extraForbiddenTerms, docBatchSize: chunkSize, extraPrompt };
 
     const t0 = Date.now();
     let response;
@@ -447,7 +450,7 @@ export async function translateDocument(doc, options = {}) {
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
 export async function translateSingleBlock(block, options = {}) {
-  const { modelOverride, glossary, engine = 'gemini' } = options;
+  const { modelOverride, glossary, engine = 'gemini', extraPrompt = null } = options;
   // v1.9.6: Google MT 不支援文件翻譯，retry 路徑同步擋（理論上 UI 層已先擋掉走不到這，
   // 但 currentEngine 是 module state，測試 / 程式錯誤造成 stale 時這裡是最後守門）
   if (engine === 'google') {
@@ -466,7 +469,7 @@ export async function translateSingleBlock(block, options = {}) {
     const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
     response = await chrome.runtime.sendMessage({
       type: messageType,
-      payload: { texts: [buildMarkedText(block)], modelOverride, glossary, preferArticleGlossary: true },
+      payload: { texts: [buildMarkedText(block)], modelOverride, glossary, preferArticleGlossary: true, extraPrompt },
     });
   } catch (err) {
     const msg = (err && err.message) || String(err);

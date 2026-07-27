@@ -37,11 +37,12 @@ const SCROLL_SYNC_RESET_MS = 250;
  * @param {HTMLElement} translatedCol         — 右欄容器
  * @param {object}      [opts]
  * @param {string}      [opts.modelOverride]  — retry 用的 preset model id
+ * @param {string|null} [opts.extraPrompt]    — 本文件額外翻譯指令（retry 也要帶，跟主翻譯同 cache key）
  * @param {(failedCount: number) => void} [opts.onFailedCountChange]
  * @returns {Promise<ReaderHandle>}
  */
 export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, originalCol, translatedCol, opts = {}) {
-  const { modelOverride, engine, glossary, onFailedCountChange = () => {} } = opts;
+  const { modelOverride, engine, glossary, extraPrompt = null, onFailedCountChange = () => {} } = opts;
   let currentZoom = opts.initialZoom || 1.0;
   let syncEnabled = opts.initialSyncEnabled !== false;
 
@@ -186,7 +187,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       let success = 0;
       for (const block of failed) {
         if (destroyed) return { total: failed.length, success }; // 已換檔，停止燒 API
-        const r = await translateSingleBlock(block, { modelOverride, engine, glossary });
+        const r = await translateSingleBlock(block, { modelOverride, engine, glossary, extraPrompt });
         if (r.ok) success++;
       }
       // 至少有 1 個重翻成功 → 重建譯文 PDF + 重 render 右欄

@@ -174,7 +174,7 @@
             <span data-i18n="options.preset.modelGemini">Gemini 模型</span>
             <select id="preset-model-2">
               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（$0.25 / $1.50）</option>
-              <option value="gemini-3.5-flash-lite" class="model-warn" data-i18n="options.gemini.model.flashLite35Option">gemini-3.5-flash-lite（$0.30 / $2.50）— 實測不建議用於翻譯</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite（$0.30 / $2.50）</option>
               <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
               <option value="gemini-3.6-flash">gemini-3.6-flash（$1.50 / $7.50）</option>
             </select>
@@ -205,7 +205,7 @@
             <span data-i18n="options.preset.modelGemini">Gemini 模型</span>
             <select id="preset-model-1">
               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（$0.25 / $1.50）</option>
-              <option value="gemini-3.5-flash-lite" class="model-warn" data-i18n="options.gemini.model.flashLite35Option">gemini-3.5-flash-lite（$0.30 / $2.50）— 實測不建議用於翻譯</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite（$0.30 / $2.50）</option>
               <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
               <option value="gemini-3.6-flash">gemini-3.6-flash（$1.50 / $7.50）</option>
             </select>
@@ -236,7 +236,7 @@
             <span data-i18n="options.preset.modelGemini">Gemini 模型</span>
             <select id="preset-model-3">
               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（$0.25 / $1.50）</option>
-              <option value="gemini-3.5-flash-lite" class="model-warn" data-i18n="options.gemini.model.flashLite35Option">gemini-3.5-flash-lite（$0.30 / $2.50）— 實測不建議用於翻譯</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite（$0.30 / $2.50）</option>
               <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
               <option value="gemini-3.6-flash">gemini-3.6-flash（$1.50 / $7.50）</option>
             </select>
@@ -474,7 +474,6 @@
             <strong>Flash Lite 3.5</strong>
             <small class="muted model-id">gemini-3.5-flash-lite</small>
             <small class="muted" data-i18n="options.gemini.pricing.flashLite35.builtin">內建 $0.30 / $2.50（不支援 cache）</small>
-            <small class="model-warn" data-i18n="options.gemini.pricing.flashLite35.warn">實測不建議用於翻譯</small>
           </div>
           <input type="number" id="override-lite35-input" step="0.01" min="0" placeholder="0.30" aria-label="Flash Lite 3.5 input 覆蓋">
           <input type="number" id="override-lite35-output" step="0.01" min="0" placeholder="2.50" aria-label="Flash Lite 3.5 output 覆蓋">
@@ -838,7 +837,7 @@
 
         <label style="margin-top: 8px;">
           <span data-i18n="options.cp.timeoutLabel">API 逾時時間（秒）</span>
-          <input type="number" id="cp-fetchTimeout" step="1" min="5" max="600" placeholder="15">
+          <input type="number" id="cp-fetchTimeout" step="1" min="5" max="600" placeholder="90">
           <small class="muted" data-i18n="options.cp.timeoutHint">每次 API 請求等待回應的最長時間。本機 LLM（Ollama 等）冷啟動載入模型可能需要 120-300 秒，請視硬體調高；商用 API 通常不需更改</small>
         </label>
       </details>

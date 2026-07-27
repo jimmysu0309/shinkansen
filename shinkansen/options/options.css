@@ -660,9 +660,6 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
 .log-lvl-warn  { color: #e65100; }
 .log-lvl-error { color: #c62828; }
 
-/* v2.0.64:模型清單警示(實測不建議用於翻譯)——picker option 與計價列共用 */
-.model-warn, select option.model-warn { color: #c62828; }
-
 /* 訊息 */
 .log-msg-text {
   word-break: break-word;
