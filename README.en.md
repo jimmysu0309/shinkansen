@@ -90,7 +90,7 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
 - **Auto-translate sites**: add domains to the "Auto-translate sites" list in settings; pages on those sites translate on load (toast shows the `[Auto]` prefix)
 - **Custom glossary**: add term mappings in the "Glossary" tab; translations are forced to use your preferred renderings
 - **Glossary consistency**: enable it from the toolbar icon menu or settings page; long-form translations build a glossary first to keep proper nouns consistent
-- **Edit translations**: after translating, click "Edit translations" in the toolbar icon menu to directly edit the translated text on the page
+- **Edit translations**: after translating, click "Edit translations" in the toolbar icon menu to directly edit the translated text on the page. While editing, a floating toolbar at the bottom of the page lets you undo changes paragraph by paragraph or finish editing
 
 ## Translation shortcuts and presets
 
@@ -269,7 +269,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.0.65 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.0.66 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

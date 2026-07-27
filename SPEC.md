@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.65
+- 目前 Extension 版本：2.0.66
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.65 為止）
+### 2.1 已實作（v2.0.66 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -824,7 +824,7 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 
 - Header：emoji 🚄 + 名稱「Shinkansen」+ 版本號（動態讀取）
 - 主按鈕：「翻譯本頁」/「顯示原文」（依 `GET_STATE` 切換）
-- 編輯譯文按鈕（預設 `hidden`，翻譯完成後才顯示；切換 `TOGGLE_EDIT_MODE`）
+- 編輯譯文按鈕（預設 `hidden`，翻譯完成後才顯示；切換 `TOGGLE_EDIT_MODE`）。進入編輯模式後頁面下方置中顯示浮動工具列（closed Shadow DOM＋Constructable Stylesheet）：提示文字＋「復原」（逐段 LIFO 撤銷，`beforeinput` 首次改動前快照 innerHTML）＋「完成」（等同「結束編輯」，寫回 guard 快取）；i18n key `editbar.*`
 - 白名單自動翻譯 toggle
 - 術語表一致化 toggle
 - YouTube 字幕翻譯 toggle（只在 YouTube 影片頁面顯示）

@@ -2073,6 +2073,138 @@
 
   let editModeActive = false;
 
+  // ─── 編輯模式浮動工具列（提示 + 復原 + 完成）─────────────
+  // v2.0.66：進入編輯模式後頁面下方置中顯示深色工具列。「完成」= 結束編輯
+  //（等同 popup 的「結束編輯」，不用重開 popup）；「復原」= 逐段撤銷——每個
+  // 段落在本次編輯 session 內第一次被改動時（beforeinput，改動前）快照
+  // innerHTML，按復原以 LIFO 順序整段還原。樣式走 closed Shadow DOM +
+  // Constructable Stylesheet（CSP-safe，同 content-toast.js 的 v1.10.63 教訓）。
+  let editBarHost = null;
+  let editBarEls = null; // { bar, hint, undoBtn, doneBtn }
+  const editPreEditHTML = new Map(); // el → 進入編輯後首次改動前的 innerHTML
+  const editUndoOrder = [];          // 首次改動順序 stack（LIFO 復原）
+
+  const EDIT_BAR_CSS = `
+      :host, * { box-sizing: border-box; }
+      .bar {
+        position: fixed;
+        /* 頁面下方置中；iOS Safari 加 home indicator 安全區位移 */
+        bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+        left: 50%;
+        transform: translateX(-50%);
+        display: none;
+        align-items: center;
+        gap: 12px;
+        max-width: calc(100vw - 32px);
+        padding: 10px 12px 10px 16px;
+        background: rgba(28, 33, 43, .96);
+        color: #e8eaed;
+        border-radius: 12px;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, .35);
+        font: 14px -apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+        white-space: nowrap;
+      }
+      .bar.show { display: flex; }
+      .hint {
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .btn {
+        cursor: pointer;
+        font: inherit;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 14px;
+        background: transparent;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .btn-undo { color: #9aa0a6; }
+      .btn-undo:not(:disabled):hover { color: #ffffff; background: rgba(255, 255, 255, .08); }
+      .btn-undo:disabled { opacity: .45; cursor: default; }
+      .btn-done { background: #2f6fed; color: #ffffff; }
+      .btn-done:hover { background: #2861d4; }
+  `;
+
+  function ensureEditBar() {
+    if (editBarEls) return editBarEls;
+    editBarHost = document.createElement('div');
+    editBarHost.id = 'shinkansen-edit-bar-host';
+    editBarHost.style.cssText = 'all: initial; position: fixed; z-index: 2147483647;';
+    const shadow = editBarHost.attachShadow({ mode: 'closed' });
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(EDIT_BAR_CSS);
+      shadow.adoptedStyleSheets = [sheet];
+    } catch {
+      const styleEl = document.createElement('style');
+      styleEl.textContent = EDIT_BAR_CSS;
+      shadow.appendChild(styleEl);
+    }
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    const undoBtn = document.createElement('button');
+    undoBtn.className = 'btn btn-undo';
+    undoBtn.addEventListener('click', editBarUndo);
+    const doneBtn = document.createElement('button');
+    doneBtn.className = 'btn btn-done';
+    doneBtn.addEventListener('click', () => toggleEditMode(false));
+    bar.append(hint, undoBtn, doneBtn);
+    shadow.appendChild(bar);
+    editBarEls = { bar, hint, undoBtn, doneBtn };
+    return editBarEls;
+  }
+
+  function updateEditBarUndoState() {
+    if (editBarEls) editBarEls.undoBtn.disabled = editUndoOrder.length === 0;
+  }
+
+  function showEditBar() {
+    const els = ensureEditBar();
+    // 文字每次顯示時套用（UI 語言可能在 session 中切換）
+    els.hint.textContent = SK.t('editbar.hint');
+    els.undoBtn.textContent = SK.t('editbar.undo');
+    els.doneBtn.textContent = SK.t('editbar.done');
+    updateEditBarUndoState();
+    if (!editBarHost.isConnected) {
+      (document.body || document.documentElement).appendChild(editBarHost);
+    }
+    els.bar.classList.add('show');
+  }
+
+  function hideEditBar() {
+    if (editBarEls) editBarEls.bar.classList.remove('show');
+  }
+
+  // beforeinput 在 DOM 改動「之前」發火——首次改動時快照該段落的原始譯文
+  function onEditBeforeInput(e) {
+    const t = e.target;
+    if (!t || t.nodeType !== Node.ELEMENT_NODE) return;
+    const el = t.closest?.('[data-shinkansen-translated][contenteditable="true"]');
+    if (!el || editPreEditHTML.has(el)) return;
+    editPreEditHTML.set(el, el.innerHTML);
+    editUndoOrder.push(el);
+    updateEditBarUndoState();
+  }
+
+  function editBarUndo() {
+    const el = editUndoOrder.pop();
+    if (el && editPreEditHTML.has(el)) {
+      if (el.isConnected) el.innerHTML = editPreEditHTML.get(el);
+      editPreEditHTML.delete(el);
+    }
+    updateEditBarUndoState();
+  }
+
+  function resetEditUndoStack() {
+    editPreEditHTML.clear();
+    editUndoOrder.length = 0;
+  }
+
   function toggleEditMode(forceState) {
     if (!STATE.translated && forceState !== false) {
       return { ok: false, error: 'translation not complete' };
@@ -2095,6 +2227,15 @@
           SK.refreshAncestorSavedHTML?.(el);
         }
       }
+    }
+    // v2.0.66: 浮動工具列 + 逐段復原 stack 隨編輯模式開關
+    resetEditUndoStack();
+    if (enable) {
+      document.addEventListener('beforeinput', onEditBeforeInput, true);
+      showEditBar();
+    } else {
+      document.removeEventListener('beforeinput', onEditBeforeInput, true);
+      hideEditBar();
     }
     editModeActive = enable;
     SK.sendLog('info', 'system', enable ? 'edit mode ON' : 'edit mode OFF', { elements: els.length });
@@ -2409,6 +2550,25 @@
     // v1.5.5: 暴露 toggleEditMode 給 spec 測編輯模式進出對 guard 快取的同步
     testToggleEditMode(forceState) {
       return toggleEditMode(forceState);
+    },
+    // v2.0.66: 編輯模式浮動工具列 test hooks——bar 在 closed Shadow DOM 內，
+    // spec 無法從 DOM 查詢，走這裡讀狀態 / 觸發按鈕等效行為
+    testEditBarState() {
+      return {
+        hostConnected: !!(editBarHost && editBarHost.isConnected),
+        visible: !!(editBarEls && editBarEls.bar.classList.contains('show')),
+        hintText: editBarEls ? editBarEls.hint.textContent : null,
+        undoDisabled: editBarEls ? editBarEls.undoBtn.disabled : null,
+        undoStackSize: editUndoOrder.length,
+      };
+    },
+    testEditBarUndo() {
+      editBarUndo();
+      return { undoStackSize: editUndoOrder.length };
+    },
+    testEditBarDone() {
+      // 等同按下工具列「完成」
+      return toggleEditMode(false);
     },
     testGoogleDocsUrl(urlString) {
       try {

@@ -80,7 +80,7 @@ describe('v1.0.11: SPA URL 輪詢偵測', () => {
     expect(env.shinkansen.getState().translated).toBe(true);
   });
 
-  test('已翻譯 + 有翻譯節點 + sticky → URL 變化仍觸發導航', async () => {
+  test('已翻譯 + 有翻譯節點 + sticky → hash 導航且內容換掉 → 仍觸發導航', async () => {
     env = createEnv({ url: 'https://mail.google.com/mail/u/0/#inbox' });
 
     // 模擬：已翻譯 + sticky 模式開啟（Gmail 場景）
@@ -94,15 +94,43 @@ describe('v1.0.11: SPA URL 輪詢偵測', () => {
 
     // 靜默改變 URL（模擬 Gmail hash-based 導航被 URL 輪詢偵測到）
     env.setUrl('https://mail.google.com/mail/u/0/#inbox/FMfcgzQXKzgf');
+    // v2.0.66：純 hash 變動走二段判別——settle 後看原已翻譯元素是否 detach。
+    // Gmail 導航會把視圖換掉：模擬把翻譯節點從 DOM 拔掉（detach 比例 100%）
+    // → 判為真導航 → reset ＋ sticky 續翻照舊
+    p.remove();
 
     // 輪詢等待 translated 被清掉（證明 resetForSpaNavigation 跑了，
-    // 代表 sticky 覆蓋了捲動跳過邏輯）
+    // 代表 sticky 覆蓋了捲動跳過邏輯；含 500ms 輪詢 + 800ms settle 判別）
     const resetHappened = await waitForCondition(
       () => env.shinkansen.getState().translated === false,
-      { timeout: 2000 }
+      { timeout: 3000 }
     );
     expect(resetHappened).toBe(true);
     expect(env.shinkansen.getState().translated).toBe(false);
+  });
+
+  test('已翻譯 + sticky → 純 hash 變動但內容沒換 → 不 reset（selection 錨點場景）', async () => {
+    // v2.0.66：站方 selection-share 錨點（archive 類雙擊選字寫 '#selection-…'）
+    // 從 main world 呼叫 history API，只有 URL 輪詢撿得到。內容沒換（翻譯節點
+    // 全數仍 connected）→ 判為 in-page 錨點，不可整頁還原譯文（編輯模式下
+    // reset 後 contenteditable 段落被偵測層排除，sticky 重翻 0 段 → 卡原文）
+    env = createEnv({ url: 'https://example.com/article' });
+
+    env.shinkansen.setTestState({ translated: true, stickyTranslate: true });
+    const p = env.document.createElement('p');
+    p.setAttribute('data-shinkansen-translated', 'true');
+    p.textContent = '已翻譯的文章段落';
+    env.document.body.appendChild(p);
+
+    // 靜默改變 URL：純 hash 變動，翻譯節點保持 connected
+    env.setUrl('https://example.com/article#selection-1617.0-1617.10');
+
+    // 等超過輪詢（500ms）＋ settle 判別（800ms）＋ buffer
+    await new Promise(r => setTimeout(r, 1800));
+
+    // translated 不可被清掉、節點仍在
+    expect(env.shinkansen.getState().translated).toBe(true);
+    expect(p.isConnected).toBe(true);
   });
 
   // code review 2026-06-09 M1:orphan content script(extension reload 後 chrome.runtime.id

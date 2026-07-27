@@ -117,10 +117,53 @@
 
   // ─── SPA 導航處理 ────────────────────────────────────
 
+  // v2.0.66：純 hash 變動的「內容換掉了」判別門檻——settle 後原已翻譯元素
+  // detach 比例 ≥ 此值視為視圖真的換掉（hash-router 導航），< 此值視為
+  // in-page 錨點（內容沒換）。取 0.2：hash-router 換視圖 detach 的是主內容區
+  // 的大宗翻譯單位，遠超 2 成；錨點場景則是 0。
+  const SPA_HASH_NAV_DETACH_RATIO = 0.2;
+
   async function handleSpaNavigation() {
     const newUrl = location.href;
     if (newUrl === spaLastUrl) return;
+    const prevUrl = spaLastUrl;
     spaLastUrl = newUrl;
+    // v2.0.66：純 hash 變動（pathname + search 都沒變）需要二段判別——不能一律
+    // 當導航，也不能一律跳過：
+    //   - in-page anchor / TOC 跳轉 / 站方 selection-share 錨點（archive 類雙擊
+    //     選字把選取範圍寫進 '#selection-…'；站方從 main world 呼叫 history API，
+    //     isolated world 的 history patch 攔不到，由 hashchange / URL 輪詢撿到）：
+    //     內容沒換，reset 會整頁還原譯文——編輯模式下段落是 contenteditable 被
+    //     偵測層排除 → sticky 重翻抓到 0 段 → 整頁卡原文、無法編輯（2026-07-27
+    //     archive 鏡像實測：雙擊選字 → 連續 6 次 state reset → translated=0）
+    //   - hash-routing SPA（Gmail `#inbox` → `#inbox/<id>`）：視圖整個換掉，必須
+    //     照舊 reset ＋ sticky 續翻（v1.0.23 既有行為，spa-sticky-translate /
+    //     spa-url-polling jest 鎖定）
+    // 判別器用「行為」不用 URL 形狀（§8）：等 SPA_NAV_SETTLE_MS 後看原本已翻譯的
+    // 元素還剩多少 connected——幾乎全數健在（detach 比例 < 門檻）= 內容沒換 =
+    // 錨點，跳過 reset；相當比例 detach = 視圖真的換掉 = 導航，落回 reset 流程。
+    // 頁面沒有任何翻譯痕跡時不等待、直接當導航（自動翻譯白名單的 hash-router
+    // 首翻不受影響）。search 有變仍一律視為導航（YouTube /watch?v=… 換片走 query）。
+    try {
+      const a = new URL(prevUrl);
+      const b = new URL(newUrl);
+      if (a.pathname === b.pathname && a.search === b.search) {
+        const tracked = Array.from(document.querySelectorAll(
+          '[data-shinkansen-translated], [data-shinkansen-dual-source]'));
+        if (tracked.length > 0) {
+          await new Promise(r => setTimeout(r, SK.SPA_NAV_SETTLE_MS));
+          if (spaLastUrl !== newUrl) return; // 期間又有新導航，交給較新的那輪處理
+          const detached = tracked.filter(el => !el.isConnected).length;
+          if (detached / tracked.length < SPA_HASH_NAV_DETACH_RATIO) {
+            SK.sendLog('info', 'spa', 'hash-only URL change with content intact, skipping SPA reset',
+              { newUrl, oldUrl: prevUrl, tracked: tracked.length, detached });
+            return;
+          }
+          SK.sendLog('info', 'spa', 'hash-only URL change with content swapped, treating as navigation',
+            { newUrl, oldUrl: prevUrl, tracked: tracked.length, detached });
+        }
+      }
+    } catch (_) { /* URL 解析失敗（理論上不會）→ 照舊當導航處理 */ }
     const wasSticky = STATE.stickyTranslate;
     const prevSlot = STATE.stickySlot;  // v1.4.12: 記錄續翻用的 preset slot
     resetForSpaNavigation();
