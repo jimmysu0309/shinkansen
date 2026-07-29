@@ -45,19 +45,70 @@ export const SEP_RE = /\s*<<<SHINKANSEN_SEP>>>\s*/;
 // fmt(n)        生成第 n 段的 marker 字串(內含尾部空白方便 join)
 // re            移除 LLM 譯文開頭殘留 marker 的 regex(行首 + 可選空白)
 // stripGlobalRe 全文掃 marker 殘留的 regex(防禦 sanitize 用,跨段位置任何地方)
+// scanRe        realignByMarkers 用的擷取 regex(捕獲 N;COMPACT 容忍「«2 »」這種
+//               模型自己塞空白的變體——實測 gemini-3.5-flash-lite 會吐)
 // display       prompt 描述句裡顯示給 LLM 看的「N 範本」
 export const MARKER_COMPACT = {
   fmt: (n) => `«${n}» `,
   re: /^«\d+»\s*/,
   stripGlobalRe: /«\d+»\s*/g,
+  scanRe: /«\s*(\d+)\s*»/,
   display: '«N»',
 };
 export const MARKER_STRONG = {
   fmt: (n) => `<<<SHINKANSEN_SEG-${n}>>> `,
   re: /^<<<SHINKANSEN_SEG-\d+>>>\s*/,
   stripGlobalRe: /<<<SHINKANSEN_SEG-\d+>>>\s*/g,
+  scanRe: /<<<SHINKANSEN_SEG-(\d+)>>>/,
   display: '<<<SHINKANSEN_SEG-N>>>',
 };
+
+// ─── 序號標記二次對齊(2026-07-29)────────────────────────────
+// 動機:gemini-3.5-flash-lite 會偶發性吃掉段落間的 <<<SHINKANSEN_SEP>>>(把相鄰兩段
+// 合併輸出),SEP split 段數 < 預期 → 原本直接走 per-segment fallback(整批已付費譯文
+// 丟棄 + 每段再各打一次 API,費用近雙倍)。實測該模型合併段落時「段首的 «N» 序號標記
+// 都還在」,所以段數不符時先用序號標記當第二對齊錨點重新切割,對得齊就不必 fallback。
+// 對照組:同頁 gemini-3.1-flash-lite / gemini-3.6-flash 零 mismatch——這是模型層行為,
+// 修法是結構性通則(任何「愛合併段落但保留序號」的模型都適用),不是模型特判。
+/**
+ * 用 «N» / <<<SHINKANSEN_SEG-N>>> 序號標記重新切割模型輸出。
+ *
+ * 僅在全部條件成立時回傳切割結果,任一不成立回傳 null(呼叫端走原 fallback):
+ *   1. 掃到的 marker 數 === expectedCount
+ *   2. marker 序列嚴格等於 1..N(遞增、完整、不重複——譯文內文偶然出現 «數字» 會
+ *      破壞此序列,自然擋掉誤判)
+ *   3. 第一個 marker 之前只有空白(marker 出現在意料外位置 = 不可信)
+ *
+ * 切出的每段會清掉殘留的 SEP token 與段首 marker,與正常路徑的清理等價。
+ *
+ * @param {string} text 模型完整輸出
+ * @param {number} expectedCount 預期段數(texts.length,呼叫端保證 >= 2)
+ * @param {{scanRe: RegExp}} marker MARKER_COMPACT 或 MARKER_STRONG
+ * @returns {string[]|null} 對齊成功回傳 expectedCount 段,失敗回傳 null
+ */
+export function realignByMarkers(text, expectedCount, marker = MARKER_COMPACT) {
+  if (!text || expectedCount < 2) return null;
+  const re = new RegExp(marker.scanRe.source, 'g');
+  const hits = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    hits.push({ n: parseInt(m[1], 10), start: m.index, end: m.index + m[0].length });
+    if (hits.length > expectedCount) return null; // 超量提前放棄
+  }
+  if (hits.length !== expectedCount) return null;
+  for (let i = 0; i < hits.length; i++) {
+    if (hits[i].n !== i + 1) return null;
+  }
+  if (text.slice(0, hits[0].start).trim() !== '') return null;
+  const sepGlobal = new RegExp(SEP_RE.source, 'g');
+  const parts = [];
+  for (let i = 0; i < hits.length; i++) {
+    const from = hits[i].end;
+    const to = i + 1 < hits.length ? hits[i + 1].start : text.length;
+    parts.push(text.slice(from, to).replace(sepGlobal, ' ').trim());
+  }
+  return parts;
+}
 
 const MAX_UNITS_PER_CHUNK = DEFAULT_UNITS_PER_BATCH;
 const MAX_CHARS_PER_CHUNK = DEFAULT_CHARS_PER_BATCH;

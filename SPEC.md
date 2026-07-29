@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.68
+- 目前 Extension 版本：2.0.69
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.68 為止）
+### 2.1 已實作（v2.0.69 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -119,7 +119,7 @@ API key 一律走 `x-goog-api-key` request header，不放 URL query string（�
 
 **分批策略**：字元預算 + 段數上限雙門檻 greedy 打包。`maxCharsPerBatch`（預設 3500，設定頁可調）與 `maxUnitsPerBatch`（v1.5.8 起預設 20，設定頁可調）任一觸發即封口。超大段落獨佔一批，不切段落本身。
 
-**對齊失敗 fallback**：回傳段數不符時退回逐段單獨呼叫模式。
+**對齊失敗處理**（v2.0.69 起兩層）：回傳段數不符時，先以 `«N»` 段序號標記做二次對齊（`lib/system-instruction.js` 的 `realignByMarkers()`——模型偶發吃掉段落間 SEP 但序號標記還在的場景；marker 數等於預期段數、序列嚴格 1..N、首個 marker 前僅空白三條件全過才採用），救不回才退回逐段單獨呼叫模式。非串流、串流（流結束後補發錯位段覆蓋、內容相同段不重發）、OpenAI-compat（COMPACT／STRONG 雙 marker）三條解析路徑同套邏輯。逐段 fallback 時的 WARN log 附 `rawHead`（原始輸出頭 6000 字）供事後排查。
 
 **實作位置**：`content.js` 的 `packBatches()` 為主要打包層，`lib/system-instruction.js` 的 `packChunks()` 為 adapter 端雙重保險層（Gemini / OpenAI-compat 共用）。v1.10.46 起 `packChunks` 由呼叫端帶入 `settings.maxUnitsPerBatch` / `maxCharsPerBatch`——原本寫死預設值，使用者調高設定後在 adapter 端被重切蓋掉（>20 段無效且無提示）。
 

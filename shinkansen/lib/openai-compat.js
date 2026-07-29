@@ -19,7 +19,7 @@
 // 黑名單與固定術語表是「跨 provider 共用」（Jimmy 設計決定 #3）。
 
 import { debugLog } from './logger.js';
-import { DELIMITER, SEP_RE, MARKER_COMPACT, MARKER_STRONG, packChunks, buildEffectiveSystemInstruction, isValidGlossaryEntry, detectOutputLangMismatch } from './system-instruction.js';
+import { DELIMITER, SEP_RE, MARKER_COMPACT, MARKER_STRONG, packChunks, buildEffectiveSystemInstruction, isValidGlossaryEntry, detectOutputLangMismatch, realignByMarkers } from './system-instruction.js';
 // v1.6.18: thinking 控制 mapping（各家 provider 的 thinking schema 不同，統一成
 // thinkingLevel 'auto/off/low/medium/high' + extraBodyJson 進階透傳）
 import { buildThinkingPayload } from './openai-compat-thinking.js';
@@ -344,26 +344,36 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     return { parts: aligned, usage: aggUsage, hadMismatch: true };
   };
 
+  // 段數不符先試序號標記二次對齊(v2.0.69,對齊 gemini.js;用本批選的 marker),
+  // 救不回才 fallback 逐段翻譯
+  let aligned = parts;
   if (parts.length !== texts.length) {
-    await debugLog('warn', 'api', 'openai-compat segment count mismatch — fallback to per-segment', {
-      expected: texts.length, got: parts.length, elapsed: ms,
-    });
     if (texts.length === 1) {
       return { parts: [text.trim()], usage: chunkUsage, hadMismatch: false };
     }
-    return perSegmentFallback();
+    const realigned = realignByMarkers(text, texts.length, marker);
+    if (!realigned) {
+      await debugLog('warn', 'api', 'openai-compat segment count mismatch — fallback to per-segment', {
+        expected: texts.length, got: parts.length, elapsed: ms,
+      });
+      return perSegmentFallback();
+    }
+    await debugLog('info', 'api', 'openai-compat segment count mismatch — realigned via seq markers', {
+      expected: texts.length, got: parts.length, elapsed: ms,
+    });
+    aligned = realigned;
   }
 
   // v2.0.52:段數對齊但整 chunk 輸出語言錯 → 逐段 fallback(對齊 gemini.js,
   // 單段 chunk 不驗避免無限遞迴)
-  if (texts.length > 1 && detectOutputLangMismatch(parts, settings.targetLanguage)) {
+  if (texts.length > 1 && detectOutputLangMismatch(aligned, settings.targetLanguage)) {
     await debugLog('warn', 'api', 'openai-compat chunk output language mismatch — fallback to per-segment', {
       segments: texts.length, elapsed: ms, targetLanguage: settings.targetLanguage,
     });
     return perSegmentFallback();
   }
 
-  return { parts, usage: chunkUsage, hadMismatch: false };
+  return { parts: aligned, usage: chunkUsage, hadMismatch: false };
 }
 
 /**

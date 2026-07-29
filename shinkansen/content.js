@@ -764,6 +764,10 @@
       // v1.9.29-DEV instrument(Finding 4 streaming inject 段拆解):量 firstChunk → first inject 2.5s gap 內部組成
       let firstSegMsgLogged = false;
       let idleGateInstrumented = false;
+      // v2.0.69:序號標記二次對齊(gemini.js realignByMarkers)會對「錯位段」補發同 idx
+      // 的修正版 STREAMING_SEGMENT——重複 idx 照樣注入(覆蓋錯位譯文)但不重複累加
+      // done / batch0StreamDone,避免進度計數超過 total
+      const streamSeenIdx = new Set();
 
       // v1.8.0: abort 傳播 — 使用者按 Option+S 取消 → 通知 SW 中斷 streaming + 清理 listener
       const abortHandler = () => {
@@ -803,6 +807,10 @@
           // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
           const tr = SK.sanitizeMarkers(message.payload.translation);
           if (typeof idx === 'number' && idx >= 0 && idx < job.texts.length && tr) {
+            // v2.0.69:realign 補發的重複 idx 不重複計數(見 streamSeenIdx 宣告註解)
+            const isReinject = streamSeenIdx.has(idx);
+            streamSeenIdx.add(idx);
+            const tallySeg = () => { if (!isReinject) { done += 1; batch0StreamDone += 1; } };
             // v1.9.17: 首次 inject 等 framework hydration idle(idle gate 機制見
             // content-ns.js SK.ensureFirstInjectIdle 註解)。idle reach 後直接通過,
             // 後續 segments 不再等。translate API call 與 hydration 並行跑,通常
@@ -825,21 +833,19 @@
                     const u = units[origIdx];
                     if (u?.el) {
                       if (u.kind === 'element') {
-                        if (injectedEls.has(u.el) || fragmentInjectedEls.has(u.el)) { done += 1; batch0StreamDone += 1; continue; }
+                        if (injectedEls.has(u.el) || fragmentInjectedEls.has(u.el)) { tallySeg(); continue; }
                         injectedEls.add(u.el);
                       } else if (u.kind === 'fragment') {
-                        if (injectedEls.has(u.el)) { done += 1; batch0StreamDone += 1; continue; }
+                        if (injectedEls.has(u.el)) { tallySeg(); continue; }
                         fragmentInjectedEls.add(u.el);
                       }
                     }
                     SK.injectTranslation(u, tr, slotsList[origIdx]);
-                    done += 1;
-                    batch0StreamDone += 1;
+                    tallySeg();
                   }
                 } else {
                   SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
-                  done += 1;
-                  batch0StreamDone += 1;
+                  tallySeg();
                 }
                 if (onProgress) onProgress(done, total, hadAnyMismatch);
                 if (firstSegmentInjectedT === null) {

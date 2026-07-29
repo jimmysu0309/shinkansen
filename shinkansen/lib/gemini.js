@@ -5,7 +5,7 @@
 import { debugLog } from './logger.js';
 // v1.5.7: DELIMITER / packChunks / buildEffectiveSystemInstruction 抽到共用模組，
 // 與 lib/openai-compat.js 共用同一份「翻譯 batch 構建」邏輯。
-import { DELIMITER, SEP_RE, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction, isValidGlossaryEntry, detectOutputLangMismatch } from './system-instruction.js';
+import { DELIMITER, SEP_RE, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction, isValidGlossaryEntry, detectOutputLangMismatch, realignByMarkers } from './system-instruction.js';
 import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 
 const MAX_BACKOFF_MS = 8000;
@@ -944,16 +944,27 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     return { parts: aligned, usage: aggUsage, hadMismatch: true };
   };
 
-  // 若回傳段數不符，且本批不只一段，則 fallback 改為逐段單獨翻譯，確保對齊
+  // 若回傳段數不符，且本批不只一段：先試序號標記二次對齊(v2.0.69,模型吃掉 SEP
+  // 但段首 «N» 都在的場景,見 realignByMarkers 註解),救不回才 fallback 逐段翻譯
+  let aligned = parts;
   if (parts.length !== texts.length) {
-    await debugLog('warn', 'api', 'segment count mismatch — fallback to per-segment', {
-      expected: texts.length, got: parts.length, elapsed: ms,
-    });
     if (texts.length === 1) {
       // 單段模式：直接回傳整個 text(LLM 可能多吐了分隔符）
       return { parts: [text.trim()], usage: chunkUsage };
     }
-    return perSegmentFallback();
+    const realigned = realignByMarkers(text, texts.length, MARKER_COMPACT);
+    if (!realigned) {
+      // rawHead:realign 也救不回時把原始輸出頭段進 log——outputPreview 300 字
+      // 看不到合併點,沒有這欄無法事後判斷是「marker 也被吃」還是其他病型
+      await debugLog('warn', 'api', 'segment count mismatch — fallback to per-segment', {
+        expected: texts.length, got: parts.length, elapsed: ms, rawHead: text.slice(0, 6000),
+      });
+      return perSegmentFallback();
+    }
+    await debugLog('info', 'api', 'segment count mismatch — realigned via seq markers', {
+      expected: texts.length, got: parts.length, elapsed: ms,
+    });
+    aligned = realigned;
   }
 
   // v2.0.52:段數對齊但整 chunk 輸出語言錯(模型把整個 chunk 翻成原文語言;
@@ -961,14 +972,14 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   // fallback——逐段小 payload 能打破 sticky(persisted log 實證 16/16 全成功)。
   // 只驗多段 chunk:單段 chunk 在逐段 fallback 內部呼叫,不驗避免無限遞迴;
   // 逐段結果若仍翻錯,由 translate-doc 頁 batch 級最後防線攔(標 failed 不入庫)。
-  if (texts.length > 1 && detectOutputLangMismatch(parts, settings.targetLanguage)) {
+  if (texts.length > 1 && detectOutputLangMismatch(aligned, settings.targetLanguage)) {
     await debugLog('warn', 'api', 'chunk output language mismatch — fallback to per-segment', {
       segments: texts.length, elapsed: ms, targetLanguage: settings.targetLanguage,
     });
     return perSegmentFallback();
   }
 
-  return { parts, usage: chunkUsage, hadMismatch: false };
+  return { parts: aligned, usage: chunkUsage, hadMismatch: false };
 }
 
 /**
@@ -1218,13 +1229,36 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   }
 
   // 計算對齊後的譯文 array(跟 non-streaming 一致),hadMismatch 留給呼叫端決定如何處理
-  const translations = allText.split(SEP_RE).map(s => s.trim().replace(MARKER_COMPACT.re, ''));
-  const hadMismatch = translations.length !== texts.length;
+  let translations = allText.split(SEP_RE).map(s => s.trim().replace(MARKER_COMPACT.re, ''));
+  let hadMismatch = translations.length !== texts.length;
 
   if (hadMismatch) {
-    await debugLog('warn', 'api', 'gemini stream segment mismatch', {
-      expected: texts.length, got: translations.length, elapsed,
-    });
+    // v2.0.69:先試序號標記二次對齊(模型吃掉 SEP 但 «N» 都在,見 realignByMarkers)。
+    // 成功時增量 emit 過的段可能因 SEP 缺失整體錯位,全部用對齊後版本重新 emit 覆蓋
+    // (呼叫端 injectTranslation 對已注入 unit 重注入是既有安全模式——同 hadMismatch
+    // retry 的覆蓋路徑),並回報 hadMismatch=false 讓呼叫端不必整批重翻。
+    const realigned = realignByMarkers(allText, texts.length, MARKER_COMPACT);
+    if (realigned) {
+      await debugLog('info', 'api', 'gemini stream segment mismatch — realigned via seq markers', {
+        expected: texts.length, got: translations.length, elapsed,
+      });
+      if (callbacks.onSegment) {
+        // 只補發「沒 emit 過」或「內容跟先前 emit 版本不同」的段:合併點之前的段
+        // SEP-split 與 realign 結果相同,重注入等內容會觸發 A3 零 mutation 假 echo
+        // 判定(v2.0.65),跳過;合併點之後整體錯位,用對齊後版本覆蓋
+        for (let i = 0; i < realigned.length; i++) {
+          if (i >= segmentsEmitted || realigned[i] !== translations[i]) {
+            callbacks.onSegment(i, realigned[i], false);
+          }
+        }
+      }
+      translations = realigned;
+      hadMismatch = false;
+    } else {
+      await debugLog('warn', 'api', 'gemini stream segment mismatch', {
+        expected: texts.length, got: translations.length, elapsed,
+      });
+    }
   }
 
   return {

@@ -64,3 +64,7 @@ safari-app/shinkansen-ios-*.ipa
 
 # Instapaper Full API 憑證(app 層,不進 public repo)
 shinkansen/lib/instapaper-keys.js
+
+# Codex agent 本機設定(CLAUDE.md 的 Codex 鏡像,不入 repo)
+AGENTS.md
+.agents/
