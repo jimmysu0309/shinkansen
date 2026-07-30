@@ -13,6 +13,8 @@
 // 影響:lib/gemini.js × 4 split 點 + lib/openai-compat.js × 1 split 點 全改用 SEP_RE。
 //
 // SANITY:把 SEP_RE 改回精確 `/\n<<<SHINKANSEN_SEP>>>\n/` → cases 2-5 fail。
+// SANITY 紀錄(v2.0.70 case 8,已驗證 2026-07-30):把 SEP_RE 的 `i` flag 拔掉 →
+// case 8 fail(toHaveLength(3) 收到 1)→ 還原 → 21 passed。
 
 import { test, expect } from '@playwright/test';
 import { DELIMITER, SEP_RE } from '../../shinkansen/lib/system-instruction.js';
@@ -72,4 +74,16 @@ test('case 7: 譯文內含 <<<SHINKANSEN_SEP>>> 的小機率風險(已被 saniti
   const parts = text.split(SEP_RE);
   expect(parts).toHaveLength(3);
   // 不會吐到任何下游(三段分量錯誤 → fallback per-segment 重翻)
+});
+
+test('case 8: 模型改寫 token 大小寫(<<<SHINKansen_SEP>>>,gemini-3.5-flash-lite 實測)→ 仍能切', () => {
+  // v2.0.70:persisted ring 2026-07-30 stuff.tv 批次實測——40 段中一個 SEP 被改寫成
+  // <<<SHINKansen_SEP>>>,case-sensitive split 漏切 → 39≠40 mismatch,且 mangled token
+  // 逃過下游所有清理漏進 DOM / 快取。SEP_RE 加 `i` flag 後 split 直接吃掉大小寫變體。
+  const text = '«1» 譯文一\n<<<SHINKansen_SEP>>>\n«2» 譯文二\n<<<shinkansen_sep>>>\n«3» 譯文三';
+  const parts = text.split(SEP_RE);
+  expect(parts).toHaveLength(3);
+  expect(parts[0]).toBe('«1» 譯文一');
+  expect(parts[1]).toBe('«2» 譯文二');
+  expect(parts[2]).toBe('«3» 譯文三');
 });

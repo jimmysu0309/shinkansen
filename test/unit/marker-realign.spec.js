@@ -12,6 +12,9 @@
 //
 // SANITY 紀錄(已驗證):把 realignByMarkers 開頭改成 `return null`(模擬修法失效)→
 // case 1 / 2 / 7 / 8 / 10 fail(expect received null)→ 還原 → 10 passed。
+// SANITY 紀錄(v2.0.70 case 11,已驗證 2026-07-30):把 SEP_RE 的 `i` flag 與
+// sepGlobal 的 'gi' 還原成 case-sensitive → case 11 fail(段尾殘留 <<<SHINKansen_SEP>>>)
+// → 還原 → 全綠。
 import { test, expect } from '@playwright/test';
 import { DELIMITER, realignByMarkers, MARKER_COMPACT, MARKER_STRONG } from '../../shinkansen/lib/system-instruction.js';
 
@@ -56,6 +59,15 @@ test('case 8: 段尾殘留的 SEP token 會被清掉(部分 SEP 有吐、部分�
   const parts = realignByMarkers(text, 3, MARKER_COMPACT);
   expect(parts).toEqual(['一', '二', '三']);
   for (const p of parts) expect(p).not.toContain('SHINKANSEN_SEP');
+});
+
+test('case 11: 大小寫被改寫的 SEP 殘留(<<<SHINKansen_SEP>>>)也會被清掉(v2.0.70)', () => {
+  // 模型同批次「吃掉一個 SEP」+「另一個 SEP 大小寫改寫」:realign 重切後,mangled SEP
+  // 落在段尾,清理 regex 必須 case-insensitive 才清得掉(persisted ring 2026-07-30 實測)
+  const text = `«1» 一\n<<<SHINKansen_SEP>>>\n«2» 二 «3» 三`;
+  const parts = realignByMarkers(text, 3, MARKER_COMPACT);
+  expect(parts).toEqual(['一', '二', '三']);
+  for (const p of parts) expect(p.toUpperCase()).not.toContain('SHINKANSEN_SEP');
 });
 
 test('case 9: 單段(expectedCount < 2)不適用 → null(單段有自己的處理路徑)', () => {

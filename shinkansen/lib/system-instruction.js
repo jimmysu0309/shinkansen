@@ -33,7 +33,12 @@ export const DELIMITER = '\n<<<SHINKANSEN_SEP>>>\n';
 // 改用 SEP_RE(兩側 `\s*`)接受所有空白變體;`\s*` 包含 0 個字元,連 `abc<<<SHINKANSEN_SEP>>>def`
 // 也能正確切。每段 .trim() 過,前後空白損失無影響。實測這個 fix 把 ASR 字幕 mismatch 率
 // 從 ~46% 砍到接近 0%。
-export const SEP_RE = /\s*<<<SHINKANSEN_SEP>>>\s*/;
+// v2.0.70: 加 `i` flag — gemini-3.5-flash-lite 偶發把 token 大小寫改寫
+//(實測 `<<<SHINKansen_SEP>>>`,persisted ring 2026-07-30 stuff.tv 批次),case-sensitive
+// split 漏切一刀 → mismatch,且 mangled token 逃過 realign 清理與 sanitizeMarkers
+// 最後防線直接漏進 DOM 與快取。token 是協定保留字串,原文不可能合法出現任何大小寫
+// 變體,放寬無誤殺風險。
+export const SEP_RE = /\s*<<<SHINKANSEN_SEP>>>\s*/i;
 
 // 多段序號標記。為什麼有兩組:
 //   Gemini / 商用 LLM(GPT / Claude / DeepSeek 等)用緊湊的 «N»,token 開銷小。
@@ -56,10 +61,11 @@ export const MARKER_COMPACT = {
   display: '«N»',
 };
 export const MARKER_STRONG = {
+  // v2.0.70: 三個 regex 加 `i` — 與 SEP_RE 同因(模型偶發改寫協定 token 大小寫)
   fmt: (n) => `<<<SHINKANSEN_SEG-${n}>>> `,
-  re: /^<<<SHINKANSEN_SEG-\d+>>>\s*/,
-  stripGlobalRe: /<<<SHINKANSEN_SEG-\d+>>>\s*/g,
-  scanRe: /<<<SHINKANSEN_SEG-(\d+)>>>/,
+  re: /^<<<SHINKANSEN_SEG-\d+>>>\s*/i,
+  stripGlobalRe: /<<<SHINKANSEN_SEG-\d+>>>\s*/gi,
+  scanRe: /<<<SHINKANSEN_SEG-(\d+)>>>/i,
   display: '<<<SHINKANSEN_SEG-N>>>',
 };
 
@@ -88,7 +94,7 @@ export const MARKER_STRONG = {
  */
 export function realignByMarkers(text, expectedCount, marker = MARKER_COMPACT) {
   if (!text || expectedCount < 2) return null;
-  const re = new RegExp(marker.scanRe.source, 'g');
+  const re = new RegExp(marker.scanRe.source, 'gi');
   const hits = [];
   let m;
   while ((m = re.exec(text)) !== null) {
@@ -100,7 +106,7 @@ export function realignByMarkers(text, expectedCount, marker = MARKER_COMPACT) {
     if (hits[i].n !== i + 1) return null;
   }
   if (text.slice(0, hits[0].start).trim() !== '') return null;
-  const sepGlobal = new RegExp(SEP_RE.source, 'g');
+  const sepGlobal = new RegExp(SEP_RE.source, 'gi');
   const parts = [];
   for (let i = 0; i < hits.length; i++) {
     const from = hits[i].end;

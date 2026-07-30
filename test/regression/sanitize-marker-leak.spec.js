@@ -20,6 +20,9 @@
 // SANITY CHECK 紀錄(STRONG marker case,2026-05-07):
 //   把 sanitizeMarkers 內 `.replace(/<<<SHINKANSEN_SEG-\d+>>>\s*/g, '')` 註解掉
 //   → case 1 的「SEG-N STRONG 殘留」、「混合 marker 殘留」兩個 sub-case fail。還原後 pass。
+// SANITY CHECK 紀錄(v2.0.70 大小寫改寫 case,2026-07-30):
+//   把 sanitizeMarkers 兩個 `/gi` 還原成 `/g` → case 1 的「模型改寫 SEP 大小寫」
+//   「SEG-N 大小寫變體」兩個 sub-case fail。還原後 21 passed。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -52,6 +55,16 @@ test('sanitize-marker-leak (case 1): SK.sanitizeMarkers 直接呼叫 strip SEP /
       desc: '兩種 marker 混合殘留(跨 engine race / 切換 toggle 期間)',
     },
     { input: '<<<SHINKANSEN_SEP>>>', expect: '', desc: '只有 SEP' },
+    {
+      input: '溫暖，\n<<<SHINKansen_SEP>>>',
+      expect: '溫暖，',
+      desc: 'v2.0.70:模型改寫 SEP 大小寫(gemini-3.5-flash-lite 實測,persisted ring 2026-07-30)',
+    },
+    {
+      input: '<<<shinkansen_seg-1>>> 大小寫改寫的 SEG 標記',
+      expect: '大小寫改寫的 SEG 標記',
+      desc: 'v2.0.70:SEG-N STRONG 標記大小寫變體同樣清除',
+    },
     { input: '«1» 純 «N» 開頭', expect: '純 «N» 開頭', desc: '只有 «1» 開頭(注意:正則只清一次)' },
     { input: '<<<SHINKANSEN_SEG-1>>> 純 SEG-N 開頭', expect: '純 SEG-N 開頭', desc: '只有 SEG-1 開頭' },
     { input: '正常譯文沒有標記', expect: '正常譯文沒有標記', desc: '無標記應原樣回傳' },

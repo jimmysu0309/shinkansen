@@ -422,8 +422,10 @@ if (window.__shinkansen_loaded) {
   SK.sanitizeMarkers = function sanitizeMarkers(text) {
     if (text == null) return text;
     return String(text)
-      .replace(/\s*<<<SHINKANSEN_SEP>>>\s*/g, ' ')
-      .replace(/<<<SHINKANSEN_SEG-\d+>>>\s*/g, '')
+      // v2.0.70: `i` flag — 模型偶發改寫 token 大小寫(<<<SHINKansen_SEP>>>),
+      // 協定 token 不可能合法出現在譯文,大小寫變體一律清
+      .replace(/\s*<<<SHINKANSEN_SEP>>>\s*/gi, ' ')
+      .replace(/<<<SHINKANSEN_SEG-\d+>>>\s*/gi, '')
       .replace(/«\d+»\s*/g, '')
       .trim();
   };
