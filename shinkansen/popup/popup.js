@@ -97,8 +97,14 @@ async function refreshUsageInfo() {
   try {
     // 讀 displayCurrency + cached rate 決定金額顯示幣值。
     // grand total 走 IndexedDB getStats（與用量明細分頁同源，避免 drift）。
+    // v2.0.71：popup 累計費用支援「清除」——實際是顯示基準點重設（usageResetAt，
+    // storage.local，與 usage-db 同為裝置本機），只加總基準點之後的紀錄；
+    // usage-db 紀錄本身不動,options 用量明細分頁完全不受影響。
+    const { usageResetAt } = await browser.storage.local.get('usageResetAt');
+    const statsPayload = (typeof usageResetAt === 'number' && usageResetAt > 0)
+      ? { from: usageResetAt } : {};
     const [resp, currencyState] = await Promise.all([
-      browser.runtime.sendMessage({ type: 'QUERY_USAGE_STATS' }),
+      browser.runtime.sendMessage({ type: 'QUERY_USAGE_STATS', payload: statsPayload }),
       readCurrencyState(),
     ]);
     const stats = resp?.ok ? resp.stats : null;
@@ -673,6 +679,30 @@ $('clear-cache-yes').addEventListener('click', async () => {
   } else {
     statusEl.textContent = t('popup.status.cacheClearFailed', { error: resp?.error || t('common.errorUnknown') });
     statusEl.style.color = '#ff3b30';
+  }
+});
+
+// v2.0.71：累計費用「清除」——同 clear-cache 的 inline 確認 UI 模式（Firefox popup
+// 不能用 native confirm）。「清除」只寫 usageResetAt 顯示基準點（storage.local），
+// usage-db 紀錄一筆都不刪，options 用量明細分頁不受影響。
+$('clear-usage-btn').addEventListener('click', () => {
+  $('clear-usage-btn').hidden = true;
+  $('clear-usage-confirm').hidden = false;
+});
+
+$('clear-usage-no').addEventListener('click', () => {
+  $('clear-usage-confirm').hidden = true;
+  $('clear-usage-btn').hidden = false;
+});
+
+$('clear-usage-yes').addEventListener('click', async () => {
+  $('clear-usage-confirm').hidden = true;
+  $('clear-usage-btn').hidden = false;
+  try {
+    await browser.storage.local.set({ usageResetAt: Date.now() });
+    refreshUsageInfo();
+  } catch {
+    $('usage-info').textContent = t('popup.usage.unreadable');
   }
 });
 

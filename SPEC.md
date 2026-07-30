@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.70
+- 目前 Extension 版本：2.0.71
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.70 為止）
+### 2.1 已實作（v2.0.71 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -691,6 +691,7 @@ shinkansen/
 - **翻譯快取**：key `tc_<sha1>` → 譯文字串
 - **術語表快取**：key `gloss_<sha1>` → 術語對照 JSON
 - **版本標記**：key `__cacheVersion` → manifest version（不一致時清空所有快取）
+- **累計費用顯示基準點**：key `usageResetAt` → ms epoch。popup「累計費用」的「清除」寫入；popup 只加總此時間點之後的 usage-db 紀錄。usage-db 與此 key 同為裝置本機，不跨裝置同步
 
 ### 8.3 同步策略
 
@@ -826,12 +827,12 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 
 - Header：emoji 🚄 + 名稱「Shinkansen」+ 版本號（動態讀取）
 - 主按鈕：「翻譯本頁」/「顯示原文」（依 `GET_STATE` 切換）
-- 編輯譯文按鈕（預設 `hidden`，翻譯完成後才顯示；切換 `TOGGLE_EDIT_MODE`）。進入編輯模式後頁面下方置中顯示浮動工具列（closed Shadow DOM＋Constructable Stylesheet）：提示文字＋「復原」（逐段 LIFO 撤銷，`beforeinput` 首次改動前快照 innerHTML）＋「完成」（等同「結束編輯」，寫回 guard 快取）；i18n key `editbar.*`
+- 編輯譯文按鈕（預設 `hidden`，翻譯完成後才顯示；切換 `TOGGLE_EDIT_MODE`）。進入編輯模式後頁面下方置中顯示浮動工具列（closed Shadow DOM＋Constructable Stylesheet）：提示文字＋「復原」（逐段 LIFO 撤銷，`beforeinput` 首次改動前快照 innerHTML）＋「完成」（等同「結束編輯」，寫回 guard 快取）；i18n key `editbar.*`。編輯中貼上一律降為純文字（`onEditPaste` capture 攔截，取 `text/plain` 走 `execCommand('insertText')`）——貼上格式跟目標段落走、不帶來源 inline style；Chromium 對 execCommand 不發 `beforeinput`，貼上前手動補快照讓「復原」涵蓋純貼上編輯。與 translate-doc EPUB 預覽 `onPreviewEditablePaste` 為同一份事實的雙實作
 - 白名單自動翻譯 toggle
 - 術語表一致化 toggle
 - YouTube 字幕翻譯 toggle（只在 YouTube 影片頁面顯示）
 - 快取統計（段數 / 大小）+ 清除快取按鈕
-- 累計費用 / token 顯示（透過 `QUERY_USAGE_STATS` 從 IndexedDB 讀取，與用量明細分頁同源）
+- 累計費用 / token 顯示（透過 `QUERY_USAGE_STATS` 從 IndexedDB 讀取，與用量明細分頁同源）＋「清除」按鈕（inline 確認 UI，同清除快取模式）。「清除」只寫顯示基準點 `usageResetAt`（`chrome.storage.local`，ms epoch），此後 popup 只加總基準點之後的紀錄（`QUERY_USAGE_STATS` 帶 `from`）；usage-db 紀錄一筆都不刪，options 用量明細分頁不受影響
 - 狀態列（「狀態：就緒」/ 「狀態：正在翻譯…」/ 錯誤訊息等）
 - Footer：設定按鈕（開啟 options 頁面）+ 快捷鍵提示（動態讀取 `chrome.commands`）
 

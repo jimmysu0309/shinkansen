@@ -266,6 +266,17 @@ button.link.small:hover { text-decoration: underline; }
   gap: 6px;
   font-size: 11px;
   color: #86868b;
+  /* v2.0.71:確認列(「確定清除？／歸零？」+ 是/否)不可換行——flex 擠壓時 CJK
+     短語會被拆成直式(iOS 觸控版字級放大時實測)。空間不足由 .cache-info 截斷讓位 */
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* 確認列展開時左側資訊文字讓位:可縮 + 省略號,不推擠確認列換行 */
+.cache-info {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .clear-cache-danger { color: #ff3b30; font-weight: 600; }
 

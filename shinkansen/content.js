@@ -2192,15 +2192,43 @@
     if (editBarEls) editBarEls.bar.classList.remove('show');
   }
 
+  // 編輯模式貼上一律降為純文字(v2.0.71):瀏覽器 rich paste 會把來源的 inline
+  // style(font-family / color 等 span)帶進譯文段,格式跟著「來源」走而非目標
+  // 段落。純文字插入 = 繼承游標處樣式,格式主權留給頁面 CSS;代價是「複製既有
+  // 斜體再貼」失去 inline 標記(編輯場景以文字修正為主,可接受)。
+  // 與 translate-doc/index.js onPreviewEditablePaste 是同一份事實的雙實作
+  //(content script IIFE vs ES module 隔離),改這裡必同步那邊。
+  // execCommand 走瀏覽器原生插入(游標 / 選取取代 / undo stack 都對),且會觸發
+  // beforeinput(insertText)→ onEditBeforeInput 快照照常運作
+  function onEditPaste(e) {
+    const t = e.target;
+    const node = t && (t.nodeType === Node.ELEMENT_NODE ? t : t.parentElement);
+    const el = node?.closest?.('[data-shinkansen-translated][contenteditable="true"]');
+    if (!el) return;
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    if (!text) return;
+    // Chromium 對 execCommand 的改動不發 beforeinput——貼上是本段首次改動時,
+    // 快照要在插入前自己補,復原(editBarUndo)才涵蓋純貼上的編輯
+    snapshotEditEl(el);
+    document.execCommand('insertText', false, text);
+  }
+
+  // 首次改動時快照該段落的原始譯文(beforeinput 路徑與 paste 路徑共用)
+  function snapshotEditEl(el) {
+    if (!el || editPreEditHTML.has(el)) return;
+    editPreEditHTML.set(el, el.innerHTML);
+    editUndoOrder.push(el);
+    updateEditBarUndoState();
+  }
+
   // beforeinput 在 DOM 改動「之前」發火——首次改動時快照該段落的原始譯文
   function onEditBeforeInput(e) {
     const t = e.target;
     if (!t || t.nodeType !== Node.ELEMENT_NODE) return;
     const el = t.closest?.('[data-shinkansen-translated][contenteditable="true"]');
-    if (!el || editPreEditHTML.has(el)) return;
-    editPreEditHTML.set(el, el.innerHTML);
-    editUndoOrder.push(el);
-    updateEditBarUndoState();
+    if (!el) return;
+    snapshotEditEl(el);
   }
 
   function editBarUndo() {
@@ -2244,9 +2272,11 @@
     resetEditUndoStack();
     if (enable) {
       document.addEventListener('beforeinput', onEditBeforeInput, true);
+      document.addEventListener('paste', onEditPaste, true);
       showEditBar();
     } else {
       document.removeEventListener('beforeinput', onEditBeforeInput, true);
+      document.removeEventListener('paste', onEditPaste, true);
       hideEditBar();
     }
     editModeActive = enable;
