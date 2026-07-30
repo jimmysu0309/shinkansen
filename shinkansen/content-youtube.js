@@ -2594,8 +2594,11 @@
   // YouTube /api/timedtext URL 帶 lang= 參數(例如 'en' / 'zh-Hant' / 'ja')
   // 明確匹配 target → 直接 skip,避免浪費 token 翻自己。
   // P1 (v1.8.59): 依 STATE.targetLanguage 決定 skip 集合(取代原寫死 zh-TW 集合)。
+  // v2.0.72: target=zh-TW 時簡中系(zh-Hans / zh-CN / zh-SG)也 skip——繁中使用者
+  // 可直接閱讀簡中字幕,簡轉繁的 API 花費與轉換誤差不值得(產品決策,2026-07-30)。
+  // 注意:僅字幕路徑;整頁翻譯的簡中段落仍照翻(content-detect.js isAlreadyInTarget 不動)。
   const SKIP_LANGS_BY_TARGET = {
-    'zh-TW': new Set(['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO']),
+    'zh-TW': new Set(['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO', 'zh-Hans', 'zh-CN', 'zh-SG']),
     'zh-CN': new Set(['zh-Hans', 'zh-CN', 'zh-SG']),
     'en':    new Set(['en', 'en-US', 'en-GB', 'en-CA', 'en-AU', 'en-IE', 'en-NZ']),
     'ja':    new Set(['ja', 'ja-JP']),
@@ -2620,9 +2623,19 @@
     if (skipSet && skipSet.has(captionLang)) return true;
     // 模糊 lang fallback:用內容偵測補判
     const ambig = _AMBIGUOUS_LANGS_BY_TARGET[target];
-    if (ambig && ambig.has(captionLang) && typeof SK.isAlreadyInTarget === 'function') {
+    if (ambig && ambig.has(captionLang)) {
       const sample = _sampleCaptionText();
-      if (sample && SK.isAlreadyInTarget(sample, target)) return true;
+      if (sample) {
+        // v2.0.72: target=zh-TW 對模糊 `zh` 軌,內容偵測到繁中「或簡中」都 skip
+        // (跟上面 skip set 的簡中系決策一致;不動 isAlreadyInTarget——那是整頁翻譯共用,
+        //  整頁的簡中段落仍要翻)。
+        if (target === 'zh-TW' && typeof SK.detectTextLang === 'function') {
+          const detected = SK.detectTextLang(sample);
+          if (detected === 'zh-Hant' || detected === 'zh-Hans') return true;
+        } else if (typeof SK.isAlreadyInTarget === 'function' && SK.isAlreadyInTarget(sample, target)) {
+          return true;
+        }
+      }
     }
     return false;
   }
@@ -2656,10 +2669,11 @@
     const YT = SK.YT;
     if (YT.translatingWindows.has(windowStartMs)) return;  // v1.2.54: per-window 防重入
     if (!YT.active) return;
-    // v1.8.40: 字幕原文已是繁中 → 跳過整個翻譯流程,記一次 log 讓使用者在 debug 面板看得到原因
+    // v1.8.40: 字幕原文已是目標可讀語言(含 zh-TW target 的簡中,v2.0.72)→ 跳過整個
+    // 翻譯流程,記一次 log 讓使用者在 debug 面板看得到原因
     if (_shouldSkipBecauseAlreadyTraditionalChinese()) {
       if (!YT._skipLoggedForLang) {
-        SK.sendLog('info', 'youtube', 'skip translate: caption already traditional chinese', {
+        SK.sendLog('info', 'youtube', 'skip translate: caption already readable for target', {
           captionLang: YT.captionLang,
           videoId: YT.videoId,
         });

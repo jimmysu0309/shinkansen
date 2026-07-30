@@ -6,13 +6,17 @@
 // 修法位置:shinkansen/content-youtube.js
 //   1. shinkansen-yt-captions listener 從 caption URL 抓 lang 存進 YT.captionLang
 //   2. translateWindowFrom 入口加 _shouldSkipBecauseAlreadyTraditionalChinese()
-//      命中就 return + log 'skip translate: caption already traditional chinese'
-//   3. SKIP_TRANSLATE_LANGS_TW = { zh-Hant, zh-TW, zh-HK, zh-MO }
+//      命中就 return + log 'skip translate: caption already readable for target'
+//   3. SKIP_LANGS_BY_TARGET['zh-TW'] = { zh-Hant, zh-TW, zh-HK, zh-MO, zh-Hans, zh-CN, zh-SG }
+//
+// v2.0.72 產品決策翻轉:target=zh-TW 時簡中系(zh-Hans / zh-CN / zh-SG)也 skip
+//   ——繁中使用者可直接閱讀簡中字幕,簡轉繁的 API 花費不值得。模糊 `zh` 軌的
+//   內容偵測補判同步:偵測到繁中「或簡中」都 skip。僅字幕路徑;整頁翻譯的
+//   簡中段落仍照翻(isAlreadyInTarget 不動,見 target-source-lang-skip.spec.js)。
 //
 // 不在範圍(維持送 Gemini):
-//   zh-Hans / zh-CN(簡中,讓 LLM 簡轉繁更精準)
-//   zh(泛中,無從區分繁簡)
-//   其他語言
+//   其他語言(en / ja / ...)
+//   target=zh-CN 的繁中字幕(維持 LLM 繁轉簡,本次只改 zh-TW 方向)
 //
 // 結構通則:本 spec 鎖「URL 帶明確繁中 lang 代碼 → 不送 TRANSLATE_SUBTITLE_BATCH」
 // 行為,不依賴 class/id 名稱啟發式。
@@ -35,6 +39,12 @@
 //   對 target ∈ {zh-TW, zh-CN} + lang='zh' 時走 SK.isAlreadyInTarget 內容偵測。
 //   SANITY(已驗證 2026-05-11):把 _AMBIGUOUS_LANGS_BY_TARGET['zh-TW'] 改成空集合
 //   → trad+lang=zh 那條 fail(TRANSLATE_SUBTITLE_BATCH 被呼叫)。還原後 pass。
+//
+// v2.0.72 SANITY(已驗證 2026-07-30):同時破壞兩處——(1) SKIP_LANGS_BY_TARGET['zh-TW']
+//   拿掉 zh-Hans/zh-CN/zh-SG;(2) 模糊 zh 分支的 detectTextLang 判斷改 if(false) 還原成
+//   只走 isAlreadyInTarget → 正好 4 條新 case fail(zh-Hans / zh-CN / zh-SG 三條
+//   TRANSLATE_SUBTITLE_BATCH 被呼叫 + lang=zh 簡中內容 target=zh-TW 被呼叫),
+//   既有 8 條不受影響。還原後 12 條全 pass。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -68,7 +78,8 @@ const MOCK_JSON3_SIMP_CONTENT = JSON.stringify({
 });
 
 test.describe('youtube-skip-already-zh-hant', () => {
-  for (const lang of ['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO']) {
+  // v2.0.72: 簡中系(zh-Hans / zh-CN / zh-SG)也進 skip 名單
+  for (const lang of ['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO', 'zh-Hans', 'zh-CN', 'zh-SG']) {
     test(`captionLang=${lang} → 不送 TRANSLATE_SUBTITLE_BATCH`, async ({ context, localServer }) => {
       const page = await context.newPage();
       await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
@@ -203,62 +214,10 @@ test.describe('youtube-skip-already-zh-hant', () => {
     await page.close();
   });
 
-  test('captionLang=zh-Hans(簡中)→ 仍送 TRANSLATE_SUBTITLE_BATCH(讓 LLM 簡轉繁)', async ({ context, localServer }) => {
-    const page = await context.newPage();
-    await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.ytp-caption-window-container', { timeout: 10_000, state: 'attached' });
-
-    const { evaluate } = await getShinkansenEvaluator(page);
-    await evaluate(`window.__SK.isYouTubePage = () => true`);
-
-    await evaluate(`
-      window.__translateBatchCalled = 0;
-      chrome.runtime.sendMessage = async function(msg) {
-        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH') {
-          window.__translateBatchCalled++;
-          const texts = (msg.payload && msg.payload.texts) || [];
-          return { ok: true, result: texts.map(t => '[ZH] ' + t),
-            usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0,
-                     billedInputTokens: 1, billedCostUSD: 0, cacheHits: 0 }};
-        }
-        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH_STREAM') {
-          return { ok: false, error: 'streaming disabled in test' };
-        }
-        return { ok: true };
-      };
-    `);
-
-    await evaluate(`window.__SK.translateYouTubeSubtitles()`);
-
-    await evaluate(`
-      window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
-        detail: {
-          url: 'https://www.youtube.com/api/timedtext?v=${VIDEO_ID}&lang=zh-Hans',
-          responseText: ${JSON.stringify(MOCK_JSON3)},
-        }
-      }));
-    `);
-
-    const start = Date.now();
-    while (Date.now() - start < 5000) {
-      const c = await evaluate(`window.__translateBatchCalled`);
-      if (c > 0) break;
-      await page.waitForTimeout(50);
-    }
-
-    const calls = await evaluate(`window.__translateBatchCalled`);
-    expect(
-      calls,
-      `captionLang=zh-Hans 應送 TRANSLATE_SUBTITLE_BATCH(簡中讓 LLM 簡轉繁),實際 ${calls} 次`,
-    ).toBeGreaterThan(0);
-
-    await page.close();
-  });
-
   // v1.9.3 模糊 lang fallback:lang=zh 時靠內容偵測補判 ─────────
   // 4 個交叉 case 確保 _AMBIGUOUS_LANGS_BY_TARGET fallback 正確:
-  //   trad content + target=zh-TW → skip(實機觸發本次 bug 的場景)
-  //   simp content + target=zh-TW → 不 skip(LLM 簡轉繁)
+  //   trad content + target=zh-TW → skip(實機觸發 v1.9.3 bug 的場景)
+  //   simp content + target=zh-TW → skip(v2.0.72 翻轉:簡中字幕不翻)
   //   simp content + target=zh-CN → skip
   //   trad content + target=zh-CN → 不 skip(LLM 繁轉簡)
 
@@ -330,23 +289,26 @@ test.describe('youtube-skip-already-zh-hant', () => {
     await page.close();
   });
 
-  test('lang=zh + 簡中內容 + target=zh-TW → 不 skip(LLM 簡轉繁)', async ({ context, localServer }) => {
+  test('lang=zh + 簡中內容 + target=zh-TW → skip(v2.0.72 簡中字幕不翻)', async ({ context, localServer }) => {
     const { page, evaluate } = await _setupSkipFallbackPage({
       context, localServer, target: 'zh-TW', fixtureJson: MOCK_JSON3_SIMP_CONTENT, lang: 'zh',
     });
 
-    const start = Date.now();
-    while (Date.now() - start < 5000) {
-      const c = await evaluate(`window.__translateBatchCalled`);
-      if (c > 0) break;
-      await page.waitForTimeout(50);
-    }
+    await page.waitForTimeout(800);
 
     const calls = await evaluate(`window.__translateBatchCalled`);
     expect(
       calls,
-      `lang=zh + 簡中內容 + target=zh-TW 應送 API(簡轉繁),實際 ${calls} 次`,
-    ).toBeGreaterThan(0);
+      `lang=zh + 簡中內容 + target=zh-TW 應 skip(v2.0.72 簡中字幕不翻),實際 ${calls} 次`,
+    ).toBe(0);
+
+    const statusEl = await evaluate(`
+      (() => { const el = document.getElementById('__sk-yt-caption-status'); return el ? el.textContent : null; })()
+    `);
+    expect(
+      statusEl,
+      `lang=zh + 簡中內容 skip 翻譯時「翻譯中…」status 不該殘留,實際 textContent=${JSON.stringify(statusEl)}`,
+    ).toBeNull();
 
     await page.close();
   });

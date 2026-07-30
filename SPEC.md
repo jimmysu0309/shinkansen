@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.71
+- 目前 Extension 版本：2.0.72
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.71 為止）
+### 2.1 已實作（v2.0.72 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -290,7 +290,7 @@ userOverride trim 為空 OR userOverride.trim() === DEFAULT_*_PROMPT.trim()
 
 `SKIP_LANGS_BY_TARGET` 對照表依 `STATE.targetLanguage` 切集合：
 
-- target=`zh-TW` → 跳 `zh-Hant` / `zh-TW` / `zh-HK` / `zh-MO`
+- target=`zh-TW` → 跳 `zh-Hant` / `zh-TW` / `zh-HK` / `zh-MO` / `zh-Hans` / `zh-CN` / `zh-SG`（簡中系也跳：繁中使用者可直讀簡中字幕，不花 API 簡轉繁；模糊 `zh` 軌的內容偵測補判同步——偵測到繁中或簡中都跳。僅字幕路徑，整頁翻譯的簡中段落仍照翻）
 - target=`zh-CN` → 跳 `zh-Hans` / `zh-CN` / `zh-SG`
 - target=`en` → 跳 `en` / `en-US` / `en-GB` / `en-CA` / `en-AU` / `en-IE` / `en-NZ`
 
