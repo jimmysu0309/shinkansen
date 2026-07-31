@@ -135,6 +135,12 @@ if (window.__shinkansen_loaded) {
     // (例 upmedia.mg 的 "Noto Serif TC")的情境下,日 / 韓 / 簡中譯文仍能用到對應
     // locale 字形變體。restore 時還原此原值。
     originalFontFamily: new Map(), // el → string
+    // v2.0.73:<html lang> 原值備份(undefined = 本輪沒動過;{ orig: string|null },
+    // orig null = 原本沒設 attribute)。single mode 翻譯成功後把 documentElement.lang
+    // 設為 targetLanguage——per-element lang(originalLang)只蓋注入段落,讀「整份文件」
+    // 的下游 scraper(Readwise Reader / Instapaper 等)看的是頁面層級 lang。
+    // restorePage / SPA 導航還原。dual mode 不動(頁面同時含原文與譯文,標 target 語意不對)。
+    docLangBackup: undefined,
   };
 
   // v1.10.57:「這頁是否已翻譯」單一裁決源 —— 以 DOM 注入痕跡為準,不信記憶體

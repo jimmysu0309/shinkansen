@@ -108,6 +108,33 @@
     el.style.fontFamily = base ? `${prepend}, ${base}` : prepend;
   }
 
+  // v2.0.73:single mode 翻譯成功後把 <html lang> 設為 targetLanguage。
+  // per-element lang(applyTargetLocaleStyling)只蓋注入段落,頁面層級 lang 是給
+  // 讀「整份文件」的下游 scraper(Readwise Reader / Instapaper 等)與 a11y 工具看的。
+  // 備份採 snapshot-once 語意:同頁多輪翻譯(ignorePartialMode 重翻等)不覆寫首次備份,
+  // 還原永遠回到「Shinkansen 動手前」的值。dual mode 由呼叫端把關不進來。
+  SK.applyDocTargetLang = function applyDocTargetLang() {
+    const target = STATE.targetLanguage;
+    if (!target || typeof target !== 'string') return;
+    const root = document.documentElement;
+    if (!root) return;
+    if (STATE.docLangBackup === undefined) {
+      STATE.docLangBackup = { orig: root.hasAttribute('lang') ? root.getAttribute('lang') : null };
+    }
+    root.setAttribute('lang', target);
+  };
+
+  // restorePage / SPA 導航用:還原 <html lang> 原值(null = 原本沒設,移除 attribute)。
+  SK.restoreDocLang = function restoreDocLang() {
+    if (STATE.docLangBackup === undefined) return;
+    const root = document.documentElement;
+    if (root) {
+      if (STATE.docLangBackup.orig === null) root.removeAttribute('lang');
+      else root.setAttribute('lang', STATE.docLangBackup.orig);
+    }
+    STATE.docLangBackup = undefined;
+  };
+
   // restorePage / abort 路徑用:還原翻譯前的 lang attribute + inline fontFamily。
   // originalLang 為 null = 原本沒設 attribute,移除即可;originalFontFamily 空字串 =
   // 原本沒 inline style,設空字串會清掉 inline,重新繼承站點 CSS。

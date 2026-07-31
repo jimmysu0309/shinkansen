@@ -1431,6 +1431,8 @@
       }
 
       STATE.translated = true;
+      // v2.0.73:single mode 整頁已是譯文,<html lang> 對齊 target(下游 scraper / a11y 讀頁面層級 lang)
+      if (STATE.translatedMode === 'single') SK.applyDocTargetLang?.();
       // openai-compat 視為獨立 provider 記錄,避免 rescan / SPA nav 把它誤當 Gemini replay。
       const _providerUsed = options.engine === 'openai-compat' ? 'openai-compat' : 'gemini';
       STATE.translatedBy = _providerUsed;  // v1.4.0
@@ -1717,6 +1719,7 @@
     STATE.originalLang?.clear?.();
     STATE.originalFontFamily?.clear?.();
     STATE.translationCache?.clear?.();  // v1.5.0
+    SK.restoreDocLang?.();  // v2.0.73:還原 <html lang> 原值
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0
     STATE.translationContext = null;
@@ -2034,6 +2037,8 @@
       }
 
       STATE.translated = true;
+      // v2.0.73:同 Gemini 路徑,single mode 對齊 <html lang>
+      if (STATE.translatedMode === 'single') SK.applyDocTargetLang?.();
       STATE.translatedBy = 'google';  // v1.4.0
       // 同 Gemini 路徑記錄 provider context 供 rescan / SPA nav replay。Google MT 無 model / glossary 參數。
       STATE.translationContext = { provider: 'google' };

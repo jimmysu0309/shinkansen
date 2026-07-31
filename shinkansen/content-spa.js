@@ -92,6 +92,7 @@
     STATE.nodeValueMutateBackup?.clear?.();
     STATE.originalLang?.clear?.();
     STATE.originalFontFamily?.clear?.();
+    SK.restoreDocLang?.();  // v2.0.73:SPA 換頁後新內容是原文,<html lang> 還原原值
     STATE.cache.clear();
     STATE.translated = false;
     STATE._glossaryPromise = null;

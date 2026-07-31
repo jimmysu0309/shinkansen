@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.72
+- 目前 Extension 版本：2.0.73
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.72 為止）
+### 2.1 已實作（v2.0.73 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -465,6 +465,8 @@ userOverride trim 為空 OR userOverride.trim() === DEFAULT_*_PROMPT.trim()
 ### 4.3 還原機制
 
 `STATE.originalHTML`（Map，el → innerHTML）備份每個被替換元素的原始 HTML。再次按 Option+S 呼叫 `restorePage()` 逐一還原。
+
+**頁面層級 `<html lang>` 對齊**：single mode 翻譯成功後，`documentElement` 的 `lang` 設為 `targetLanguage`（`SK.applyDocTargetLang()`，`STATE.docLangBackup` snapshot-once 備份原值）——per-element lang（`applyTargetLocaleStyling`）只蓋注入段落，頁面層級 lang 是給讀整份文件的下游 scraper（Readwise Reader / Instapaper 等）與 a11y 工具看的。`restorePage()` 與 SPA 導航 reset 呼叫 `SK.restoreDocLang()` 還原原值（原本沒設 attribute 就 removeAttribute）。dual mode 不動（頁面同時含原文與譯文，標 target 語意不對）。
 
 ### 4.4 視覺樣式
 
