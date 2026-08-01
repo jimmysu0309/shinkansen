@@ -7,6 +7,8 @@
 
 ## v2.0.x
 
+**v2.0.74**——**既有使用者自動吃到 v2.0.53 的 default prompt 排版規則擴充**。v2.0.53 對翻譯 prompt 加了「日文 ？！ 後空格移除」與「忠於原文的句尾標點」兩條排版規則，但當時漏加升級比對規則——設定頁存過舊版預設 prompt 字面值的使用者被誤判成「已客製」，永遠吃不到新 prompt，只能在設定頁看到提示等手動更新。本版補上 `_normalizePromptForComparison` 的三條 normalize rule（zh-TW 版兩段新增文字＋universal 版 rule 5/6，語言 label 容忍注入後字面值），舊 saved 經 normalize 等於新預設 → 視為未客製，翻譯時自動採用新 prompt，網頁與文件翻譯（同一常數）一併生效；真正客製過的 prompt 不受影響。unit spec：`system-prompt-typography-upgrade.spec.js` 6 條（舊字面值凍結快照視為未客製／ja・en 含 reinforcement 尾段路徑／DOC 路徑／客製對照組／防誤刪，SANITY 破壞驗證兩輪）。**建議手動清快取**：受影響使用者升級後開始吃新 prompt，先前舊 prompt 翻出的快取譯文不會自動失效。
+
 **v2.0.73**——**single mode 翻譯後 `<html lang>` 對齊目標語言**。翻譯成功後把 `documentElement` 的 `lang` 設為 `targetLanguage`（例 `zh-TW`），還原／SPA 導航時回復原值（原本沒設 attribute 就移除、不留殘影）；dual mode 不動（頁面同時含原文與譯文）。per-element 的 lang＋locale 字體 prepend 既有機制只蓋注入段落，這次補的是**頁面層級**語意——受益者是讀整份文件的下游 scraper 與 a11y 工具。起因：翻譯後文章存到 Readwise Reader 出現逐字字體混排（「為」「麼」與鄰字不同字體），實測根因是 Reader 端把繁中內容誤判成韓文（`lang="ko"` → 韓文字體渲染、缺字字元逐字 fallback 中文字體）；Reader 目前的自動偵測不吃頁面 lang 屬性（已實測），此改動無法直接修其誤判，但為未來修正與其他下游做對頁面語意。regression：`inject-doc-lang-target.spec.js` 3 條（single 切 target＋restore 還原／無 lang 頁還原後不殘留／dual 對照組不動，SANITY 破壞驗證）。**不需清快取**：不動 prompt、cache key 與譯文內容。
 
 **v2.0.72**——**簡中影片的 YouTube 字幕不再翻譯（target=zh-TW）**。產品決策翻轉：翻譯目標為台灣繁中時，字幕軌是簡中系（`zh-Hans`／`zh-CN`／`zh-SG`）的影片不再送 LLM 簡轉繁——繁中使用者可直接閱讀簡中字幕，簡轉繁的 API 花費與轉換誤差不值得。兩處改動：（1）`SKIP_LANGS_BY_TARGET['zh-TW']` 加入簡中系語碼，字幕保持 YouTube 原生顯示；（2）模糊 `zh` 軌（YouTube 只標 `zh` 不附繁簡）的內容偵測補判同步——偵測到繁中或簡中都跳過（原本只認繁中）。**僅字幕路徑**：整頁翻譯的簡中文章照翻（`isAlreadyInTarget` 不動）；target=zh-CN 的行為不變（繁中字幕仍繁轉簡）。regression：`youtube-skip-already-zh-hant.spec.js` 更新至 12 條（skip 名單 loop 擴到 7 語碼＋翻轉「lang=zh＋簡中內容」期望，SANITY 破壞驗證：拆修法正好 4 條新 case fail、既有 8 條不受影響）。**不需清快取**：skip 路徑不產生譯文，不動 prompt 與 cache key。

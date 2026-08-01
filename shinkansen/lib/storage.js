@@ -404,6 +404,15 @@ function _normalizePromptForComparison(s) {
     .replace(/\n4\. 欄位完整：每條 entry 必須同時包含 source、target、type 三個欄位；target 必須是譯名本身，絕對不可填入分類代號（person \/ place \/ tech \/ work）。/g, '')
     .replace(/ If none exists, translate the title into [^\n]*? yourself; never leave the original title untranslated as the target\./g, '')
     .replace(/\n3\. Every entry must include all three fields source \/ target \/ type; the target must be the translated name itself, never a category token \(person \/ place \/ tech \/ work\)\./g, '')
+    // v2.0.53:SYSTEM / DOC prompt 排版規則擴充——規則 1 插入「日文 ？！ 後空格移除」
+    // 說明句 + 新增規則 6「忠於原文的句尾標點」;UNIVERSAL 版對應新增 rule 5 / 6。
+    // strip 新增段落,讓舊 saved 字面值 normalize 後仍等於當前 DEFAULT / UNIVERSAL
+    // (視為未客製,runtime 自動吃新 prompt,不需使用者手動更新)。
+    .replace(/特別注意：日文等原文在「？」「！」後接空格再起句是原文的排版慣例，翻譯成中文時必須移除這些空格，不可帶進譯文。/g, '')
+    .replace(/\n6\. 忠於原文的句尾標點：原文句尾沒有終止標點時（日文小說的「」內對白慣例、標題、詩句等），譯文句尾也不可自行補上句號。原文的輕收節奏是作者的選擇，必須保留。/g, '')
+    // UNIVERSAL 版 rule 5 內含 {targetLanguage} 注入後的語言 label(單行任意字串),
+    // 比照上方 glossary rule 先例用 [^\n]* 容忍
+    .replace(/\n5\. Follow [^\n]* punctuation and spacing conventions\. Do not carry over\n   source-language typographic spacing \(e\.g\. the Japanese habit of a space after ？\/！\)\n   unless it is also conventional in [^\n]*\.\n6\. Mirror the source's sentence-final punctuation: if the source sentence, quoted line,\n   or heading ends without a sentence-final mark, do not add one in the translation\./g, '')
     .trim();
 }
 
