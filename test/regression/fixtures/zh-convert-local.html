@@ -28,6 +28,13 @@
     <!-- 2 字 CJK + 英文縮寫的分類標籤(ratio 0.33):要轉換——isConvertibleVariant
          下限 2 字的覆蓋案例(下限訂 4 時這類 tag 標籤整條漏轉) -->
     <p id="p-short-tag">传感/MEMS</p>
+    <!-- 全共用字標題(準特徵字 tier):周/什/看 全是共用字,唯一變體訊號是「么」
+         ——么 被 TWVariants 幺→么 異體收錄而遭語料排除,靠白名單準特徵 tier 收復。
+         沒有 tier 時 simpCount=0 誤判 zh-Hant 整條跳過(真實案例:週刊標題) -->
+    <h2 id="p-quasi-title">本周看什么 | 最近值得一看的 13 部作品</h2>
+    <!-- 繁體日常字安全對照:吃/秘/恒 是準特徵候選但被白名單擋下的繁體日常字,
+         此段必須維持不動(誤收會把繁體誤判簡體、轉出古字形 喫/祕) -->
+    <p id="p-trad-daily">吃飯了嗎，恒生銀行旁邊那家秘密小店的床位民宿是否值得推薦給大家參考看看。</p>
 
     <!-- 新聞頁 meta row(Case F multi-segment 容器):block div + ≥3 inline 子 +
          wrapper span。author 正文是 wrapper span 內的裸 text node(旁有短 label

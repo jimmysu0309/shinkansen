@@ -42,6 +42,11 @@
 //   ⑪ _foreignPage 暫改回讀當前 document lang(不看 docLangBackup.orig)→ case 6
 //     「晚載 12 字簡中卡片標題應可收集」fail(轉換後 lang 已被蓋 zh-TW,rescan
 //     失去外語頁放寬)。還原 → 103 條全 pass。
+//   ⑫ 從生成字集移除準特徵字 么 → case 1「全共用字標題應轉換(本週看什麼)」fail
+//     (「本周看什么」simpCount 歸零誤判 zh-Hant)。跑 generate-zh-char-sets.mjs
+//     再生 → 104 條全 pass。繁體安全對照(吃飯/恒生)在破壞前後都 pass。
+//   ⑬ translatePage collect=0 分支的 convertOnly 靜默 gate 暫改 if(true)(一律跳
+//     noContent toast)→ case 8「不得跳任何 toast」fail。還原 → pass。
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
@@ -160,6 +165,13 @@ test('zh-convert case 1: convertOnly 只轉簡體段,英文段不動,零 LLM 呼
   const shortTag = await evaluate(`document.querySelector('#p-short-tag').innerText`);
   // TWPhrases 詞組級把 传感 對映台灣術語「感測」(非字級「傳感」)
   expect(shortTag, '2 字 CJK + 英文縮寫分類標籤應轉換(感測)').toContain('感測/MEMS');
+  // 準特徵字 tier 覆蓋:全共用字標題唯一訊號是 么(白名單收復),應轉換
+  const quasiTitle = await evaluate(`document.querySelector('#p-quasi-title').innerText`);
+  expect(quasiTitle, '全共用字標題應轉換(本週看什麼)').toContain('本週看什麼');
+  // 繁體日常字安全對照:吃/秘/恒 不得被準特徵 tier 誤收(繁體段必須原樣)
+  const tradDaily = await evaluate(`document.querySelector('#p-trad-daily').innerText`);
+  expect(tradDaily, '繁體日常句必須原樣不動(吃飯)').toContain('吃飯了嗎');
+  expect(tradDaily, '繁體日常句不得被轉成古字形(恒生)').toContain('恒生銀行');
   // 簡中 site footer 放行覆蓋:footer 內容為相反變體時不再硬排除,欄目與連結轉換
   const footer = await evaluate(`({
     col: document.querySelector('#p-footer-col').innerText,
@@ -348,6 +360,86 @@ test('zh-convert case 6: 轉換後 lang 被蓋 zh-TW,SPA 晚載短標題仍以�
   expect(r.langNow, '轉換後 <html lang> 應已被蓋成 zh-TW(前置條件)').toBe('zh-TW');
   expect(r.backupOrig, 'docLangBackup 應記住原始 zh-CN(前置條件)').toBe('zh-CN');
   expect(r.caught, '晚載 12 字簡中卡片標題應可收集(foreign 判定看原始 lang 非當前 lang)').toBe(true);
+
+  await page.close();
+});
+
+test('zh-convert case 7: SPA 元素重用殭屍 marker → 收集時 reconcile 重轉', async ({
+  context,
+  localServer,
+}) => {
+  const { page, evaluate } = await openFixture(context, localServer);
+
+  // 第一輪 convertOnly:p-simp 轉換完成、帶 marker
+  await evaluate(`
+    window.__runDone = false;
+    window.__SK.translatePage({ convertOnly: true })
+      .then(() => { window.__runDone = true; })
+      .catch(() => { window.__runDone = true; });
+    null
+  `);
+  await waitRunDone(page, evaluate);
+  const converted = await evaluate(`document.querySelector('#p-simp').innerText`);
+  expect(converted, '第一輪轉換完成(前置條件)').toContain('軟體');
+
+  // 模擬 SPA 站內導航的 framework 元素重用:同顆元素文字換成「新文章」的簡體
+  // 內容(marker 留存),STATE 被 reset 清空(resetForSpaNavigation 的效果)
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('#p-simp');
+      el.textContent = '这是导航后新文章的简体内容，元素被框架重用而标记残留在上面。';
+      window.__SK.STATE.translated = false;
+      window.__SK.STATE.originalHTML?.clear?.();
+      window.__SK.STATE.originalText?.clear?.();
+      window.__SK.STATE.translatedHTML?.clear?.();
+      window.__SK.STATE.nodeValueMutateBackup?.clear?.();
+      return el.hasAttribute('data-shinkansen-translated') || el.hasAttribute('data-shinkansen-nodevalue-mutated');
+    })()
+  `).then(hasMarker => expect(hasMarker, '重用元素應仍帶殭屍 marker(前置條件)').toBe(true));
+
+  // 第二輪 convertOnly(SPA nav 後 autoConvertZh 重新觸發的效果):
+  // 殭屍 marker 應被 reconcile,新簡體內容照常轉換
+  await evaluate(`
+    window.__runDone = false;
+    window.__SK.translatePage({ convertOnly: true })
+      .then(() => { window.__runDone = true; })
+      .catch(() => { window.__runDone = true; });
+    null
+  `);
+  await waitRunDone(page, evaluate);
+
+  const after = await evaluate(`document.querySelector('#p-simp').innerText`);
+  expect(after, '殭屍 marker 元素的新簡體內容應被重轉(導航後)').toContain('導航後');
+  expect(after, '不得殘留簡體(标记)').not.toContain('标记');
+
+  await page.close();
+});
+
+test('zh-convert case 8: convertOnly 對收不到段落的頁面靜默結束(不跳 noContent toast)', async ({
+  context,
+  localServer,
+}) => {
+  // 模擬 SPA 未渲染 / 純英文空頁:開一個沒有可收集段落的頁面
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/zh-convert-local.html`, { waitUntil: 'domcontentloaded' });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const r = await evaluate(`
+    (async () => {
+      // 清空 body(模擬 React app document_idle 時還沒渲染)
+      document.body.innerHTML = '<div id="root"></div>';
+      let toastShown = null;
+      const origShowToast = window.__SK.showToast;
+      window.__SK.showToast = (kind, msg, opts) => { toastShown = { kind, msg }; return origShowToast.call(window.__SK, kind, msg, opts); };
+      await window.__SK.translatePage({ convertOnly: true }).catch(() => {});
+      window.__SK.showToast = origShowToast;
+      return { toastShown, translated: window.__SK.STATE.translated, translating: window.__SK.STATE.translating };
+    })()
+  `);
+
+  expect(r.toastShown, 'convertOnly 收不到段落不得跳任何 toast(背景行為靜默)').toBe(null);
+  expect(r.translated, '不得標為已翻譯').toBe(false);
+  expect(r.translating, 'run state 應正確釋放').toBe(false);
 
   await page.close();
 });

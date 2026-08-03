@@ -1164,6 +1164,9 @@
     }
 
     if (isGoogleDocsEditorPage()) {
+      // convertOnly(簡繁自動互轉)背景路徑不觸發 Google Docs 導向——toggle 開著
+      // 的使用者每次開 Docs 都被自動導到 mobilebasic 是嚴重干擾;導向留給手動翻譯
+      if (options.convertOnly) return;
       const mobileUrl = getGoogleDocsMobileBasicUrl();
       if (mobileUrl) {
         SK.sendLog('info', 'translate', 'Google Docs detected, redirecting to mobilebasic', { mobileUrl });
@@ -1189,8 +1192,12 @@
     }
 
     if (!navigator.onLine) {
-      SK.showToast('error', SK.t('toast.offline'), { autoHideMs: 5000 });
-      return;
+      // 本地簡繁轉換不需網路(字典在 extension 內,CONVERT_ZH_LOCAL 不出網),
+      // convertOnly 離線照常執行;手動翻譯維持離線提示
+      if (!options.convertOnly) {
+        SK.showToast('error', SK.t('toast.offline'), { autoHideMs: 5000 });
+        return;
+      }
     }
 
     // v1.10.20: run state（translating + abortController）必須在第一個 await 之前
@@ -1276,7 +1283,15 @@
     const t_collect_start = Date.now();
     let units = SK.collectParagraphs();
     if (units.length === 0) {
-      SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
+      // convertOnly(簡繁自動互轉)是背景自動行為,收不到段落靜默結束即可——
+      // SPA 頁 document_idle 時常還沒渲染,collect=0 是常態,每次 refresh 跳
+      // 「沒有可翻譯的內容」error toast 會變成噪音(LetterFeed 英文頁實測回報)。
+      // 手動翻譯維持跳 toast(使用者主動操作需要回饋)
+      if (!convertOnly) {
+        SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
+      } else {
+        SK.sendLog('info', 'translate', 'convertOnly: no units at collect (page not rendered yet?), silent exit');
+      }
       SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {}); // run 開頭已 SET_BADGE，沒翻成不可留紅點
       releaseRunState(myAbortController);
       return;
@@ -2419,7 +2434,10 @@
     }
     const enable = typeof forceState === 'boolean' ? forceState : !editModeActive;
     const els = document.querySelectorAll('[data-shinkansen-translated]');
-    if (els.length === 0) return { ok: false, error: 'no translated elements' };
+    // v2.0.77:零標記只擋「開啟」。關閉路徑必須永遠可走——SPA reset / framework
+    // detach 把 marker 清光後,使用者仍要能結束編輯模式,否則 beforeinput / paste
+    // listener 與 edit bar 永久殘留,editModeActive 卡 true 只能重載頁面。
+    if (enable && els.length === 0) return { ok: false, error: 'no translated elements' };
 
     for (const el of els) {
       if (enable) {

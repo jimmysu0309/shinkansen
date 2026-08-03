@@ -2229,7 +2229,25 @@ function bindFindReplaceUI() {
 
 // ---------- 翻譯流程(W3) ----------
 
+// v2.0.77:防重入 guard——按鈕點擊到 showStage('translating') 之間有多個 await
+// (resolvePreset / getSettings / clearEpubBlocksCache 可拖數百 ms),連點兩下會併發
+// 兩輪 translateDocument:重複打 API 雙倍計費 + translateAbortController 被第二輪
+// 覆蓋(第一輪變不可取消)。所有翻譯入口(translate-btn / chapters-translate-btn /
+// glossary-translate-btn)都經 startTranslate,單一 guard 全蓋
+let translateInFlight = false;
 async function startTranslate() {
+  if (translateInFlight) return;
+  translateInFlight = true;
+  try {
+    // return await(非裸 return):EPUB 委派的 promise 要在 guard 內等完,
+    // 否則 finally 提早釋放 guard
+    return await _startTranslateImpl();
+  } finally {
+    translateInFlight = false;
+  }
+}
+
+async function _startTranslateImpl() {
   if (!currentDoc) return;
 
   // EPUB 走章節選翻管線（軟警告 / 重翻確認 / blockFilter / 批次級 glossary 過濾）

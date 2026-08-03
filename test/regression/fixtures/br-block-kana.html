@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>br block kana fixture</title>
+</head>
+<body>
+  <!-- 結構通則:<br><br> 分段的長容器,中段為「純假名」段落(無漢字無英數)。
+       bug:splitBrBlock 的段落過濾字面 regex 缺假名 / 諺文範圍,純假名段被整段丟棄 -->
+  <div id="target">This is the opening paragraph of a long serialized story written in English.<br><br>いえ、いいんです。そう、ゆっくりとうなずいた。<br><br>The closing paragraph continues the narrative in English after the dialogue.</div>
+</body>
+</html>

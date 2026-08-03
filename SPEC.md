@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.76
+- 目前 Extension 版本：2.0.77
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.76 為止）
+### 2.1 已實作（v2.0.77 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -240,7 +240,9 @@ zh-HK 走 zh-TW 的設計理由：港式繁中跟台式繁中詞彙雖有差，�
 
 **來源語言文字級偵測**（`SK.detectTextLang(text)`）：
 
-> 簡繁特徵字集（`SIMPLIFIED_ONLY_CHARS` / `TRADITIONAL_ONLY_CHARS`）由 `tools/generate-zh-char-sets.mjs` 自 OpenCC 字典完備生成（BMP 內簡體特徵 2657 字 / 繁體特徵 3134 字），內嵌於 `content-detect.js` 生成區塊，勿手改。排除簡繁共用歧義字（干 / 后 / 里 / 台 / 据 / 几…繁體文本也用的字），確保「繁體短文絕不誤判 zh-Hans」優先於簡體覆蓋率。v1.9.15 的人工 curated 清單已淘汰（覆蓋缺口實例：10 字標題只含 赛 / 绝 / 击 時 simpCount=0 誤判 zh-Hant 被跳過）。
+> 簡繁特徵字集（`SIMPLIFIED_ONLY_CHARS` / `TRADITIONAL_ONLY_CHARS`）由 `tools/generate-zh-char-sets.mjs` 自 OpenCC 字典完備生成（BMP 內簡體特徵 2657+9 字 / 繁體特徵 3134+19 字），內嵌於 `content-detect.js` 生成區塊，勿手改。排除簡繁共用歧義字（干 / 后 / 里 / 台 / 据 / 几…繁體文本也用的字），確保「繁體短文絕不誤判 zh-Hans」優先於簡體覆蓋率。v1.9.15 的人工 curated 清單已淘汰（覆蓋缺口實例：10 字標題只含 赛 / 绝 / 击 時 simpCount=0 誤判 zh-Hant 被跳過）。
+>
+> **準特徵字 tier**（+N 部分）：對側語料出現 ≤ 3 次的極邊緣共用字。簡側必須通過人工安全白名單（么 / 万 / 广 / 厂 / 种 / 别…共 9 字——只收「簡體高頻、現代繁體實務不用、轉換輸出無爭議」的字；吃 / 秘 / 唇 這類繁體日常字即使語料計數低也絕不收，否則繁體誤判會轉出古字形 喫 / 祕）；繁側可全推導（誤命中方向是更保守不轉，無害）。實例：「本周看什么」全共用字、唯一變體訊號是 么（被 TWVariants 幺→么 異體收錄而遭語料排除），tier 收復後可正確偵測。
 
 | 偵測訊號 | detected lang | isAlreadyInTarget skip 對應 target |
 |---|---|---|
@@ -396,7 +398,9 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 
 **分流機制**：`SK.translateUnits` 在 dedup 後按 `SK.isConvertibleVariant(text, direction)` 分組（translatePage convertOnly 過濾共用同一判定）——`detectTextLang` 判為相反變體是強訊號直接可轉；另有中英混排放寬：CJK ≥ 2 字、CJK 佔字母數 ≥ 0.3、變體特徵字單邊乾淨（處理「视频｜正面对决！大疆 OSMO nano…」標題與「传感/MEMS」分類標籤這類英文字母壓過 CJK 被 `detectTextLang` 判 `'other'` 的短文），拉丁為主夾帶少量中文的英文句（ratio < 0.3）不轉、照送 LLM。另外 `_foreignPage`（短文收集放寬的前提訊號）對無 `<html lang>` 宣告的頁面以 `document.title` 文字級偵測推導——僅在「target 為中文變體且 title 為相反變體」時視為 foreign（零誤判訊號；簡中新聞站常不宣告 lang，原本短 tag anchor 過不了 20 字門檻永遠不轉），其他語言組合維持保守。可轉段落送 `CONVERT_ZH_LOCAL`，其餘照走 LLM batch（混合頁兩路並存，注入共用同一條 `injectTranslation` + dup broadcast + idle gate 路徑）。佔位符 `⟦N⟧` 非漢字不受轉換影響。轉換結果**不寫 `tc_` 快取**（即時免費，不佔快取池），也不寫 usage-db（零 API 用量）。
 
-**convertOnly 模式**（簡繁自動互轉路徑）：只跑本地轉換組，不可轉換段落（英文等）保持原文，**絕不打 API**——`autoConvertZh` toggle 開啟時頁面載入 / SPA 導航自動以此模式執行；頁面無可轉換段落時靜默結束（無 toast / badge）。成功後 `STATE.translationContext.provider = 'opencc-local'`（rescan 新內容續走本地轉換），**不設** `stickyTranslate`（免費路徑不得經 sticky replay 觸發 LLM 整頁翻譯）。混合頁完整翻譯（手動觸發）的 `translationContext` 帶 `convertDirection`，rescan 延續分流。
+**殭屍 marker reconcile**：`collectParagraphs` 起點對已標記元素做驗證——target 為中文變體時，標記元素內容仍偵測為相反變體（`isConvertibleVariant`）＝marker 是殭屍（SPA 站內導航時 framework 重用 DOM 元素渲染新文章原文，reset 清了 STATE maps 但 marker 與 per-element `lang` 屬性留在元素上，收集會雙重跳過）→ unmark + 清 target 家族的 per-element lang + 清 STATE 殘影，本輪照常重收轉換。dual 模式安全（雙語內容變體特徵不單邊乾淨，不會命中）。
+
+**convertOnly 模式**（簡繁自動互轉路徑）：只跑本地轉換組，不可轉換段落（英文等）保持原文，**絕不打 API**——`autoConvertZh` toggle 開啟時頁面載入 / SPA 導航自動以此模式執行；頁面無可轉換段落時靜默結束（無 toast / badge）。背景行為靜默三則：collect=0（SPA 未渲染 / 純英文頁）不跳 noContent toast；離線照常執行（本地轉換不需網路）且不跳離線提示；Google Docs 頁不觸發 mobilebasic 自動導向（導向留給手動翻譯）。成功後 `STATE.translationContext.provider = 'opencc-local'`（rescan 新內容續走本地轉換），**不設** `stickyTranslate`（免費路徑不得經 sticky replay 觸發 LLM 整頁翻譯）。混合頁完整翻譯（手動觸發）的 `translationContext` 帶 `convertDirection`，rescan 延續分流。
 
 **設定**：`settings.autoConvertZh`（bool，預設 `false`，`chrome.storage.sync`）。popup toggle「簡繁自動互轉（免費）」只在 target 為 zh-TW / zh-CN 時顯示（`_updateAutoConvertZhRow` 與「翻譯成」picker 連動）。
 

@@ -1261,6 +1261,18 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
     }
   }
 
+  // v2.0.77:段數對齊但整批輸出語言錯(同 non-streaming translateChunk 的 v2.0.52
+  // 防護;此病型 sticky,不擋的話錯語言譯文會經 DONE 寫進快取永久污染)。掛進既有
+  // hadMismatch 通道:background 不寫快取 + discard 記帳,content 端 reject 後走
+  // non-streaming 重翻——該路徑有逐段 fallback 可打破 sticky。只驗多段批
+  // (單段樣本太短,detectOutputLangMismatch 誤判率高,與 non-streaming 同條件)。
+  if (!hadMismatch && texts.length > 1 && detectOutputLangMismatch(translations, settings.targetLanguage)) {
+    await debugLog('warn', 'api', 'gemini stream output language mismatch — flag hadMismatch for retry', {
+      segments: texts.length, elapsed, targetLanguage: settings.targetLanguage,
+    });
+    hadMismatch = true;
+  }
+
   return {
     translations,
     usage: lastUsage,

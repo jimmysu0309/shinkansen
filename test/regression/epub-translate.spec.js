@@ -2746,3 +2746,54 @@ test('本文件額外翻譯指令：payload 全路徑 + session 持久化 + 匯�
   expect(await page.locator('#settings-doc-extra-prompt').inputValue()).toBe('語氣請古典一點');
   await page.close();
 });
+
+// ─── 翻譯入口防重入(v2.0.77,CODE-REVIEW-2026-08-03 G1)─────────────────────
+//
+// Bug:startTranslate / startEpubTranslate 從按鈕點擊到 showStage('translating')
+// 之間有多個 await(resolvePreset / getSettings / clearEpubBlocksCache),連點兩下
+// 第二擊落在窗口內 → 兩輪 translateDocument 併發:同段原文送翻兩次(雙倍計費)+
+// translateAbortController 被第二輪覆蓋(第一輪不可取消)。
+// 修法:startTranslate 加 translateInFlight guard(所有翻譯入口都經 startTranslate,
+// 單一 guard 全蓋;EPUB 委派用 return await 確保 guard 涵蓋整輪)。
+//
+// SANITY 紀錄(已驗證 2026-08-03):index.js startTranslate 的
+// `if (translateInFlight) return;` 暫註解掉 → 「雙擊批次段數應等於單擊基準」
+// 斷言 fail(雙擊送出段數為單擊兩倍)→ 還原後 pass。
+test('翻譯入口防重入:同 tick 連點兩下只跑一輪(批次段數等於單擊基準)', async ({ context, extensionId }) => {
+  // 基準:單擊一輪送出的批次段數
+  const page1 = await openDocPage(context, extensionId);
+  await uploadEpub(page1);
+  await selectOnlyChapter(page1, 2);
+  await page1.click('#chapters-translate-btn');
+  await page1.waitForSelector('#stage-chapters:not([hidden])', { timeout: 15_000 });
+  await page1.waitForTimeout(400);
+  const baseline = await page1.evaluate(() => window.__sentMessages
+    .filter((m) => m.type === 'TRANSLATE_DOC_BATCH')
+    .reduce((acc, m) => acc + m.payload.texts.length, 0));
+  expect(baseline, '單擊基準應有送出批次').toBeGreaterThan(0);
+  await page1.close();
+
+  // 受測:同一 tick 內連點兩下——第二擊落在 startTranslate 首個 await 之前回不來的
+  // 同步窗口後(真實世界雙擊的最壞時序)。無 guard 時兩輪併發,段數翻倍
+  const page2 = await openDocPage(context, extensionId);
+  // page1 翻完 ch1 後 session 持久化標 done,page2 重勾 ch1 會觸發「重翻確認」
+  // confirm(Playwright 預設 dismiss → 整輪早退)——一律 accept 讓重翻照跑
+  page2.on('dialog', (d) => d.accept());
+  await uploadEpub(page2);
+  await selectOnlyChapter(page2, 2);
+  await page2.evaluate(() => {
+    const btn = document.getElementById('chapters-translate-btn');
+    btn.click();
+    btn.click();
+  });
+  // 先等進 translating 再等回 chapters:evaluate 返回瞬間 stage 還沒切走
+  // (首個 await 未 resolve),直接查 chapters 會立即命中、沒等翻譯跑完
+  await page2.waitForSelector('#stage-translating:not([hidden])', { timeout: 15_000 });
+  await page2.waitForSelector('#stage-chapters:not([hidden])', { timeout: 15_000 });
+  await page2.waitForTimeout(400); // 第二輪若存在,批次在此期間持續追加
+  const doubled = await page2.evaluate(() => window.__sentMessages
+    .filter((m) => m.type === 'TRANSLATE_DOC_BATCH')
+    .reduce((acc, m) => acc + m.payload.texts.length, 0));
+  expect(doubled, '雙擊批次段數應等於單擊基準(防重入,不可翻倍)').toBe(baseline);
+  await page2.close();
+});

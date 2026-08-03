@@ -392,7 +392,12 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
         } catch (err) {
           console.warn('[Shinkansen] drawText 跳過：', piece.text.slice(0, 30), err.message);
         }
-        const pieceWidth = pieceFont.widthOfTextAtSize(piece.text, fontSize);
+        // widthOfTextAtSize 與 drawText 走同一條 fontkit layout 路徑,編不進字型的
+        // piece 兩者都會 throw——drawText 有跳過防護,這裡必須同樣兜住,否則整份
+        // PDF 生成炸掉(fallback 估算比照 computeDrawnExtent)
+        let pieceWidth;
+        try { pieceWidth = pieceFont.widthOfTextAtSize(piece.text, fontSize); }
+        catch { pieceWidth = piece.text.length * fontSize * 0.5; }
         if (piece.linkUrl) {
           // underline:baseline 下方
           const underlineY = cy - fontSize * UNDERLINE_OFFSET_RATIO;

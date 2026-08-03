@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>edit mode close no markers fixture</title>
+</head>
+<body>
+  <!-- 結構通則:翻譯後進入編輯模式,translated marker 隨後被外力清光
+       (SPA reset / framework detach 重建)。bug:toggleEditMode 的零標記早退
+       在 enable / disable 判斷之前,關閉路徑也被擋 → 編輯模式永久卡死 -->
+  <p id="target">This paragraph will be translated and then edited by the user.</p>
+</body>
+</html>

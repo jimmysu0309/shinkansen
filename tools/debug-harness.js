@@ -145,6 +145,15 @@ async function main() {
   console.log('[harness] SW URL:', sw.url());
   sw.on('console', (m) => console.log(`SW> ${m.type()}`, m.text().slice(0, 300)));
 
+  // SEED_SYNC:navigate 前種入 chrome.storage.sync(JSON 字串)。用途:重現依賴
+  // 設定的自動路徑(例 autoConvertZh 的 document_idle 競態,GET_STORAGE 唯讀不夠)
+  //   SEED_SYNC='{"autoConvertZh":true}' TARGET_URL=... node tools/debug-harness.js --no-translate
+  if (process.env.SEED_SYNC) {
+    const seed = JSON.parse(process.env.SEED_SYNC);
+    await sw.evaluate((s) => new Promise((res) => chrome.storage.sync.set(s, res)), seed);
+    console.log('[harness] SEED_SYNC 已種入:', Object.keys(seed).join(', '));
+  }
+
   // 關掉 extension 載入前已存在的 about:blank tab(content script 不會回頭注入)
   for (const p of ctx.pages()) { try { await p.close(); } catch { /* ignore */ } }
 
@@ -157,6 +166,15 @@ async function main() {
     }
   });
   page.on('pageerror', (e) => console.log('PAGE ERROR:', e.message));
+
+  // THROTTLE_CPU:CDP CPU 降速倍率(例 6 = 6 倍慢)。用途:翻轉「content script
+  // document_idle 注入 vs SPA hydration」時序,重現 hydration 沖銷競態
+  if (process.env.THROTTLE_CPU) {
+    const rate = Number(process.env.THROTTLE_CPU) || 1;
+    const throttleCdp = await page.context().newCDPSession(page);
+    await throttleCdp.send('Emulation.setCPUThrottlingRate', { rate });
+    console.log(`[harness] CPU throttle x${rate}`);
+  }
 
   console.log(`[harness] navigate → ${TARGET_URL}`);
   await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -224,6 +242,13 @@ async function main() {
     }
   }
 
+  // PROBE_WAIT_MS:DOM dump / probe 前額外等待(例等 SPA hydration 沖銷發生)
+  if (process.env.PROBE_WAIT_MS) {
+    const extra = Number(process.env.PROBE_WAIT_MS) || 0;
+    console.log(`[harness] PROBE_WAIT_MS:額外等待 ${extra}ms`);
+    await sleep(extra);
+  }
+
   // ─── DOM 副作用 dump ─────
   // 這段走 main world page.evaluate 即可——只讀 shared DOM(data-* attribute、
   // custom element），不碰 isolated world 的 window.__SK
@@ -246,6 +271,20 @@ async function main() {
   });
   console.log('[harness] DOM 翻譯狀態:');
   console.log(JSON.stringify(domSummary, null, 2));
+
+  // PROBE_EXPR:結尾在 isolated world 執行任意 expression(可讀 window.__SK 內部
+  // state,例 STATE.nodeValueMutateBackup.size)。除錯專用,結果 JSON 印出:
+  //   PROBE_EXPR='window.__SK.STATE.translatedBy' node tools/debug-harness.js ...
+  if (process.env.PROBE_EXPR) {
+    try {
+      // async IIFE 亦可(evaluate 帶 awaitPromise:true)
+      const probeResult = await evaluate(`(async () => JSON.stringify(await (${process.env.PROBE_EXPR})))()`);
+      console.log('[harness] PROBE_EXPR 結果:', probeResult);
+    } catch (e) {
+      console.log('[harness] PROBE_EXPR 失敗:', e.message);
+    }
+  }
+
 
   // ─── 翻譯後截圖 ─────
   await page.evaluate(() => { document.body.style.zoom = '0.5'; });
