@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.75
+- 目前 Extension 版本：2.0.76
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.75 為止）
+### 2.1 已實作（v2.0.76 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -240,6 +240,8 @@ zh-HK 走 zh-TW 的設計理由：港式繁中跟台式繁中詞彙雖有差，�
 
 **來源語言文字級偵測**（`SK.detectTextLang(text)`）：
 
+> 簡繁特徵字集（`SIMPLIFIED_ONLY_CHARS` / `TRADITIONAL_ONLY_CHARS`）由 `tools/generate-zh-char-sets.mjs` 自 OpenCC 字典完備生成（BMP 內簡體特徵 2657 字 / 繁體特徵 3134 字），內嵌於 `content-detect.js` 生成區塊，勿手改。排除簡繁共用歧義字（干 / 后 / 里 / 台 / 据 / 几…繁體文本也用的字），確保「繁體短文絕不誤判 zh-Hans」優先於簡體覆蓋率。v1.9.15 的人工 curated 清單已淘汰（覆蓋缺口實例：10 字標題只含 赛 / 绝 / 击 時 simpCount=0 誤判 zh-Hant 被跳過）。
+
 | 偵測訊號 | detected lang | isAlreadyInTarget skip 對應 target |
 |---|---|---|
 | htmlLang `^ja` | `ja` | `ja` |
@@ -380,6 +382,32 @@ userOverride trim 為空 OR userOverride.trim() === DEFAULT_*_PROMPT.trim()
 
 > OAuth 簽章細節、Readability 選型與 frame 廣播根因、is_private_from_source 取捨、human review 卡關等設計脈絡見 SPEC-PRIVATE / `PLAN-send-to-instapaper.md`（本機）。
 
+### 3.12 簡繁本地互轉（OpenCC 字典，免費）
+
+target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改走本地 OpenCC 字典轉換——免費、即時、不需 API Key、離線可用。
+
+**方向對映**（`content.js` translatePage 依 `targetLanguage` 決定）：
+
+| target | convertDirection | 轉換內容 |
+|---|---|---|
+| `zh-TW` | `cn2twp` | 簡體 → 台灣繁體含慣用詞（軟件→軟體、視頻→影片、內存→記憶體） |
+| `zh-CN` | `twp2cn` | 台灣繁體 → 簡體（先還原慣用詞再簡化） |
+| 其他 | `null` | 不分流，全走 LLM |
+
+**分流機制**：`SK.translateUnits` 在 dedup 後按 `SK.isConvertibleVariant(text, direction)` 分組（translatePage convertOnly 過濾共用同一判定）——`detectTextLang` 判為相反變體是強訊號直接可轉；另有中英混排放寬：CJK ≥ 2 字、CJK 佔字母數 ≥ 0.3、變體特徵字單邊乾淨（處理「视频｜正面对决！大疆 OSMO nano…」標題與「传感/MEMS」分類標籤這類英文字母壓過 CJK 被 `detectTextLang` 判 `'other'` 的短文），拉丁為主夾帶少量中文的英文句（ratio < 0.3）不轉、照送 LLM。另外 `_foreignPage`（短文收集放寬的前提訊號）對無 `<html lang>` 宣告的頁面以 `document.title` 文字級偵測推導——僅在「target 為中文變體且 title 為相反變體」時視為 foreign（零誤判訊號；簡中新聞站常不宣告 lang，原本短 tag anchor 過不了 20 字門檻永遠不轉），其他語言組合維持保守。可轉段落送 `CONVERT_ZH_LOCAL`，其餘照走 LLM batch（混合頁兩路並存，注入共用同一條 `injectTranslation` + dup broadcast + idle gate 路徑）。佔位符 `⟦N⟧` 非漢字不受轉換影響。轉換結果**不寫 `tc_` 快取**（即時免費，不佔快取池），也不寫 usage-db（零 API 用量）。
+
+**convertOnly 模式**（簡繁自動互轉路徑）：只跑本地轉換組，不可轉換段落（英文等）保持原文，**絕不打 API**——`autoConvertZh` toggle 開啟時頁面載入 / SPA 導航自動以此模式執行；頁面無可轉換段落時靜默結束（無 toast / badge）。成功後 `STATE.translationContext.provider = 'opencc-local'`（rescan 新內容續走本地轉換），**不設** `stickyTranslate`（免費路徑不得經 sticky replay 觸發 LLM 整頁翻譯）。混合頁完整翻譯（手動觸發）的 `translationContext` 帶 `convertDirection`，rescan 延續分流。
+
+**設定**：`settings.autoConvertZh`（bool，預設 `false`，`chrome.storage.sync`）。popup toggle「簡繁自動互轉（免費）」只在 target 為 zh-TW / zh-CN 時顯示（`_updateAutoConvertZhRow` 與「翻譯成」picker 連動）。
+
+**Toggle 即時生效**：popup change handler 寫入 storage 後對 active tab 發 `SET_AUTO_CONVERT_ZH { enabled }`——勾選：本頁未翻譯時立即跑 convertOnly（不適用頁面靜默結束）；取消：**僅當本頁是本地轉換結果**（`STATE.translatedBy === 'opencc-local'`）時 `restorePage()` 還原，LLM 翻譯成果不受影響。
+
+**Toast**：convertOnly 完成 `toast.zhConvertDone` + detail `toast.zhConvertFree`（免費未使用 API）；混合頁完整翻譯 detail 追加 `toast.zhConvertPartial`（其中 N 段本地轉換）。
+
+**實作檔案**：`lib/zh-convert.js`（background ES module：conversion chain 定義、字典 lazy fetch、converter cache）+ `lib/vendor/opencc/`（Trie 轉換核心 `opencc-core.js` + `dict/*.txt` 字典 10 檔，約 1.1MB；來源與授權見 `THIRD-PARTY-NOTICES.md`，再生工具 `tools/vendor-opencc.mjs`）。字典於 background 首次轉換時 `fetch(runtime.getURL())` lazy load（MV3 SW 禁 dynamic import），SW 啟動零成本。
+
+**測試**：`test/regression/inject-zh-convert-local.spec.js`（真 background 真字典端到端：convertOnly 零 LLM 呼叫 + 無 Key 前置、混合頁分流不越界、autoConvertZh 載入自動轉換）。
+
 ---
 
 ## 4. 翻譯顯示規格
@@ -489,7 +517,7 @@ PRE, FOOTER
 - **Tags**（整個子樹不走）：SCRIPT, STYLE, CODE, NOSCRIPT, TEXTAREA, INPUT, BUTTON, SELECT
 - **PRE 條件排除**：含 `<code>` 子元素時視為程式碼區塊跳過；不含 `<code>` 的 `<pre>` 視為普通容器，納入 walker（見 §5.1）
 - **語意容器**：FOOTER 在無 `<article>` / `<main>` 祖先時跳過（站底 footer）；有祖先時視為內容 footer 放行（見 §5.1）
-- **ARIA role**：祖先鏈含 `banner` / `contentinfo` / `search` / `grid` / `tree` / `treeitem` 則跳過。HEADER 僅在 `role="banner"` 時排除
+- **ARIA role**：祖先鏈含 `contentinfo` / `search` / `grid` / `tree` / `treeitem` 則跳過。`<footer>` 與 `contentinfo` 另有簡繁轉換放行：內容取樣（400 字）為「相反中文變體」時不排除——footer 排除是省 LLM token 的成本政策，對免費本地轉換不適用（簡中頁全轉只剩頁尾留簡體視覺突兀）；英文站 footer 不符合判準、排除照舊。`banner` 僅在「`<header role="banner">` tag + role 雙訊號」時排除——ARIA 規範的 banner 是網站 masthead，但中文新聞站常把首頁 hero 內容區誤標 `role="banner"`（DIV），硬排除會整棵殺掉主內容，故單獨 role 不排、交給偵測與 prompt
 
 **不做內容性 selector 排除**：content.js 不以 class/selector 判斷「該不該翻」。此類判斷交給 Gemini systemInstruction。
 
@@ -571,7 +599,8 @@ shinkansen/
 │   ├── release-highlights.js # 近期重大更新文字單一來源
 │   ├── shortcut-utils.js     # 自訂快速鍵 helper（UMD，content/options/spec 共用，§10.1）
 │   ├── domain-utils.js       # 自動翻譯網站名單的網域正規化 + 比對（UMD，content/spec 共用）
-│   └── vendor/               # 第三方程式庫（pdfjs／pdf-lib + fontkit／chart.min.js／fflate／Noto Sans TC 字型）
+│   ├── zh-convert.js         # 簡繁本地互轉（OpenCC 字典 lazy fetch + converter cache，§3.12）
+│   └── vendor/               # 第三方程式庫（pdfjs／pdf-lib + fontkit／chart.min.js／fflate／Noto Sans TC 字型／opencc 簡繁字典）
 ├── translate-doc/            # 文件翻譯：PDF + EPUB（§17，web_accessible_resources）
 │   ├── index.html            # 翻譯文件頁（含 index.js 主協調層、index.css）
 │   ├── index.js
@@ -645,6 +674,7 @@ shinkansen/
   },
   "domainRules": { "whitelist": [] },
   "autoTranslate": false,
+  "autoConvertZh": false,
   "debugLog": false,
   "maxRetries": 3,
   "maxConcurrentBatches": 10,
@@ -831,6 +861,7 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 - 主按鈕：「翻譯本頁」/「顯示原文」（依 `GET_STATE` 切換）
 - 編輯譯文按鈕（預設 `hidden`，翻譯完成後才顯示；切換 `TOGGLE_EDIT_MODE`）。進入編輯模式後頁面下方置中顯示浮動工具列（closed Shadow DOM＋Constructable Stylesheet）：提示文字＋「復原」（逐段 LIFO 撤銷，`beforeinput` 首次改動前快照 innerHTML）＋「完成」（等同「結束編輯」，寫回 guard 快取）；i18n key `editbar.*`。編輯中貼上一律降為純文字（`onEditPaste` capture 攔截，取 `text/plain` 走 `execCommand('insertText')`）——貼上格式跟目標段落走、不帶來源 inline style；Chromium 對 execCommand 不發 `beforeinput`，貼上前手動補快照讓「復原」涵蓋純貼上編輯。與 translate-doc EPUB 預覽 `onPreviewEditablePaste` 為同一份事實的雙實作
 - 白名單自動翻譯 toggle
+- 簡繁自動互轉 toggle（只在 target 為 zh-TW / zh-CN 時顯示，與「翻譯成」picker 連動；§3.12）
 - 術語表一致化 toggle
 - YouTube 字幕翻譯 toggle（只在 YouTube 影片頁面顯示）
 - 快取統計（段數 / 大小）+ 清除快取按鈕
@@ -851,6 +882,8 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 | type | payload | 回應 |
 |------|---------|------|
 | `TRANSLATE_BATCH` | `{ texts, slots, … }` | `{ ok, result, usage }` |
+| `CONVERT_ZH_LOCAL` | `{ texts, direction }` | `{ ok, result }` — 簡繁本地互轉（OpenCC 字典，`direction` 為 `cn2twp` / `twp2cn`，不打 API 不寫快取，§3.12） |
+| `SET_AUTO_CONVERT_ZH`（popup → content） | `{ enabled }` | — 簡繁自動互轉 toggle 即時生效：勾選對本頁跑 convertOnly、取消還原本地轉換結果（不動 LLM 翻譯，§3.12） |
 | `TRANSLATE_SUBTITLE_BATCH` | `{ texts, glossary }` | `{ ok, result, usage }` — YouTube 字幕逐條翻譯（人工字幕路徑，Gemini 引擎） |
 | `TRANSLATE_SUBTITLE_BATCH_GOOGLE` | `{ texts }` | 一般字幕路徑走 Google Translate（`ytSubtitle.engine='google'`），cache key `_gt_yt` |
 | `TRANSLATE_SUBTITLE_BATCH_CUSTOM` | `{ texts }` | 一般字幕路徑走 OpenAI-compat 自訂 Provider（`ytSubtitle.engine='openai-compat'`），cache key `_oc_yt`；`systemPrompt` 取 `ytSubtitle.systemPrompt`（空字串 fallback 主 `customProvider.systemPrompt`） |
@@ -1304,9 +1337,9 @@ pdf-lib 預設字型（Helvetica 等）不支援 CJK，必須內嵌中文字型�
 
 - 採用免費商用授權的開源繁中字型（評估候選：思源黑體 Noto Sans TC、Source Han Sans TC），選一款最終決定後 vendor 進 `shinkansen/translate-doc/fonts/`
 - 字型檔以 woff2 / otf 格式打包，啟用 pdf-lib 的 subsetting（只 embed 譯文實際用到的字元），最終 PDF 體積約增加 1-3 MB（視譯文字數）
-- 字型授權文字附在 `LICENSE-fonts.md`,Chrome Web Store 描述需標示包含的開源字型授權
+- 字型授權文字附在 `lib/vendor/fonts/LICENSE-NotoSansTC.txt`，並列於 `THIRD-PARTY-NOTICES.md`；Chrome Web Store 描述需標示包含的開源字型授權
 
-> **note**：此處字型 vendor 屬於 §18 例外條款 1（直接 vendor code / 資源，授權要求標示）——必須在 `LICENSE-fonts.md` 標示字型來源 + 授權，不違反硬規則 §18。
+> **note**：此處字型 vendor 屬於 §18 例外條款 1（直接 vendor code / 資源，授權要求標示）——必須在 `lib/vendor/fonts/LICENSE-NotoSansTC.txt` 與 `THIRD-PARTY-NOTICES.md` 標示字型來源 + 授權，不違反硬規則 §18。
 
 #### 17.8.2 譯文 PDF 排版
 

@@ -65,6 +65,12 @@
       <input type="checkbox" id="auto">
     </div>
 
+    <!-- 簡繁自動互轉:只在翻譯目標為 zh-TW / zh-CN 時顯示(popup.js 與 target picker 連動) -->
+    <div class="row" id="auto-convert-zh-row" hidden>
+      <label for="auto-convert-zh-toggle" data-i18n="popup.label.autoConvertZh">簡繁自動互轉（免費）</label>
+      <input type="checkbox" id="auto-convert-zh-toggle">
+    </div>
+
     <!-- v1.2.12: 只在 YouTube 頁面時顯示 -->
     <div class="row" id="yt-subtitle-row" hidden>
       <label for="yt-subtitle-toggle" data-i18n="popup.label.ytSubtitle">YouTube 字幕翻譯</label>

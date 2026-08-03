@@ -19,6 +19,7 @@ import { refreshExchangeRate, getCachedRate, isCacheFresh } from './lib/exchange
 import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 import { saveToInstapaper, buildInstapaperPayload } from './lib/instapaper.js'; // 送到 Instapaper（Alt+I 快捷鍵路徑）
 import { planStreamingPartialReuse } from './lib/stream-reuse.js'; // v1.10.61: streaming 批次 missing-only 分流
+import { convertZhBatch, ZH_CONVERT_DIRECTIONS } from './lib/zh-convert.js'; // 簡繁本地互轉（OpenCC 字典，lazy load）
 
 // instapaper-keys.js（gitignored）的 consumer 金鑰載入。
 // 不能用 dynamic import()：MV3 service worker 禁止 dynamic import（實測 throw
@@ -602,6 +603,29 @@ const messageHandlers = {
       }
       await browser.tabs.create({ url: browser.runtime.getURL('popup/popup.html') });
       return { opened: 'tab' };
+    },
+  },
+  // 簡繁本地互轉:content 端把偵測為「相反中文變體」的段落送來,走 OpenCC 字典
+  // Trie 轉換,不打任何 API、不寫 tc_ 快取(即時免費,不佔快取池)。字典於首次
+  // 呼叫時 lazy fetch(lib/zh-convert.js),之後同 SW 生命週期內重用。
+  CONVERT_ZH_LOCAL: {
+    async: true,
+    handler: async (payload) => {
+      const texts = Array.isArray(payload?.texts) ? payload.texts : [];
+      const direction = payload?.direction;
+      if (!ZH_CONVERT_DIRECTIONS.includes(direction)) {
+        // 協定層防呆(自家 content 端才會送這個訊息,方向錯誤 = 程式 bug,非使用者
+        // 可見情境)。訊息用英文:jest bg-error-i18n forcing function 禁背景檔
+        // throw 硬編中文(使用者面對中文錯誤必須走 codedError 協定)
+        throw new Error(`CONVERT_ZH_LOCAL: unknown direction ${direction}`);
+      }
+      if (texts.length === 0) return { result: [] };
+      const t0 = Date.now();
+      const result = await convertZhBatch(texts, direction);
+      debugLog('info', 'translate', 'CONVERT_ZH_LOCAL done', {
+        count: texts.length, direction, elapsed: Date.now() - t0,
+      });
+      return { result };
     },
   },
   TRANSLATE_BATCH: {

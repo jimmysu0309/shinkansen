@@ -191,7 +191,7 @@
     }
 
     try {
-      const { autoTranslate = false, autoTranslateSlot } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot']);
+      const { autoTranslate = false, autoTranslateSlot, autoConvertZh = false } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot', 'autoConvertZh']);
       if (autoTranslate && await SK.isDomainWhitelisted()) {
         // v1.6.13: 走指定 preset slot,讓 SPA 導航的白名單觸發跟使用者期待的快速鍵一致。
         const n = Number(autoTranslateSlot);
@@ -202,6 +202,13 @@
         } else {
           SK.translatePage();
         }
+        return;
+      }
+      // 簡繁自動互轉:SPA 導航後對新頁重跑本地轉換檢查(與初載路徑同語意;
+      // 不適用頁在 convertOnly 內靜默結束)
+      if (autoConvertZh) {
+        SK.sendLog('info', 'spa', 'SPA nav: autoConvertZh on, trying local zh-convert', { url: location.href });
+        SK.translatePage({ convertOnly: true });
         return;
       }
     } catch (err) {

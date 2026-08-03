@@ -316,7 +316,7 @@ async function init() {
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
   // P2 (v1.8.60): UI 語系獨立於 targetLanguage,讀 uiLanguage('auto' / 三語)後
   // 透過 I18N.getUiLanguage('auto') 解析為 navigator.language 推導值
-  const { autoTranslate = false, displayMode = 'single', translatePresets = [], uiLanguage, targetLanguage } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'uiLanguage', 'targetLanguage']);
+  const { autoTranslate = false, displayMode = 'single', translatePresets = [], uiLanguage, targetLanguage, autoConvertZh = false } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'uiLanguage', 'targetLanguage', 'autoConvertZh']);
   const { apiKey = '' } = await browser.storage.local.get(['apiKey']);
   $('auto').checked = autoTranslate;
 
@@ -327,7 +327,9 @@ async function init() {
     const tl = (typeof targetLanguage === 'string' && TARGET_LANGUAGES.includes(targetLanguage))
       ? targetLanguage : DEFAULT_SETTINGS.targetLanguage;
     $('targetLanguage').value = tl;
+    _updateAutoConvertZhRow(tl);
   }
+  $('auto-convert-zh-toggle').checked = autoConvertZh === true;
 
   // P2: UI i18n — 寫入 _currentTarget(現在叫「ui dict 語系」更貼切,但變數名沿用),
   // 套 applyI18n,訂閱 storage.uiLanguage 變動
@@ -436,12 +438,36 @@ $('auto').addEventListener('change', async (e) => {
   await browser.storage.sync.set({ autoTranslate: e.target.checked });
 });
 
+// 簡繁自動互轉 toggle:row 只在 target 為中文變體時顯示(其他 target 無互轉方向,
+// 顯示只會困惑);開啟後任何偵測為相反變體的頁面於載入 / SPA 導航時自動本地轉換
+function _updateAutoConvertZhRow(tl) {
+  const row = $('auto-convert-zh-row');
+  if (row) row.hidden = !(tl === 'zh-TW' || tl === 'zh-CN');
+}
+
+$('auto-convert-zh-toggle').addEventListener('change', async (e) => {
+  const enabled = e.target.checked;
+  try {
+    await browser.storage.sync.set({ autoConvertZh: enabled });
+  } catch (err) {
+    console.error('[shinkansen] autoConvertZh set failed', err);
+  }
+  // 立即對當前分頁生效:勾選 → 本頁跑本地轉換;取消 → 還原(僅當本頁是本地轉換結果)
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      await browser.tabs.sendMessage(tab.id, { type: 'SET_AUTO_CONVERT_ZH', payload: { enabled } }).catch(() => {});
+    }
+  } catch { /* 非可注入頁面，安靜忽略 */ }
+});
+
 // 翻譯目標語言切換 — 立刻寫 storage(content script 下一次翻譯讀新值生效;
 // 舊翻譯快取仍保留,使用者可手動清快取重新翻譯)。non-集合值 fallback DEFAULT
 // 避免損壞值寫進 storage。
 $('targetLanguage').addEventListener('change', async (e) => {
   const v = e.target.value;
   const tl = TARGET_LANGUAGES.includes(v) ? v : DEFAULT_SETTINGS.targetLanguage;
+  _updateAutoConvertZhRow(tl);  // 簡繁自動互轉 row 與 target 連動顯示
   try {
     await browser.storage.sync.set({ targetLanguage: tl });
   } catch (err) {

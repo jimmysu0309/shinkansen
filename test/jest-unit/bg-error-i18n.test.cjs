@@ -154,7 +154,8 @@ describe('3) source 斷言：協定接線防 drift', () => {
 
   test('消費端走 bgErrorMessage，不殘留硬編中文 fallback', () => {
     const content = read('content.js');
-    expect((content.match(/SK\.i18n\.bgErrorMessage\(response\)/g) || []).length).toBe(2);
+    // v2.0.76: 第 3 個消費點 = runZhConvert(簡繁本地轉換批次失敗回報,同 pattern)
+    expect((content.match(/SK\.i18n\.bgErrorMessage\(response\)/g) || []).length).toBe(3);
     expect(content).toContain('SK.i18n.bgErrorMessage(message.payload)');
 
     const yt = read('content-youtube.js');

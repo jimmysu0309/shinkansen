@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>簡繁本地轉換 fixture</title>
+</head>
+<body>
+  <article id="content-main">
+    <!-- 簡體段:target zh-TW 時應走 CONVERT_ZH_LOCAL 本地轉換(不送 LLM)。
+         內含詞組級對照錨點:软件→軟體 / 视频→影片 / 内存→記憶體 / 头发→頭髮 -->
+    <p id="p-simp">软件的视频质量很高，头发和内存都没有问题。这是一个用来验证简体到繁体本地转换的测试段落，内容长度足以通过段落侦测的最小门槛。</p>
+    <!-- 短簡體標題:10 字內只含「舊 curated 特徵字集」沒收的簡體字(赛/绝/击),
+         v1.9.15 人工清單時代 simpCount=0 → ratio fallback 誤判 zh-Hant 被跳過
+         (真實案例:新聞頁 h2 標題整段沒轉換)。OpenCC 字典生成完備字集後應正確
+         偵測為 zh-Hans 並轉換 -->
+    <h2 id="p-heading">A股科技赛道绝地反击</h2>
+    <!-- 英文段:應照走 LLM batch(混合頁分流對照組);convertOnly 模式下應保持原文不動 -->
+    <p id="p-en">This is an English paragraph that should go through the LLM translation path on a full-page run, and must remain untouched in convert-only mode.</p>
+    <!-- 繁體段:已是 target 變體,collectParagraphs 的 isAlreadyInTarget 應直接跳過 -->
+    <p id="p-trad">這是一段已經是目標語言的繁體中文內容，段落偵測應該直接跳過它，兩種模式都不得改動。</p>
+    <!-- 中英混排品牌標題:英文型號字母數壓過 CJK(cjkRatio ≈ 0.43 < 0.5),
+         detectTextLang 判 'other'——isConvertibleVariant 放寬(cjk ≥ 4、ratio ≥ 0.3、
+         簡體特徵乾淨)後應進轉換組(真實案例:影片清單標題兩條漏轉) -->
+    <p id="p-mixed-brand">视频｜正面对决！两台 Ultra Compact Action Camera 新品运动相机该买哪个</p>
+    <!-- 拉丁為主、夾帶少量中文的英文句(cjk 2 字、ratio ≈ 0.06):不可轉換——
+         該整句送 LLM 翻譯,不是只轉那兩個中文字(convertOnly 模式下維持原文) -->
+    <p id="p-latin-incidental">Apple quietly announced the new 视频 recording feature for creators during the annual developer conference keynote.</p>
+    <!-- 2 字 CJK + 英文縮寫的分類標籤(ratio 0.33):要轉換——isConvertibleVariant
+         下限 2 字的覆蓋案例(下限訂 4 時這類 tag 標籤整條漏轉) -->
+    <p id="p-short-tag">传感/MEMS</p>
+
+    <!-- 新聞頁 meta row(Case F multi-segment 容器):block div + ≥3 inline 子 +
+         wrapper span。author 正文是 wrapper span 內的裸 text node(旁有短 label
+         元素子),Case F 的 leaf 掃描(span:not(:has(*)))看不到 → 曾整排只有它
+         沒轉換。鎖 Case F wrapper fragment 補抓路徑 -->
+    <div id="p-meta-row">
+      <span class="meta-date">2026-07-31 10:01:15</span><span class="meta-ico"></span>
+      <span id="p-author-row"><span><span>作者：</span>环球科技网综合报道</span></span>
+      <span id="p-share">  海报分享</span>
+    </div>
+    <!-- 獨立巢狀 author(Case D 路徑):13 字 < 20 字拉丁計價 prose 門檻,靠
+         CJK-dominant 門檻減半(10 字)才收得進——鎖 CJK 短 mixed-inline span 覆蓋 -->
+    <div><span id="p-author-alone"><span><span>作者：</span>环球科技网综合报道</span></span></div>
+  </article>
+
+  <!-- DIV 誤標 role="banner" 的 hero 內容區(新聞站首頁常見誤用:ARIA banner 語意
+       是網站 masthead,但被拿來標 hero 輪播 / 精選卡區)——不得被硬排除,卡片標題
+       應照常轉換。結構仿真實首頁:banner div > 卡 div > a > 標題 div -->
+  <div role="banner" id="p-hero-banner">
+    <div class="hero-card">
+      <a href="#article-1"><div id="p-hero-title">视频报道：为什么到处都是折叠屏手机的评测内容</div></a>
+    </div>
+  </div>
+
+  <!-- 負向對照:HEADER tag + role="banner" 雙訊號 = 正規網站 masthead,維持排除,
+       內部簡體字串不得被轉換 -->
+  <header role="banner" id="p-real-masthead">
+    <div id="p-masthead-label">网络头部选单示例文字内容，不应被转换的区块</div>
+  </header>
+
+  <!-- 簡中 site footer:footer 硬排除是 LLM 成本政策,footer 內容為相反中文變體
+       時放行走免費轉換(全頁轉繁只剩頁尾留簡體視覺突兀)。欄目連結仿新聞站頁尾 -->
+  <footer id="p-site-footer">
+    <div>
+      <div id="p-footer-col">栏目</div>
+      <a href="#f1" id="p-footer-link1">线索提供</a>
+      <a href="#f2" id="p-footer-link2">意见反馈</a>
+      <a href="#f3" id="p-footer-link3">关于我们</a>
+    </div>
+  </footer>
+
+</body>
+</html>

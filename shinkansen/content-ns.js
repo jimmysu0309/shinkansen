@@ -332,7 +332,12 @@ if (window.__shinkansen_loaded) {
   // GitHub 新版 Files sidebar、IDE 檔案瀏覽器、cloud storage UI。誤翻會把檔名
   // 翻成中文+ 連帶 SVG icon 因 innerHTML clean-slate 一併消失。結構性通則，
   // 不依賴站點 class。
-  SK.EXCLUDE_ROLES = new Set(['banner', 'contentinfo', 'search', 'grid', 'tree', 'treeitem']);
+  // 'banner' 不在此集合(v2.0.76 起):ARIA 規範的 banner = 網站 masthead,但口語
+  // banner = hero 輪播區,中文新聞站常把整個首頁精選內容區掛 role="banner",
+  // 硬排除會整棵殺掉主內容(實例:首頁 hero 卡片標題全部沒轉換)。正規 masthead
+  // 由 content-detect.js 的「HEADER tag + role=banner 雙訊號」單獨排除——tag 與
+  // role 雙確認才視為網站 chrome,DIV 誤用 hero 區放行交給偵測與 prompt(§6)。
+  SK.EXCLUDE_ROLES = new Set(['contentinfo', 'search', 'grid', 'tree', 'treeitem']);
 
   // 豁免 isInteractiveWidgetContainer 檢查的標籤
   SK.WIDGET_CHECK_EXEMPT_TAGS = new Set([

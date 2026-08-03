@@ -477,7 +477,7 @@
 
   // ─── translateUnits ──────────────────────────────────
 
-  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode } = {}) {
+  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode, convertDirection, convertOnly } = {}) {
     const tu_entry = Date.now();
     // 術語表對照「只出現一次」裁剪規則(content-inject.js):同一 glossary 參照
     //(主 run 後的 rescan / SPA 續批帶 ctx.glossary 同一顆)不重建、seen 延續;
@@ -520,7 +520,7 @@
         });
       }
     }
-    const total = units.length;
+    let total = units.length;
     const texts = serialized.map(s => s.text);
     const slotsList = serialized.map(s => s.slots);
     SK.sendLog('info', 'translate', 'milestone:tu_serialize_done', { t: Date.now() - tu_entry, units: total });
@@ -555,6 +555,42 @@
     const dedupedUnits = uniqueIndices.map(i => units[i]);
     const dedupedSlots = uniqueIndices.map(i => slotsList[i]);
 
+    // ─── 簡繁本地轉換分流 ──────────────────────────────
+    // convertDirection('cn2twp' / 'twp2cn',translatePage 依 target 決定)非空時,
+    // 偵測為「相反中文變體」的段落不送 LLM,改送 CONVERT_ZH_LOCAL 走 OpenCC 字典
+    // 本地轉換(免費、即時、不需 API Key、不寫 tc_ 快取)。佔位符 ⟦N⟧ 非漢字,
+    // 轉換不影響序列化協定。同頁其餘語言段落照走 LLM batch(混合頁兩路並存)。
+    // convertOnly(簡繁自動互轉路徑)= 只跑本地轉換組;不可轉換段落整批跳過並自
+    // total 扣除——自動路徑的承諾是「絕不悄悄打 API」,漏網段落寧可不翻。
+    const llmPickIdx = [];
+    const convPickIdx = [];
+    if (convertDirection) {
+      // isConvertibleVariant:含 detectTextLang 強訊號 + 中英混排品牌標題放寬
+      //(cjkRatio ≥ 0.3 且變體特徵單邊乾淨),見 content-detect.js 註解
+      for (let i = 0; i < dedupedTexts.length; i++) {
+        (SK.isConvertibleVariant(dedupedTexts[i], convertDirection) ? convPickIdx : llmPickIdx).push(i);
+      }
+      SK.sendLog('info', 'translate', 'milestone:zh_convert_partition', {
+        t: Date.now() - tu_entry, direction: convertDirection, convertOnly: !!convertOnly,
+        convertible: convPickIdx.length, llm: llmPickIdx.length,
+      });
+    } else {
+      for (let i = 0; i < dedupedTexts.length; i++) llmPickIdx.push(i);
+    }
+    if (convertOnly && llmPickIdx.length > 0) {
+      // 自動互轉路徑混到不可轉換段落(translatePage 端已預過濾,這裡是雙層防護的
+      // 協定層):跳過且從進度 total 扣掉對應的原始 unit 數(含 dup broadcast 份)
+      let skippedOrig = 0;
+      for (const i of llmPickIdx) {
+        skippedOrig += (origIndicesByText.get(dedupedTexts[i])?.length || 1);
+      }
+      total -= skippedOrig;
+      SK.sendLog('info', 'translate', 'convertOnly: non-convertible units skipped (no API)', { skippedUnique: llmPickIdx.length, skippedOrig });
+    }
+    const llmTexts = (convertOnly ? [] : llmPickIdx.map(i => dedupedTexts[i]));
+    const llmUnits = (convertOnly ? [] : llmPickIdx.map(i => dedupedUnits[i]));
+    const llmSlots = (convertOnly ? [] : llmPickIdx.map(i => dedupedSlots[i]));
+
     // v1.1.9: 合併讀取設定（減少 browser.storage.sync.get 呼叫次數）
     let maxConcurrent = SK.DEFAULT_MAX_CONCURRENT;
     let maxUnitsPerBatch = SK.DEFAULT_UNITS_PER_BATCH;
@@ -585,6 +621,7 @@
     // streaming batch 0 已注入的 done 計數——mid-failure fallback 重跑整批前要扣回，
     // 否則 done 重複累計會讓進度 toast 顯示超過 total(例 32/25)
     let batch0StreamDone = 0;
+    let convertedCount = 0;  // 簡繁本地轉換注入段數(含 dup broadcast),供 toast 標示免費成果
     const pageUsage = {
       inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUSD: 0,
       billedInputTokens: 0, billedCostUSD: 0,
@@ -595,7 +632,8 @@
     const partialModeActive = partialMode.enabled && !ignorePartialMode;
     const firstBatchUnits = partialModeActive ? partialMode.maxUnits : SK.BATCH0_UNITS;
     // v1.8.39: packBatches 收 deduped 版本（不含重複 text)，減少 batch 數與 API token
-    const jobs = packBatches(dedupedTexts, dedupedUnits, dedupedSlots, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
+    // 簡繁分流後只包 LLM 側段落;本地轉換組另走 runZhConvert(不進 packBatches)
+    const jobs = packBatches(llmTexts, llmUnits, llmSlots, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
     SK.sendLog('info', 'translate', 'milestone:tu_packed', { t: Date.now() - tu_entry, batches: jobs.length });
     // v1.8.8 instrumentation: packBatches 詳情（每批 unit 數 / chars)
     // v1.8.39: log 欄位改名強調「上限 vs 實際」差異——歷史命名 `firstBatchUnits` 容易被誤讀成
@@ -952,6 +990,60 @@
       return { firstChunkOrTimeout, donePromise, streamId, cleanup: () => { _clearIdleWatchdog(); try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {} } };
     };
 
+    // ─── 簡繁本地轉換執行 ─────────────────────────────
+    // 先於 LLM batch 跑完(轉換近即時,使用者最快看到成果;失敗不阻斷 LLM 側)。
+    // 注入與 LLM 路徑同一條 injectTranslation + dup broadcast + idle gate,
+    // 僅資料來源不同(單一資料源:注入行為不分岔)。
+    const runZhConvert = async () => {
+      if (convPickIdx.length === 0) return;
+      const t0c = Date.now();
+      // 單訊息上限:佔位符序列化後長段落也在數十 KB 級,400 段一包遠低於
+      // runtime message 限制;分包讓進度條在超長頁有階段回饋
+      const CONV_CHUNK = 400;
+      // 同輪同 el 去重(與 performBatchInject 同規則的精簡版:conv 組只有
+      // element / fragment unit 各注入一次的需求)
+      const _convInjectedEls = new Set();
+      for (let off = 0; off < convPickIdx.length; off += CONV_CHUNK) {
+        if (signal?.aborted) return;
+        const idxChunk = convPickIdx.slice(off, off + CONV_CHUNK);
+        const chunkTexts = idxChunk.map(i => dedupedTexts[i]);
+        const response = await sendMessageWithTimeout({
+          type: 'CONVERT_ZH_LOCAL',
+          payload: { texts: chunkTexts, direction: convertDirection },
+        }, 30000);
+        if (!response?.ok) throw new Error(SK.i18n.bgErrorMessage(response) || SK.t('common.errorUnknown'));
+        if (!SK._idleGateReached) await SK.ensureFirstInjectIdle();
+        if (signal?.aborted) return;
+        let injectedThisChunk = 0;
+        response.result.forEach((converted, j) => {
+          const uniqueText = chunkTexts[j];
+          const allOrigIndices = origIndicesByText.get(uniqueText) || [];
+          for (const origIdx of allOrigIndices) {
+            const u = units[origIdx];
+            if (u?.el && _convInjectedEls.has(u.el)) { injectedThisChunk++; continue; }
+            if (u?.el) _convInjectedEls.add(u.el);
+            SK.injectTranslation(u, converted, slotsList[origIdx]);
+            injectedThisChunk++;
+          }
+        });
+        done += injectedThisChunk;
+        convertedCount += injectedThisChunk;
+        if (onProgress) onProgress(done, total, hadAnyMismatch);
+      }
+      SK.sendLog('info', 'translate', 'local zh-convert done', {
+        direction: convertDirection, uniqueSegments: convPickIdx.length,
+        injected: convertedCount, elapsed: Date.now() - t0c,
+      });
+    };
+    try {
+      await runZhConvert();
+    } catch (err) {
+      // 理論上不會發生(本地轉換無網路 / 無金鑰依賴);防禦 SW 死亡 / 打包缺檔。
+      // 記為 failure 讓 translatePage 走既有部分失敗 toast,LLM 側照常執行。
+      SK.sendLog('error', 'translate', 'local zh-convert FAILED', { error: err.message, _anomaly: true });
+      failures.push({ start: 0, count: convPickIdx.length, error: err.message });
+    }
+
     // v1.8.0: streaming 適用範圍——僅 Gemini 文章翻譯路徑。OpenAI-compat / 其他 engine 仍走 v1.7.x 序列 batch 0 路徑。
     const useStreaming = engine !== 'openai-compat';
 
@@ -1017,9 +1109,9 @@
       }
     }
 
-    SK.sendLog('info', 'translate', 'translateUnits complete', { elapsed: Date.now() - t0All, done, total, failures: failures.length });
+    SK.sendLog('info', 'translate', 'translateUnits complete', { elapsed: Date.now() - t0All, done, total, convertedCount, failures: failures.length });
 
-    return { done, total, failures, pageUsage };
+    return { done, total, failures, pageUsage, convertedCount };
   };
 
   // ─── Google Docs 偵測 ────────────────────────────────
@@ -1126,6 +1218,19 @@
       ? settings.targetLanguage : 'zh-TW';
     STATE.targetLanguage = TARGET;
 
+    // 簡繁本地轉換方向:target 為中文變體時,偵測為相反變體的段落走 OpenCC 本地
+    // 轉換(translateUnits 內分流),其他 target 無方向可言 → null(全走 LLM)。
+    const convertDirection = TARGET === 'zh-TW' ? 'cn2twp' : (TARGET === 'zh-CN' ? 'twp2cn' : null);
+    // convertOnly(簡繁自動互轉 / rescan replay 路徑):只跑免費本地轉換,絕不打 API。
+    const convertOnly = !!options.convertOnly;
+    if (convertOnly && !convertDirection) {
+      // 防禦:toggle 開著但 target 已切到非中文(popup 會藏 toggle,這裡擋 race)
+      SK.sendLog('info', 'translate', 'convertOnly: target not Chinese, skip', { target: TARGET });
+      releaseRunState(myAbortController);
+      SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+      return;
+    }
+
     // v1.9.26:原「頁面層級整頁同 target skip」機制移除——`document.querySelector('article')`
     // 第一個 sampling 在 SPA 多 article 站(X / Twitter)會被「先載入的繁中 article」或
     // 「Shinkansen 上輪殘留譯文 DOM」誤導整頁 skip;且 X 自家繁中 UI 字串(「4 小時前」
@@ -1185,6 +1290,19 @@
       units = SK.consolidateDualInlineUnits(units);
     }
 
+    // convertOnly:預過濾出可本地轉換的段落。頁面沒有可轉換段(例如純英文頁 /
+    // 已是 target 變體)→ 靜默結束——自動互轉是背景行為,不該對不適用頁跳 toast。
+    // translateUnits 內另有同判準的協定層防護(雙層各自獨立,工作流原則 §3)。
+    if (convertOnly) {
+      units = units.filter(u => SK.isConvertibleVariant((u.el?.innerText || '').trim(), convertDirection));
+      if (units.length === 0) {
+        SK.sendLog('info', 'translate', 'convertOnly: no convertible units, silent exit');
+        releaseRunState(myAbortController);
+        SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+        return;
+      }
+    }
+
     // v1.8.6: partialMode 啟用時跳過 prioritizeUnits，走純 DOM 順序。
     // 為什麼：partialMode 對使用者語意是「翻頁面 DOM 前 N 段」（視覺上連續中文，
     // 不夾雜），不是「prioritize 認為最重要的 N 段散落各處」。在 Ghost / Substack
@@ -1197,7 +1315,8 @@
     const pm = settings.partialMode;
     // v1.8.7: options.ignorePartialMode = true（從「翻譯剩餘段落」按鈕觸發）時忽略 toggle,
     // 即使使用者 toggle 仍開啟也走完整翻譯。toggle 本身不被改寫，下次翻新頁面仍走節省模式。
-    const pmActive = !options.ignorePartialMode
+    // convertOnly 不套 partialMode——本地轉換免費,「節省費用」語意不適用
+    const pmActive = !options.ignorePartialMode && !convertOnly
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     STATE.partialModeActive = pmActive;
 
@@ -1274,10 +1393,19 @@
       if (Number.isFinite(cv) && cv >= 500) estCharsPerBatch = cv;
     }
 
+    // 簡繁分流下可本地轉換的段落不進 LLM batch——批次數估算與術語表輸入都只算
+    // LLM 側,否則簡體內容會虛增 batchCount 觸發術語表、且術語表 API 輸入含大量
+    // 根本不會送 LLM 的文字(浪費 token)。convertOnly 時全部段落可轉換 →
+    // llmPreTexts 為空 → batchCount=0 → 術語表自然跳過。
+    const _isConvertible = convertDirection
+      ? preTexts.map(t => SK.detectTextLang(t) === (convertDirection === 'cn2twp' ? 'zh-Hans' : 'zh-Hant'))
+      : null;
+    const llmPreTexts = _isConvertible ? preTexts.filter((_, i) => !_isConvertible[i]) : preTexts;
+
     let batchCount = 0;
     {
       let chars = 0, segs = 0;
-      for (const t of preTexts) {
+      for (const t of llmPreTexts) {
         const len = t.length;
         if (len > estCharsPerBatch) { batchCount++; chars = 0; segs = 0; continue; }
         if (chars + len > estCharsPerBatch || segs >= estUnitsPerBatch) {
@@ -1299,7 +1427,7 @@
       SK.sendLog('warn', 'glossary', 'crypto.subtle unavailable (insecure context) — skipping glossary');
     }
     if (glossaryEnabled && batchCount > skipThreshold && crypto && crypto.subtle) {
-      const compressedText = SK.extractGlossaryInput(units);
+      const compressedText = SK.extractGlossaryInput(_isConvertible ? units.filter((_, i) => !_isConvertible[i]) : units);
       const inputHash = await SK.sha1(compressedText);
       SK.sendLog('info', 'glossary', 'glossary preprocessing', { batchCount, mode: batchCount > blockingThreshold ? 'blocking' : 'fire-and-forget', compressedChars: compressedText.length, hash: inputHash.slice(0, 8) });
 
@@ -1376,12 +1504,15 @@
 
     try {
       SK.sendLog('info', 'translate', 'milestone:before_translate_units', { t: Date.now() - entryTime });
-      const { done, failures, pageUsage } = await SK.translateUnits(units, {
+      const { done, failures, pageUsage, convertedCount } = await SK.translateUnits(units, {
         glossary,
         signal: abortSignal,
         modelOverride: options.modelOverride || null,
         // v1.5.7: engine='openai-compat' 走自訂 Provider 的 chat.completions endpoint
         engine: options.engine || 'gemini',
+        // 簡繁本地轉換分流(target 為中文變體時相反變體段落走 OpenCC,不送 LLM)
+        convertDirection,
+        convertOnly,
         // v1.8.8: 「翻譯剩餘段落」路徑要繞過 partialMode 的 skip batch 1+ 邏輯
         ignorePartialMode: !!options.ignorePartialMode,
         onProgress: (d, t, mismatch) => {
@@ -1433,28 +1564,40 @@
       STATE.translated = true;
       // v2.0.73:single mode 整頁已是譯文,<html lang> 對齊 target(下游 scraper / a11y 讀頁面層級 lang)
       if (STATE.translatedMode === 'single') SK.applyDocTargetLang?.();
-      // openai-compat 視為獨立 provider 記錄,避免 rescan / SPA nav 把它誤當 Gemini replay。
-      const _providerUsed = options.engine === 'openai-compat' ? 'openai-compat' : 'gemini';
-      STATE.translatedBy = _providerUsed;  // v1.4.0
-      // 把本次翻譯參數記下供 SPA observer rescan / 延遲 rescan / SPA nav replay 重放同引擎+模型+術語表。
-      STATE.translationContext = {
-        provider: _providerUsed,
-        engine: options.engine || null,
-        modelOverride: options.modelOverride || null,
-        glossary: glossary || null,
-      };
-      STATE.stickyTranslate = true;
-      STATE.stickySlot = options.slot ?? null;  // v1.4.12: 記錄 preset slot 供 SPA 續翻 + 跨 tab 繼承
-      // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
-      if (options.slot != null) {
-        SK.safeSendMessage({ type: 'STICKY_SET', payload: { slot: options.slot } }).catch(() => {});
+      if (convertOnly) {
+        // 簡繁自動互轉:記 provider 供 rescan 續走本地轉換(translateUnitsByProvider
+        // 分流),但不設 stickyTranslate / 跨 tab sticky——SPA 導航後由 autoConvertZh
+        // 檢查自行 re-trigger,免費路徑不得經 sticky replay 觸發 LLM 整頁翻譯
+        STATE.translatedBy = 'opencc-local';
+        STATE.translationContext = { provider: 'opencc-local', convertDirection };
+      } else {
+        // openai-compat 視為獨立 provider 記錄,避免 rescan / SPA nav 把它誤當 Gemini replay。
+        const _providerUsed = options.engine === 'openai-compat' ? 'openai-compat' : 'gemini';
+        STATE.translatedBy = _providerUsed;  // v1.4.0
+        // 把本次翻譯參數記下供 SPA observer rescan / 延遲 rescan / SPA nav replay 重放同引擎+模型+術語表。
+        STATE.translationContext = {
+          provider: _providerUsed,
+          engine: options.engine || null,
+          modelOverride: options.modelOverride || null,
+          glossary: glossary || null,
+          convertDirection,  // rescan 對混合頁新內容延續簡繁分流
+        };
+        STATE.stickyTranslate = true;
+        STATE.stickySlot = options.slot ?? null;  // v1.4.12: 記錄 preset slot 供 SPA 續翻 + 跨 tab 繼承
+        // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
+        if (options.slot != null) {
+          SK.safeSendMessage({ type: 'STICKY_SET', payload: { slot: options.slot } }).catch(() => {});
+        }
       }
 
       if (!failures.length) {
         const totalTokens = pageUsage.inputTokens + pageUsage.outputTokens;
         // v1.8.7: partialMode + 有剩餘未翻段落 → 訊息對齊「節省模式」語意
         let successMsg;
-        if (pmActive && pmSkippedCount > 0) {
+        if (convertOnly) {
+          // 簡繁自動互轉:標示「免費、未使用 API」——讓使用者每次都看見這個價值
+          successMsg = SK.t('toast.zhConvertDone', { total });
+        } else if (pmActive && pmSkippedCount > 0) {
           successMsg = SK.t('toast.donePartial', { total, all: total + pmSkippedCount });
         } else if (truncatedCount > 0) {
           successMsg = SK.t('toast.doneTruncated', { total, truncated: truncatedCount });
@@ -1477,6 +1620,13 @@
           detail = `${line1}\n${line2}`;
         } else if (pageUsage.cacheHits === total) {
           detail = SK.t('toast.allCacheHit');
+        }
+        if (convertOnly) {
+          detail = SK.t('toast.zhConvertFree');
+        } else if ((convertedCount || 0) > 0) {
+          // 混合頁:標示其中免費本地轉換的段數(未計費)
+          const _convLine = SK.t('toast.zhConvertPartial', { count: convertedCount });
+          detail = detail ? `${detail}\n${_convLine}` : _convLine;
         }
         SK.sendLog('info', 'translate', 'page translation usage', {
           segments: total,
@@ -1524,8 +1674,9 @@
         });
       }
 
-      // 記錄用量到 IndexedDB
-      if (done > 0) {
+      // 記錄用量到 IndexedDB(convertOnly 純本地轉換零 API 用量,不寫紀錄——
+      // usage-db 是 API 對帳工具,0 token entry 只會稀釋統計)
+      if (done > 0 && !convertOnly) {
         SK.safeSendMessage({
           type: 'LOG_USAGE',
           payload: {
@@ -1874,12 +2025,22 @@
       const r = await SK.translateUnitsGoogle(units, opts);
       return { ...r, pageUsage: { cacheHits: r.cacheHits || 0 } };
     }
+    // 簡繁自動互轉的 rescan:新內容只走本地轉換(convertOnly 保證不打 API)
+    if (ctx.provider === 'opencc-local') {
+      return SK.translateUnits(units, {
+        ...opts,
+        convertDirection: ctx.convertDirection,
+        convertOnly: true,
+      });
+    }
     // gemini / openai-compat 共用 SK.translateUnits,以 engine 欄位區分。
     return SK.translateUnits(units, {
       ...opts,
       engine: ctx.engine || undefined,
       modelOverride: ctx.modelOverride || undefined,
       glossary: ctx.glossary || undefined,
+      // 混合頁首翻帶簡繁分流時,rescan 新內容延續同方向分流
+      convertDirection: ctx.convertDirection || undefined,
     });
   };
 
@@ -1889,6 +2050,8 @@
     const ctx = STATE.translationContext;
     if (!ctx) return SK.translatePage();
     if (ctx.provider === 'google') return SK.translatePageGoogle();
+    // 防禦:convertOnly run 不設 sticky,理論上不會走到這;若意外到達,維持免費承諾
+    if (ctx.provider === 'opencc-local') return SK.translatePage({ convertOnly: true });
     return SK.translatePage({
       engine: ctx.engine || undefined,
       modelOverride: ctx.modelOverride || undefined,
@@ -2426,6 +2589,22 @@
       }
       return;
     }
+    // 簡繁自動互轉 toggle(popup):勾選狀態直接決定當前頁動作——勾選立即對本頁跑
+    // convertOnly(不適用頁面在 convertOnly 內靜默結束);取消勾選只在「本頁是本地
+    // 轉換結果」(translatedBy 'opencc-local')時還原,不得動到 LLM 翻譯成果
+    if (msg?.type === 'SET_AUTO_CONVERT_ZH') {
+      const enabled = !!msg.payload?.enabled;
+      if (enabled) {
+        if (!STATE.translated && !STATE.translating) {
+          SK.translatePage({ convertOnly: true }).catch(err => {
+            SK.sendLog('warn', 'system', 'SET_AUTO_CONVERT_ZH convert failed', { error: err.message });
+          });
+        }
+      } else if (STATE.translated && STATE.translatedBy === 'opencc-local') {
+        restorePage();
+      }
+      return;
+    }
     // v1.4.21: popup 勾選狀態直接決定「應該啟或停」，不再走 toggle 翻面
     if (msg?.type === 'SET_SUBTITLE') {
       const enabled = !!msg.payload?.enabled;
@@ -2684,9 +2863,8 @@
         }
       }
 
-      const { autoTranslate = false, autoTranslateSlot } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot']);
-      if (!autoTranslate) return;
-      if (await SK.isDomainWhitelisted()) {
+      const { autoTranslate = false, autoTranslateSlot, autoConvertZh = false } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot', 'autoConvertZh']);
+      if (autoTranslate && await SK.isDomainWhitelisted()) {
         // v1.6.13: 走指定 preset slot 而非裸 translatePage()，讓白名單行為跟使用者
         // 期待的「按下對應快速鍵」一致（走 preset.model 的 modelOverride)。
         // 沒設過 / 範圍外時 fallback slot 2，跟 v1.6.12 之前的行為等價。
@@ -2699,6 +2877,14 @@
           // 防禦性 fallback（理論上 SK.handleTranslatePreset 永遠在 content.js 內 export)
           SK.translatePage({ label: SK.t('toast.autoTranslateLabel') });
         }
+        return; // 白名單完整翻譯是超集(簡繁段落在 translateUnits 內自動分流),不重複觸發
+      }
+      // 簡繁自動互轉:toggle 開啟時對可轉換頁自動本地轉換(免費,不打 API)。
+      // 適用性判定在 translatePage convertOnly 路徑內——target 非中文變體或頁面
+      // 無相反變體段落時靜默結束,不跳 toast 不留 badge
+      if (autoConvertZh) {
+        SK.sendLog('info', 'system', 'autoConvertZh on, trying local zh-convert on load', { url: location.href });
+        SK.translatePage({ convertOnly: true });
       }
     } catch (err) {
       SK.sendLog('warn', 'system', 'auto-translate check failed on load', { error: err.message });

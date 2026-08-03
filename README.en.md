@@ -29,6 +29,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Preserves page layout**: text is replaced in place; fonts, sizes, colors, and links are kept; bold and italics survive untouched.
 - **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the toolbar icon menu. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
 - **Three translation engines**: Gemini (AI translation, best quality, requires API key) + Google Translate (unofficial free endpoint, no API key, faster) + Custom model — switch freely depending on what you're reading.
+- **Free Chinese variant conversion**: when your target language is Traditional or Simplified Chinese, content in the opposite variant is converted locally with built-in OpenCC dictionaries — no API key, no API calls, works offline, with phrase-level Taiwan-convention mapping (软件→軟體, 视频→影片, 内存→記憶體). Enable "Auto-convert Chinese variants" in the toolbar icon menu — the current page converts immediately when you check it (and reverts when you uncheck it), and future pages convert automatically on load; on mixed-language pages only the Chinese paragraphs use the free conversion while the rest go through your chosen engine.
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
@@ -269,7 +270,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.0.75 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.0.76 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

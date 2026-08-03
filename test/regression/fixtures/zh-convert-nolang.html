@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>科技股迎来暴涨的简体标题页面</title>
+</head>
+<body>
+  <!-- 無 <html lang> 宣告的簡中頁(簡中新聞站常見):_foreignPage 原本一律 false,
+       短 anchor(tag 標籤)過不了 leaf-anchor 20 字門檻 → 永遠不轉。
+       修法:無 lang 時用 document.title 文字級偵測推導(title 為簡中 → foreign) -->
+  <article>
+    <p id="p-body">这是一段用来撑住页面主体的简体中文内容，长度足以通过段落侦测的最小门槛要求。</p>
+  </article>
+  <!-- tag 雲:短 anchor 連結叢集(2-6 字 CJK,部分帶英文縮寫) -->
+  <div class="tag-cloud">
+    <a href="#t1" id="t-mems">传感/MEMS</a>
+    <a href="#t2" id="t-consumer">消费电子</a>
+    <a href="#t3" id="t-iot">物联网</a>
+  </div>
+</body>
+</html>

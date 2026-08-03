@@ -594,6 +594,9 @@ export const DEFAULT_SETTINGS = {
   },
   domainRules: { whitelist: [] },
   autoTranslate: false,
+  // 簡繁自動互轉:開啟後 target 為 zh-TW / zh-CN 時,偵測為相反中文變體的頁面
+  // 於載入 / SPA 導航自動走 OpenCC 本地轉換(免費、不打 API)。popup toggle 控制
+  autoConvertZh: false,
   debugLog: false,
   // W7:文件翻譯設定 group。獨立 settings page (translate-doc/settings.html)
   // 編輯。為將來擴充各 Office 格式(.docx / .xlsx / .pptx)做好結構 — systemPrompt
