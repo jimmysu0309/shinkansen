@@ -7,6 +7,8 @@
 
 ## v2.0.x
 
+**v2.0.75**——PDF 翻譯品質總修（版面偵測 cell 粒度重構＋渲染多項修正＋prompt 規則）。版面偵測：跨欄同 y 內容不再黏成單行（label／value、雙欄地址各自成塊）、啟發式 table 區塊改逐行拆解送翻（規格表不再半頁留原文）、格線表格描述欄的跨行句子以幾何配對接回（譯文不在行界斷句）、黏字 bullet 正確按條拆分（清單逐條原位）、同左緣緊行距的 label 群按 row 配對逐行拆（標籤與數值逐列對位）、斜角浮水印不再誤譯成水平大字蓋版。渲染：整塊粗體標題在模型漏標時仍保留粗體、表格 cell 遮罩改貼字身消除原文殘影、譯文含換行符不再互疊、擴框方向改「下優先於右」（表格欄譯文不再蓋到右側圖）、窄欄金額數值寧縮字不拆行。prompt：文件翻譯數值逐字保留（千分位逗號不再被移除）、譯名不確定時一律保留原文（減少公司名誤譯）；舊自訂欄位維持預設者自動吃新規則。批次分隔符變體防漏。**升級後首次啟動自動清除翻譯快取一次**（舊快取存有舊規則譯文），術語表快取不受影響。
+
 **v2.0.74**——**既有使用者自動吃到 v2.0.53 的 default prompt 排版規則擴充**。v2.0.53 對翻譯 prompt 加了「日文 ？！ 後空格移除」與「忠於原文的句尾標點」兩條排版規則，但當時漏加升級比對規則——設定頁存過舊版預設 prompt 字面值的使用者被誤判成「已客製」，永遠吃不到新 prompt，只能在設定頁看到提示等手動更新。本版補上 `_normalizePromptForComparison` 的三條 normalize rule（zh-TW 版兩段新增文字＋universal 版 rule 5/6，語言 label 容忍注入後字面值），舊 saved 經 normalize 等於新預設 → 視為未客製，翻譯時自動採用新 prompt，網頁與文件翻譯（同一常數）一併生效；真正客製過的 prompt 不受影響。unit spec：`system-prompt-typography-upgrade.spec.js` 6 條（舊字面值凍結快照視為未客製／ja・en 含 reinforcement 尾段路徑／DOC 路徑／客製對照組／防誤刪，SANITY 破壞驗證兩輪）。**建議手動清快取**：受影響使用者升級後開始吃新 prompt，先前舊 prompt 翻出的快取譯文不會自動失效。
 
 **v2.0.73**——**single mode 翻譯後 `<html lang>` 對齊目標語言**。翻譯成功後把 `documentElement` 的 `lang` 設為 `targetLanguage`（例 `zh-TW`），還原／SPA 導航時回復原值（原本沒設 attribute 就移除、不留殘影）；dual mode 不動（頁面同時含原文與譯文）。per-element 的 lang＋locale 字體 prepend 既有機制只蓋注入段落，這次補的是**頁面層級**語意——受益者是讀整份文件的下游 scraper 與 a11y 工具。起因：翻譯後文章存到 Readwise Reader 出現逐字字體混排（「為」「麼」與鄰字不同字體），實測根因是 Reader 端把繁中內容誤判成韓文（`lang="ko"` → 韓文字體渲染、缺字字元逐字 fallback 中文字體）；Reader 目前的自動偵測不吃頁面 lang 屬性（已實測），此改動無法直接修其誤判，但為未來修正與其他下游做對頁面語意。regression：`inject-doc-lang-target.spec.js` 3 條（single 切 target＋restore 還原／無 lang 頁還原後不殘留／dual 對照組不動，SANITY 破壞驗證）。**不需清快取**：不動 prompt、cache key 與譯文內容。

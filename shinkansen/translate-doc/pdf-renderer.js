@@ -175,11 +175,35 @@ export async function downloadBilingualPdf(originalArrayBuffer, layoutDoc, optio
 // CSS font-synthesis-style 預設 14°、FontForge -10°~-15°,折衷 12°)。matrix 走
 // PDF text rendering matrix 規格,skew x 軸:[1, 0, tan(12°), 1, tx, ty]
 const ITALIC_SKEW = Math.tan(12 * Math.PI / 180);
+// 原子 token 斷行判定上限:≤ 此字元數的 ASCII 連續串(金額 / 數值 / 短料號)被迫
+// 逐字拆行時視為 fit 失敗(寧縮字不拆);更長的串(URL / 完整料號)照舊可拆
+const ATOMIC_CHUNK_MAX_CHARS = 14;
 // 連結色 = 接近 #00468C 的偏深藍,跟黑字有對比但不過度螢光
 const LINK_RGB = [0, 0.27, 0.55];
 // link underline:baseline 下 fontSize × 0.12 處,thickness fontSize × 0.06
 const UNDERLINE_OFFSET_RATIO = 0.12;
 const UNDERLINE_THICKNESS_RATIO = 0.06;
+
+// block.styleSegments(原文)全部同 (isBold, isItalic) 時回傳該 style;
+// 混排 / 無資料 / uniform 但無樣式(全 regular)回 null。
+// 只看有實質文字的 segment——純空白 segment 的樣式位不可靠
+export function uniformBlockStyle(block) {
+  const src = block && block.styleSegments;
+  if (!Array.isArray(src) || src.length === 0) return null;
+  let isBold = null;
+  let isItalic = null;
+  for (const s of src) {
+    if (!s || typeof s.text !== 'string' || s.text.trim().length === 0) continue;
+    if (isBold === null) {
+      isBold = !!s.isBold;
+      isItalic = !!s.isItalic;
+      continue;
+    }
+    if (!!s.isBold !== isBold || !!s.isItalic !== isItalic) return null;
+  }
+  if (isBold === null) return null;
+  return (isBold || isItalic) ? { isBold, isItalic } : null;
+}
 
 // 對每個 translatable + has translation 的 block 在新 page 上蓋白底 + 寫譯文。
 // 不可翻譯 type(table / formula / figure / page-number)/ failed block / pending →
@@ -220,6 +244,24 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
       ? block.translationSegments
       : [{ text: block.translation, isBold: false, isItalic: false, linkUrl: null }];
 
+    // 換行正規化:LLM 對 bullet list 類 block 常自作主張在譯文加 \n(輸入的
+    // plainText 本來就是收斂空白後的單行)。wrap 是本 renderer 唯一的斷行者,
+    // piece 文字帶 \n 會讓 pdf-lib drawText 內部再斷一次行往下畫,跟我們的
+    // cy 前進疊加 → 譯文互疊(Thorpe bullet list 實測)。\n 一律轉單一空格
+    segs = segs.map((s) => (s.text && s.text.includes('\n')
+      ? { ...s, text: s.text.replace(/\s*\n+\s*/g, ' ') }
+      : s));
+
+    // 整塊同 style 的 block(全粗體標題 / 全斜體引言)不依賴 LLM marker:
+    // 譯文 segments 全無樣式時直接繼承原 block 的 uniform style。涵蓋三種
+    // 樣式流失來源——模型剝掉 ⟦b⟧/⟦i⟧ marker、parseMarkedTranslation fallback、
+    // 舊資料無 translationSegments。linkUrl 不在此列(連結錨點必須靠 marker 對位);
+    // 譯文帶任一 bold / italic piece 時視為 marker 有效,不覆蓋
+    const uniform = uniformBlockStyle(block);
+    if (uniform && segs.every((s) => !s.isBold && !s.isItalic)) {
+      segs = segs.map((s) => ({ ...s, isBold: uniform.isBold, isItalic: uniform.isItalic }));
+    }
+
     // fit-to-box:從 scale 1.0 起步,塞不下時依序試縮 + 擴 box,回傳最終 box +
     // 字級 + 行(每行帶 pieces 陣列)
     const fit = fitSegmentsToBox(
@@ -241,28 +283,54 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
   for (const { block, fit } of prepared) {
     const isCellBlock = block._isCellBlock === true;
     if (isCellBlock) {
-      // cell-block:mask = cell.bbox 各邊內縮 1pt 留 PDF 表格邊線 buffer。
-      // cell.bbox 邊界通常跟原 PDF 表格邊線位置重合(cell.x0 = 垂直邊線 x、
-      // cell.y0 = 水平邊線 y),邊線粗度可能 0.5-1pt,需要 1pt buffer 完全避開。
-      // 不擴 padBottom:cell 緊鄰 row 邊線,擴下方一定蓋邊線。
-      // 殘影 trade-off:cell 字身底 descender 可能殘留 1-2pt,但中文無 descender、
-      // 表格 cell 內容多為短英數字,殘影風險低
+      // cell-block mask:蓋「原文 item 形狀 + descender padding」而非整格內縮矩形。
+      // 舊法(cell.bbox 內縮 1pt、無 padBottom)在原文字身貼近 cell 底時留 1-2pt
+      // 字身底殘影(zoom 下呈虛線,Quotation 表頭列實測)。文字通常不貼表格邊線,
+      // 以 item bbox 起算的 mask 蓋得住字身(含 PDF.js bbox 常低估的 descender)
+      // 又碰不到邊線;item 貼邊時 clamp 回 cell 內縮 0.5pt(殘影只剩貼邊側極窄條,
+      // 仍優於全周內縮)。cell 內找不到 item 時 fallback 舊內縮矩形(寧可壓邊線
+      // 也不漏蓋原文,對齊 v1.10.39 M5 窄 cell 原則)
       const [bx0, by0, bx1, by1] = block.bbox;
-      const buf = 1;
-      // v1.10.39(code review 2026-06-09 M5):窄 cell(寬或高 < 2pt,如數量 / 單位欄)
-      // 扣掉 buf*2 會變負值 → drawRectangle 畫反向 / 0 面積矩形 → 原文沒被蓋、譯文疊在
-      // 原文上。任一維度內縮後 ≤ 0 時改用原 cell 尺寸蓋(寧可壓到表格邊線也不漏蓋原文)。
-      const insetW = (bx1 - bx0) - buf * 2;
-      const insetH = (by1 - by0) - buf * 2;
-      const useInset = insetW > 0 && insetH > 0;
-      page.drawRectangle({
-        x: useInset ? bx0 + buf : bx0,
-        y: useInset ? pageH - (by1 - buf) : pageH - by1,
-        width: useInset ? insetW : (bx1 - bx0),
-        height: useInset ? insetH : (by1 - by0),
-        color: rgb(1, 1, 1),
-        borderWidth: 0,
-      });
+      const buf = 0.5;
+      const fs = block.fontSize || 10;
+      const padX = fs * 0.1;
+      const padTop = fs * 0.1;
+      const padBottomCell = Math.max(1.5, fs * 0.25);
+      let drewItemMask = false;
+      for (const it of (items || [])) {
+        const [ix0, iy0, ix1, iy1] = it.bbox;
+        // 只取與 cell 相交的 item(相鄰 cell 的 item 不會與本 cell bbox 相交)
+        if (ix1 < bx0 || ix0 > bx1 || iy1 < by0 || iy0 > by1) continue;
+        const mx0 = Math.max(ix0 - padX, bx0 + buf);
+        const mx1 = Math.min(ix1 + padX, bx1 - buf);
+        const my0 = Math.max(iy0 - padTop, by0 + buf);
+        const my1 = Math.min(iy1 + padBottomCell, by1 - buf);
+        if (mx1 <= mx0 || my1 <= my0) continue;
+        page.drawRectangle({
+          x: mx0,
+          y: pageH - my1,
+          width: mx1 - mx0,
+          height: my1 - my0,
+          color: rgb(1, 1, 1),
+          borderWidth: 0,
+        });
+        drewItemMask = true;
+      }
+      if (!drewItemMask) {
+        // fallback:cell.bbox 內縮 1pt(v1.10.39 M5:窄 cell 內縮後 ≤ 0 用原尺寸)
+        const fbuf = 1;
+        const insetW = (bx1 - bx0) - fbuf * 2;
+        const insetH = (by1 - by0) - fbuf * 2;
+        const useInset = insetW > 0 && insetH > 0;
+        page.drawRectangle({
+          x: useInset ? bx0 + fbuf : bx0,
+          y: useInset ? pageH - (by1 - fbuf) : pageH - by1,
+          width: useInset ? insetW : (bx1 - bx0),
+          height: useInset ? insetH : (by1 - by0),
+          color: rgb(1, 1, 1),
+          borderWidth: 0,
+        });
+      }
     } else {
       // non-cell-block:mask 基底 = 原 block.bbox ∪ 譯文實際畫字範圍,再
       // expandBoxToCoverItems(clamp 到 block.bbox)+ padBottom = fontSize × 0.3
@@ -415,6 +483,9 @@ function fitSegmentsToBox(segments, fontRegular, fontBold, originalFontSize, cur
     const blockH = b.y1 - b.y0;
     if (blockW <= 0 || blockH <= 0) return null;
     const lines = wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, blockW);
+    // 原子 token(短金額 / 數值)被逐字拆行 = 排版不合格,視為 fit 失敗——
+    // 讓 phase 迴圈改試縮字 / 擴框;全部救不了才由最終 fallback 接受拆行
+    if (lines.atomicSplit) return null;
     const visualRatio = lines.length === 1 ? SINGLE_LINE_VISUAL_RATIO : FIRST_LINE_VISUAL_RATIO;
     const requiredH = fontSize * visualRatio + (lines.length - 1) * lineHeight;
     if (requiredH <= blockH + 1) return { fontSize, lineHeight, lines, finalBox: b };
@@ -430,9 +501,14 @@ function fitSegmentsToBox(segments, fontRegular, fontBold, originalFontSize, cur
   const expandedBottom = isCellBlock ? -Infinity : getMaxBottomY(currentBlock, layoutPage);
   const canExpandRight = expandedRight > box.x1 + 0.5;
   const canExpandDown = expandedBottom > box.y1 + 0.5;
+  // 變體順序:原 box → 擴下 → 擴右 → 擴雙。「下優先於右」(對齊 Phase B 先於
+  // Phase C 的既有語意):向下是同欄流向,通常只是 cell 下緣 / 段落間的小空隙,
+  // 良性;向右會跨進版面上「非文字阻擋物」的地盤——表格右側的架構圖 / 圖片不是
+  // text block,getMaxRightX 擋不住,右擴優先時「差 2pt 塞不下」的表格 cell 會
+  // 被排成一行長文蓋過整張圖(Thorpe p3 分割區 / 驅動程式紀錄 cell 實測)
   const variants = [box];
-  if (canExpandRight) variants.push({ ...box, x1: expandedRight });
   if (canExpandDown) variants.push({ ...box, y1: expandedBottom });
+  if (canExpandRight) variants.push({ ...box, x1: expandedRight });
   if (canExpandRight && canExpandDown) {
     variants.push({ x0: box.x0, y0: box.y0, x1: expandedRight, y1: expandedBottom });
   }
@@ -723,10 +799,17 @@ export function wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, m
   // 1.5) 單一 chunk 自己就寬過 maxWidth(長 URL / 料號等 ASCII 連續串)→ 退化成
   // 逐字元 chunks 再走一般 wrap:整條塞同一行會畫超出 box.x1,水平溢出疊到右側
   // 原文 / 相鄰 block。逐字元後同 style 字元在行內仍會被 mergeChunksToPieces 合回
-  // 同一 piece,不影響渲染結構
+  // 同一 piece,不影響渲染結構。
+  // v2.0.75:短 chunk(≤ ATOMIC_CHUNK_MAX_CHARS)被迫逐字拆 = 「原子 token 斷行」
+  // ——窄 cell 的金額 / 數值被拆成「7,000.0 / 0」「1.4 / 7」(TDC6 / OCA 實測)。
+  // 回傳陣列標 atomicSplit,fitSegmentsToBox 的 tryFit 視為 fit 失敗,改走縮字 /
+  // 擴框讓 token 整顆塞下;所有 phase 都救不了才在最終 fallback 接受逐字拆。
+  // 長串(URL / 完整料號 > 14 字元)不設限,照舊逐字拆(縮字救不了它們)
   const sizedChunks = [];
+  let atomicSplit = false;
   for (const c of chunks) {
     if (!c.isWS && c.text.length > 1 && widthOf(c) > maxWidth) {
+      if (c.text.length <= ATOMIC_CHUNK_MAX_CHARS) atomicSplit = true;
       for (const ch of c.text) sizedChunks.push({ ...c, text: ch });
     } else {
       sizedChunks.push(c);
@@ -753,7 +836,9 @@ export function wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, m
 
   // 3) 合併連續同 style 的 chunks 成 pieces;CJK 標點規則(跨 piece)
   const lines = lineChunks.map((cs) => ({ pieces: mergeChunksToPieces(cs) }));
-  return applyCJKPunctuationRulesPieces(lines);
+  const out = applyCJKPunctuationRulesPieces(lines);
+  if (atomicSplit) out.atomicSplit = true;
+  return out;
 }
 
 // 把 chunks 陣列合併成 pieces:連續同 (isBold, isItalic, linkUrl) 合一段

@@ -12,7 +12,8 @@
 //   node tools/pdf-layout-snapshot.js --only Plano # 只跑檔名含 Plano 的 PDF
 //
 // snapshot 路徑:test/regression/pdf-layout-snapshots/<filename>.json
-// snapshot 進 git track(PDF 本身在 docs/excluded/ 不進 git;snapshot 進可跨機器同步)
+// snapshot 與 PDF 本身都不進 git(.gitignore 排除):snapshot 的 plainTextPreview
+// 含測試 PDF 內文摘錄,測試 PDF 是私人文件,兩者都只在本機維護
 
 import { chromium } from 'playwright';
 import path from 'node:path';

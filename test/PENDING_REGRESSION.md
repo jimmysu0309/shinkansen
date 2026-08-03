@@ -17,6 +17,13 @@
 
 ## 條目
 
+### splitOnSameRow / splitOnLeftShift 縱向切分規則的正向案例——synthetic fixture 咬不住（dev tail 2.0.74.1 修）
+- **症狀**:spec sheet 的 label 欄行（x=40）被吸進 value 欄（x=166）的 list 區塊（Trimble p1-b39）;同 visual row 的 cell line 因垂直 gap 為負被縱向串成 franken block（Quotation TDC6 表頭「QTY|Unit Cost」與金額 rows 黏成 ln=3 一塊）。
+- **修在**:`shinkansen/translate-doc/layout-analyzer.js` `splitColumnIntoBlocks` 新增 `splitOnLeftShift`（左緣位移 > 6× mlh,置中 / 靠右對齊豁免）與 `splitOnSameRow`（top 幾乎相同即切）。
+- **已有覆蓋**:`test/unit/layout-cell-granularity.spec.js` Case 4 驗「同 row cell 不 collapse」整合結果、Case 5 驗置中豁免（負向）;SANITY 過。真 PDF 驗證走本機 `npm run pdf-snapshot`（Quotation TDC6 表格區 per-cell / Trimble p1-b39 label 獨立,baseline 已含新行為）。
+- **為什麼正向案例還不能寫 spec**:synthetic fixture 中 K-means 欄位偵測會先把測試座標分進不同 column → block 本來就分開,斷言分不出「是哪條規則切的」（SANITY 破壞 splitOnSameRow 後 spec 照樣綠 = 假覆蓋,依 §9 不硬寫）。要咬住需構造「欄位偵測判單欄但含同 row cell」的輸入,K-means 對 line lefts 的行為難以在小 fixture 穩定控制。
+- **建議方向**:若日後 layout-analyzer 把 splitColumnIntoBlocks 抽成可注入 column assignment 的純函式,直接 unit 驅動即可補上;或本機 snapshot 套件納入 CI 的話此條可永久結案。
+
 ### ~~術語表帶（原文）對照的 target 被模型剝掉對照——LLM 行為層無法 fixture 化（dev tail 2.0.53.1 修）~~
 - ★ **關閉(2026-07-13,Jimmy 決定永久結案)**:修法已隨 v2.0.54 release(prompt 措辭 + collapseDoubledTitleMarks 路徑 A);LLM 服從度層打真 API、非決定性,永久 path B。日後回歸用 `tools/probe-glossary-annotation.mjs` 手動 probe。程式側 mangle 變體已另走路徑 A 修復(v2.0.55,`epub-translate.spec.js` SANITY ⑪)。
 - **症狀**:EPUB 全書術語表 entry「Changing Rooms → 《變換房間》（Changing Rooms）」（對照一次未勾）,譯文只出現《變換房間》,（Changing Rooms）對照被砍(2026-07-12 Jimmy 回報,session 真實資料 c9-b169);另一表現:模型在已含《》的譯名外再自包一層變「《《雷霆谷》》」。

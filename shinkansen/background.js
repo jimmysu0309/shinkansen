@@ -2693,6 +2693,25 @@ async function runV2065EchoCacheClear(triggerLabel) {
 browser.runtime.onStartup?.addListener(() => { runV2065EchoCacheClear('onStartup'); });
 runV2065EchoCacheClear('sw-init');
 
+// v2.0.75 一次性 migration:prompt 規則變動後的舊譯文快取清除。
+// 本版 DEFAULT_SYSTEM_PROMPT 補「通行譯名不確定保留原文」guard、DOC prompt 追加
+// <document_number_fidelity>(千分位保留)——舊 prompt 產的譯文(千分位被移除、
+// 公司名幻覺譯名)已寫進 tc_ 快取,cache key 不含 prompt 文字,新版 cache hit
+// 仍會吐舊規則譯文。一次性全清 tc_*(glossary 不動,術語表 prompt 本版沒變)。
+const V2075_PROMPT_CACHE_FLAG = '__shinkansen_v2075_prompt_cache_cleared';
+async function runV2075PromptCacheClear(triggerLabel) {
+  try {
+    const r = await cache.migrateClearTranslationCacheOnce(V2075_PROMPT_CACHE_FLAG);
+    if (r.ranMigration) {
+      debugLog('info', 'cache', `v2.0.75 prompt cache cleared (${triggerLabel})`, { cleared: r.cleared });
+    }
+  } catch (err) {
+    debugLog('warn', 'cache', 'v2.0.75 prompt cache clear failed', { error: err && err.message, trigger: triggerLabel });
+  }
+}
+browser.runtime.onStartup?.addListener(() => { runV2075PromptCacheClear('onStartup'); });
+runV2075PromptCacheClear('sw-init');
+
 // 累計用量 path 合一（IndexedDB 為單一資料源）後，storage.local['usageStats'] 殘餘清掉
 browser.storage.local.remove('usageStats').catch(() => {});
 
@@ -2707,6 +2726,7 @@ browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   await runW7CacheMigration('onInstalled');
   await runV198GoogleMtCacheClear('onInstalled');
   await runV2065EchoCacheClear('onInstalled');
+  await runV2075PromptCacheClear('onInstalled');
 
   // v1.6.5: CWS 自動更新到 major / minor 新版時，寫 welcomeNotice 讓使用者下次
   // 開 popup 或翻譯成功 toast 時看到「🎉 已升級至 vX.Y」+ 重大更新清單。

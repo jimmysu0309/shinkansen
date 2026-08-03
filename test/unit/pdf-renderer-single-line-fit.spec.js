@@ -90,6 +90,103 @@ test.describe('fitSegmentsToBox 1-line block 不縮字', () => {
     expect(b1Text.opts.size).toBe(9);
   });
 
+  test('擴 box 方向:下優先於右——表格 cell 差一點塞不下時排多行,不排一行長文蓋右側', () => {
+    // Bug(Thorpe p3 實測):Phase 0 變體順序原為「右先於下」,表格 cell 譯文差
+    // 2pt 塞不下時向右一路擴到頁面另一側(中間的架構圖不是 text block 擋不住)
+    // → 一行長文蓋過圖。向下擴 2pt 即能以 cell 寬排兩行。
+    // SANITY(已驗證):暫時把 variants 順序改回「右先於下」→ 本 case fail
+    // (drawText x 超出 cell 右緣、只有 1 行)→ 還原 → pass。
+    //
+    // 佈局:cell block(129,199)-(330,221) 高 22 = 2 行;右側遠處有一個 text
+    // block(y 帶不同→ 擋不住右擴);下方 block 在 y=238(留 17pt 空隙可下擴)。
+    // 譯文 33 字 CJK × fs10 = 330pt > cell 寬 201 → 需 2 行;2 行 requiredH ≈ 24
+    // > 22+1 → 原 box 塞不下 → 必須擴:下擴後 2 行 fit ✓;右擴會 1 行 fit(壞)
+    const layoutPage = {
+      pageIndex: 0,
+      viewport: { width: 900, height: 700 },
+      medianLineHeight: 10,
+      columnCount: 1,
+      blocks: [
+        {
+          blockId: 'cell',
+          type: 'paragraph',
+          bbox: [129, 199, 330, 221],
+          column: 0,
+          fontSize: 10,
+          lineCount: 2,
+          runCount: 2,
+          plainText: 'Special partitions for the applications. These will not be initialized.',
+          translation: '應用程式的專用分割區這些分割區不會因恢復原廠設定而初始化完畢',
+          translationSegments: [{ text: '應用程式的專用分割區這些分割區不會因恢復原廠設定而初始化完畢', isBold: false, isItalic: false, linkUrl: null }],
+        },
+        {
+          blockId: 'below',
+          type: 'paragraph',
+          bbox: [129, 238, 330, 260],
+          column: 0,
+          fontSize: 10,
+          lineCount: 2,
+          runCount: 1,
+          plainText: 'next row cell',
+          translation: '下一列',
+          translationSegments: [{ text: '下一列', isBold: false, isItalic: false, linkUrl: null }],
+        },
+      ],
+    };
+    const page = makeRecordingPage();
+    const font = makeFont();
+    drawTranslatedOverlay(page, layoutPage, font, font, []);
+
+    const cellCalls = page.calls.filter((c) => c.kind === 'text' && c.text !== '下一列');
+    expect(cellCalls.length).toBeGreaterThanOrEqual(2); // 排成多行,不是一行長文
+    for (const c of cellCalls) {
+      const x = c.opts.x != null ? c.opts.x : c.opts.matrix[4];
+      const w = font.widthOfTextAtSize(c.text, c.opts.size);
+      // 每行右緣不得超出 cell 右緣太多(容忍 2pt;右擴變體會畫到 330 之外一大截)
+      expect(x + w).toBeLessThanOrEqual(332);
+    }
+  });
+
+  test('原子 token 不拆行:窄 cell 金額寧縮字整顆塞下,不得拆成「7,000.0/0」', () => {
+    // Bug(TDC6 / OCA 實測):chunk 寬過 cell 時 1.5 逐字拆 → 金額 / 數值斷行。
+    // 修法:短 token(≤14 字元)被迫拆 = fit 失敗 → 縮字讓 token 整顆塞下。
+    // fake font 每字寬 = fontSize:「7,000.00」8 字 × fs10 = 80 > cell 寬 64
+    // → scale 1.0 需拆;0.8 → 64 ≤ 64 整顆 fit。
+    // SANITY(已驗證):暫時把 tryFit 的 `if (lines.atomicSplit) return null` 註解
+    // → 「單一 drawText 含完整 7,000.00」斷言 fail(被拆成多段)→ 還原 pass
+    const layoutPage = {
+      pageIndex: 0,
+      viewport: { width: 900, height: 700 },
+      medianLineHeight: 10,
+      columnCount: 1,
+      blocks: [
+        {
+          blockId: 'amt',
+          type: 'paragraph',
+          // cell 高 30 = 裝得下 2 行——沒有 atomicSplit 判定時 scale 1.0 直接
+          // 拆成兩行過關(TDC6 實際場景);有判定才會改走縮字整顆塞下
+          bbox: [100, 100, 164, 130],
+          column: 0,
+          fontSize: 10,
+          lineCount: 1,
+          runCount: 1,
+          plainText: '7,000.00',
+          translation: '7,000.00',
+          translationSegments: [{ text: '7,000.00', isBold: false, isItalic: false, linkUrl: null }],
+          _isCellBlock: true, // cell block 不擴框,只能縮字 → 直接驗縮字路徑
+        },
+      ],
+    };
+    const page = makeRecordingPage();
+    const font = makeFont();
+    drawTranslatedOverlay(page, layoutPage, font, font, []);
+    const textCalls = page.calls.filter((c) => c.kind === 'text');
+    // 金額必須以單一完整 piece 畫出(不拆行),且字級縮小到塞得下
+    expect(textCalls).toHaveLength(1);
+    expect(textCalls[0].text).toBe('7,000.00');
+    expect(textCalls[0].opts.size).toBeLessThan(10);
+  });
+
   test('多行 block 仍走 FIRST_LINE_VISUAL_RATIO(1.21)— 確保 1.0 放寬只對 1-line', () => {
     // 模擬中文 wrap 成 2 行的場景:box 寬 = 50,塞 6 字 × fontSize 9 = 54 → wrap 成 2 行
     // 高度只 9pt 顯然塞不下 2 行 + 1.21 + lineHeight,fit 應走 phase B/C/D 縮字

@@ -18,7 +18,7 @@ export const DEFAULT_SYSTEM_PROMPT = `<role_definition>
 <linguistic_guidelines>
 1. 台灣道地語感：嚴格使用台灣慣用語，追求情緒對等而非字面直譯。若原文語氣誇張（如 broke the internet），請對應台灣當代強烈的流行語或成語。拒絕「這是一個...的過程」、「在...的情況下」、「...的部分」等機器翻譯腔。
 2. 禁用中國用語：嚴格依本 prompt 末端 <forbidden_terms_blacklist> 區塊中列出的對照表，絕對不可使用左側詞彙。除黑名單外，其他中國特有用語也應主動替換為台灣慣用詞。
-3. 台灣通行譯名：所有出現的知名華人姓名、書名、作品名稱等，必須使用台灣已有的通行譯名，不可自行音譯。
+3. 台灣通行譯名：所有出現的知名華人姓名、書名、作品名稱等，必須使用台灣已有的通行譯名，不可自行音譯。沒有可靠通行譯名或不確定時，一律保留原文，嚴禁自創、猜測或音譯譯名（例如不確定某公司的中文名稱時，保留其英文名）。
 4. 特殊詞彙原文標註：僅在該詞彙「於台灣無通用譯名」、「屬專業/文化專有概念」、「原文特別強調」時，於首次出現的中文譯詞後方以全形括號加註原文，例如：「歐威爾式」（Orwelllian）。微軟、Google、Netflix 等在台高度通用之品牌及縮寫，絕對不可加註原文。
 </linguistic_guidelines>
 
@@ -40,7 +40,24 @@ export const DEFAULT_SYSTEM_PROMPT = `<role_definition>
 // inline marker 協定(⟦b⟧/⟦i⟧/⟦l:N⟧)的指示獨立成 DOC_INLINE_MARKER_INSTRUCTION
 // 常數,由 background.js TRANSLATE_DOC_BATCH 在送 LLM 前自動 append 到 user
 // prompt 後,user 編輯不到也看不到 — 避免改壞 marker 解析的核心邏輯。
-export const DEFAULT_DOC_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT;
+//
+// v2.0.75:文件版在共用 prompt 之後追加 <document_number_fidelity> 區塊——
+// 共用 prompt 的散文數字規則(1~99 中文數字、禁止千位分隔符)是為網頁文章設計,
+// 套在報價單 / 規格表會把「13,000.00」改寫成「13000.00」。文件的金額 / 表格
+// 數值必須逐字保留原格式,此區塊明示優先權蓋過散文規則
+const DOC_NUMBER_FIDELITY_ZH = `
+
+<document_number_fidelity>
+文件數值忠實（本節優先於上方「數字格式」規則）：文件中的金額、規格數值、表格與編號中的數字，一律逐字保留原文格式——包括千位分隔符（13,000.00 保持 13,000.00）、小數位數、正負號與百分比符號。不改寫為中文數字、不移除或增加分隔符。敘述性內文中的一般數字仍依上方「數字格式」規則處理。
+</document_number_fidelity>`;
+
+const DOC_NUMBER_FIDELITY_EN = `
+
+<document_number_fidelity>
+Documents: reproduce every amount, specification value, and table or ID number exactly as written in the source — keep thousands separators (13,000.00 stays 13,000.00), decimal places, signs, and percent marks. Never add or remove digit separators or rewrite digits.
+</document_number_fidelity>`;
+
+export const DEFAULT_DOC_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + DOC_NUMBER_FIDELITY_ZH;
 
 // W7 inline marker 協定指示(內部常數,**不暴露給 user 編輯**)。
 // background.js 送 LLM 前 append 到 user 編輯的 systemPrompt 後。
@@ -282,7 +299,7 @@ You are a professional translator. Translate web text into {targetLanguage} accu
    or heading ends without a sentence-final mark, do not add one in the translation.
 </rules>`;
 
-export const UNIVERSAL_DOC_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT;
+export const UNIVERSAL_DOC_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT + DOC_NUMBER_FIDELITY_EN;
 
 export const UNIVERSAL_GLOSSARY_PROMPT = `<role_definition>
 You are a glossary extraction assistant for translating into {targetLanguage}.
@@ -413,6 +430,12 @@ function _normalizePromptForComparison(s) {
     // UNIVERSAL 版 rule 5 內含 {targetLanguage} 注入後的語言 label(單行任意字串),
     // 比照上方 glossary rule 先例用 [^\n]* 容忍
     .replace(/\n5\. Follow [^\n]* punctuation and spacing conventions\. Do not carry over\n   source-language typographic spacing \(e\.g\. the Japanese habit of a space after ？\/！\)\n   unless it is also conventional in [^\n]*\.\n6\. Mirror the source's sentence-final punctuation: if the source sentence, quoted line,\n   or heading ends without a sentence-final mark, do not add one in the translation\./g, '')
+    // v2.0.75:SYSTEM / DOC prompt 兩處擴充——(a) 通行譯名規則補「不確定保留原文,
+    // 嚴禁自創猜測」guard(修 lite 模型對台灣公司名的幻覺譯名);(b) DOC prompt 新增
+    // <document_number_fidelity> 區塊(文件金額 / 表格數值逐字保留,修報價單千分位
+    // 被散文數字規則移除)。strip 新增內容,舊 saved 字面值視為未客製自動吃新 prompt
+    .replace(/沒有可靠通行譯名或不確定時，一律保留原文，嚴禁自創、猜測或音譯譯名（例如不確定某公司的中文名稱時，保留其英文名）。/g, '')
+    .replace(/\n*<document_number_fidelity>[\s\S]*?<\/document_number_fidelity>/g, '')
     .trim();
 }
 

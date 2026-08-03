@@ -26,7 +26,12 @@ const SAME_LINE_Y_TOLERANCE = 2;
 // 同視覺行的 run 與既有右緣的最大 x 間距(以 medianLineHeight 為單位)：超過視為
 // 「跨欄同 y」不該合併。Wikipedia / 雙欄論文 / 兩欄聯絡資訊兩欄第一行 baseline 可能接近，
 // 不加這條會被誤合併成單一跨欄 line。
-const SAME_LINE_MAX_X_GAP_FACTOR = 4;
+// 2 的依據(2026-08-03 Trimble spec sheet probe 實測):被誤併的跨欄 gap 全落在
+// 2.07×–3.9× mlh(label→value 23.9pt、雙欄地址 14.5–27.5pt @ mlh 7-9);合法行內
+// gap(word space / inline style 切換邊界)≤ 1.1×。原值 4 會把這些跨欄內容黏成
+// 單一 line → 後續縱向誤併 + 誤判 table。「label: value」form pair 被切開後由
+// mergeLabelValueRows(在本 stage 之後)重新合併,不受影響
+const SAME_LINE_MAX_X_GAP_FACTOR = 2;
 
 // 兩條相鄰 line 的「行間距 ÷ medianLineHeight」超過此倍數即切 block
 // (1.5 為平衡點：1.3 切太細製造假陽性，1.6 對 spec sheet 太嚴。實測在 17 份 PDF
@@ -36,6 +41,16 @@ const VERTICAL_GAP_FACTOR = 1.5;
 // 兩條相鄰 line 的字級差超過此倍數的 medianLineHeight 即切 block(分離 heading / body)
 // 同一 line 內不同字級的 run 在 groupIntoLines 已合成同 line，這條只看 line 之間
 const LINE_FONT_SIZE_DELTA_FACTOR = 0.5;
+
+// 兩條相鄰 line 的左緣位移超過此倍數的 medianLineHeight 即切 block:
+// 左緣錨點大幅跳動代表兩行屬於不同版面單位(spec sheet 的 label 欄 x=40 行被吸進
+// value 欄 x=166 的 list 區塊,位移 18× mlh)。段落 first-line indent / list 懸掛
+// 縮排的合法位移 ≤ 2× mlh,6 留足 margin。
+// 對齊守門:置中排版(兩行水平中心點重合,Plano 兩行置中 heading centerDelta
+// 0.2pt)與靠右對齊(右緣重合)是同一版面單位的刻意對齊,即使左緣位移大也不切——
+// 用 ALIGN_TOLERANCE_FACTOR × mlh 判定「重合」
+const LEFT_SHIFT_SPLIT_FACTOR = 6;
+const ALIGN_TOLERANCE_FACTOR = 2;
 
 // dominant fontName 純度閾值：line 內單一 fontName 字數佔比 ≥ 此值才認為「整行同字型」
 // (低於此值代表 line 內混了 italic / bold 等 inline emphasis，不該觸發 fontName 切點)
@@ -77,8 +92,24 @@ const TABLE_MAX_AVG_CHARS = 35;
 // marker 時，按 marker 切多個 block。處理「2-N 行 list 整段一個 block」場景。
 // (從 5 降到 2 — 報價單 Note 區「1. ... 2. ...」常 2 行就是 list,5 行門檻太高)
 const LIST_SUBSPLIT_MIN_LINES = 2;
-const LIST_SUBSPLIT_MARKER_RATIO = 0.6; // 多數行起首必須是 marker 才切
-const LIST_MARKER_RE = /^\s*(?:[-•·*–—]|\d+[.)]|\([a-zA-Z0-9]+\))\s/;
+// 0.5(2026-08-03 從 0.6 降):bullet 帶 1-2 行 wrap 續行時 marker 行佔比常剛好
+// 50%(Thorpe「• 1 行 + – 5 條各 1-2 行」= 6/12)。0.6 讓這類 list 整塊不切,
+// 攤平成單一翻譯單位後 sub-bullet 換行結構全失。isMarker[0] 前提仍在,
+// 純 prose(首行非 marker)不受影響
+const LIST_SUBSPLIT_MARKER_RATIO = 0.5; // 過半行起首是 marker 即切
+// marker 與內文的空白容忍(2026-08-03):PDF 抽出的 bullet 行常是「•The following」
+// 「–PEGA」黏字形態(marker 與文字 run 間 bbox gap 小於補空白閾值)。不含糊的
+// bullet 字元([•·*])容許黏字;dash 類([-–—])只在後面接字母 / CJK / 引號括號時
+// 算 marker——「–PEGA」是 bullet、「-20 °C」是負數溫度,不可誤認
+const LIST_MARKER_RE = /^\s*(?:[•·*]\s*|[-–—](?:\s|(?=[A-Za-z一-鿿「『（(]))|\d+[.)]\s|\([a-zA-Z0-9]+\)\s)/;
+
+// wrap 續行 fragment 再合併(6.6)的幾何條件常數:
+//   gap 上限沿用 VERTICAL_GAP_FACTOR——「gap < 1.5× mlh 本該同塊」是
+//   splitColumnIntoBlocks 的既有語意,post-pass 撿回的是被插斷拆散的 fragment
+//   (表格 row 間距實測 ≥ 2× mlh,不會誤把上下兩 row 的 cell 黏回);
+//   x-overlap 佔窄者寬度比例 ≥ 0.7 = 同一文字欄;左緣差 < 1× mlh = 同錨點
+const WRAP_MERGE_MAX_LEFT_DELTA_FACTOR = 1;
+const WRAP_MERGE_MIN_X_OVERLAP_RATIO = 0.7;
 
 // narrow-multi-line sub-split：多行 block 但 max line right edge 距離 column right edge
 // 太遠 → 那些換行不是 word-wrap、是顯式換行(典型場景:聯絡資訊區「姓名 / 職稱 / 電話 /
@@ -161,7 +192,15 @@ function analyzePage(rawPage) {
 
   // 2.1) form-row merge:同 y 的「label : value」pair 合一 line(報價單 / 送貨
   //      單 / 申請表這類 form 結構;label 結尾 : 是訊號)
-  const lines = mergeLabelValueRows(initialLines, medianLineHeight);
+  const mergedLines = mergeLabelValueRows(initialLines, medianLineHeight);
+
+  // 2.2) line 級 cell split:line 內 runs 之間出現 cell 級 gap(> TABLE_CELL_GAP_FACTOR
+  //      × mlh,與 4.5e 同一個 field-tested 閾值)即把 line 切成多條,讓「line = 版面
+  //      單位」在進 block 分組之前成立。form merge(2.1)刻意合併的 label:value line
+  //      豁免。Why:未切開的多 cell line 會帶著跨 cell 內容進縱向分組,黏出 franken
+  //      block(表頭「QTY|Unit Cost」line 與下方金額 rows 縱向黏成一塊);且 2-run
+  //      短 line 會逃過 4.5e(它要求 ≥3 runs 且只處理單行 block)
+  const lines = splitLinesAtCellGaps(mergedLines, medianLineHeight);
 
   // 2.5) 標「同一視覺行」的兄弟 line — same-line x gap 太大被切散的多條 line(典型:
   //      News Release 第一行「For Immediate Release ............ February 12, 2024」
@@ -251,16 +290,68 @@ function analyzePage(rawPage) {
     b.type = classifyBlockType(b, ctx);
   }
 
+  // 6.5) table block 逐行拆解成可翻譯 block。
+  //      啟發式 'table'(行數多 + 行短 + 左緣跳動)命中的多半是 label / value 行群的
+  //      縱向誤併(spec sheet 行距緊),真無框線數據表也在此列——兩者共同點是
+  //      「每行是獨立版面單位」。整塊跳過翻譯會讓半頁留原文;逐行(單行內 runs 有
+  //      大 gap 時再逐 cell,重用 4.5e 機制)拆回 row 級各自送翻,render 在原 row
+  //      bbox,對齊天然保留。拆出的單行 block 重跑分類(lineCount=1 不會再命中
+  //      table,無迴圈)
+  const exploded = [];
+  for (const b of blocks) {
+    if (b.type !== 'table' || !Array.isArray(b._lines) || b._lines.length < 2) {
+      exploded.push(b);
+      continue;
+    }
+    for (const l of b._lines) {
+      if (!l.plainText || !l.plainText.trim()) continue;
+      const lineBlock = buildBlockFromLines([{
+        bbox: l.bbox,
+        runs: l.runs || [],
+        fontSize: l.fontSize,
+        plainText: l.plainText,
+        dominantFontName: l.dominantFontName,
+      }], b.column);
+      const cells = maybeSubsplitTableRowCells(lineBlock, medianLineHeight);
+      for (const c of cells) c.type = classifyBlockType(c, ctx);
+      exploded.push(...cells);
+    }
+  }
+  // 6.55) row 配對拆分:同左緣、行距緊(< 1.5× mlh 不觸發縱向切分)的獨立 label
+  //      群會被縱向黏成一塊(OCA「短期高溫/長期高溫/長期低溫」三行、TDC6 兩個
+  //      專案名 row、1625TB 結構圖四層標籤),但它們的每一行在左/右側同 y band
+  //      都有「各自獨立」的單行配對塊(值 177/85/-40、金額 row、厚度值)——
+  //      「每行有不同的專屬 row 夥伴」= 這是表格 row 群不是段落,逐行拆開讓
+  //      label 與 value 逐 row 對位。Thorpe 描述 cell 不會誤拆:其序號 cell
+  //      垂直置中「共享」給多行,不滿足「每行專屬且互不相同」的嚴格條件
+  const rowSplit = splitRowPairedBlocks(exploded, medianLineHeight, ctx);
+
+  // 6.6) wrap 續行 fragment 再合併:格線表格描述 cell 的跨行句子會被「垂直置中的
+  //      row 序號 cell 插在行序列中間」拆散(sameRow / leftShift 在序號兩側觸發,
+  //      描述行永不相鄰)。以幾何配對(不靠序列相鄰)把被插斷的續行接回同一個
+  //      翻譯單位,避免句子在行界斷開送翻
+  const merged = mergeWrapFragments(rowSplit, medianLineHeight);
+
+  // 拆解後重排 reading order + 重編 blockId(維持「同欄由上往下」連續編號)
+  merged.sort((a, b) => {
+    if (a.column !== b.column) return a.column - b.column;
+    return a.bbox[1] - b.bbox[1];
+  });
+  merged.forEach((b, i) => {
+    b.readingOrder = i;
+    b.blockId = `p${rawPage.pageIndex}-b${i}`;
+  });
+
   // 7) reading order:footnote / page-number 一律排在該頁所有其他 block 之後
   // (SPEC §17.4.3「Reading order 例外」)
-  const tail = blocks.filter((b) => b.type === 'footnote' || b.type === 'page-number');
-  if (tail.length > 0 && tail.length < blocks.length) {
-    const head = blocks.filter((b) => b.type !== 'footnote' && b.type !== 'page-number');
+  const tail = merged.filter((b) => b.type === 'footnote' || b.type === 'page-number');
+  if (tail.length > 0 && tail.length < merged.length) {
+    const head = merged.filter((b) => b.type !== 'footnote' && b.type !== 'page-number');
     const reordered = [...head, ...tail];
     reordered.forEach((b, i) => { b.readingOrder = i; });
     out.blocks = reordered;
   } else {
-    out.blocks = blocks;
+    out.blocks = merged;
   }
   out.bodyFontSize = bodyFontSize;
   return out;
@@ -402,6 +493,52 @@ function newLineFromRun(run) {
     bbox: run.bbox.slice(),
     refTop: run.bbox[1],
   };
+}
+
+// line 級 cell split(2.2):line 內相鄰 runs 的 x gap > TABLE_CELL_GAP_FACTOR × mlh
+// 即從該處切開成獨立 line。閾值與 4.5e maybeSubsplitTableRowCells 同源(field-tested:
+// 一般 inline space / style 切換邊界 gap < 1.2× mlh 不切,表格 cell gap ≥ 1.2× 切)。
+// _formRowMerged line(2.1 刻意合併的 label:value)豁免
+function splitLinesAtCellGaps(lines, medianLineHeight) {
+  const gapThreshold = (medianLineHeight || 12) * TABLE_CELL_GAP_FACTOR;
+  const formMaxGap = FORM_ROW_MAX_X_GAP_FACTOR * (medianLineHeight || 12);
+  const out = [];
+  for (const line of lines) {
+    const runs = (line.runs || []);
+    if (line._formRowMerged || runs.length < 2) {
+      out.push(line);
+      continue;
+    }
+    const sorted = runs.slice().sort((a, b) => a.bbox[0] - b.bbox[0]);
+    const groups = [[sorted[0]]];
+    for (let i = 1; i < sorted.length; i++) {
+      const gap = sorted[i].bbox[0] - sorted[i - 1].bbox[2];
+      // label-shape 豁免:gap 左側 run 以 : 結尾 = form「label: value」在 stage 2
+      // 就直接合成一條 line 的場景(gap ≤ 2× mlh 沒經過 2.1 merge、沒有 tag),
+      // 與 2.1 同一訊號、同一 gap 上限,不切
+      const prevText = ((sorted[i - 1].text || '')).trim();
+      const isFormBoundary = /[:：]$/.test(prevText) && gap <= formMaxGap;
+      // list marker 豁免:gap 左側到目前為止的 group 只是 bullet / 序號(「•」「1.」
+      // 「(a)」),marker 與內文之間的寬間距是排版慣例,切開會讓 marker 孤立成 block
+      const groupText = groups[groups.length - 1].map((r) => r.text || '').join('').trim();
+      const isListMarker = /^(?:[-•·*–—]|\d+[.)]|\([a-zA-Z0-9]+\))$/.test(groupText);
+      if (gap > gapThreshold && !isFormBoundary && !isListMarker) groups.push([sorted[i]]);
+      else groups[groups.length - 1].push(sorted[i]);
+    }
+    if (groups.length < 2) {
+      out.push(line);
+      continue;
+    }
+    for (const g of groups) {
+      const nl = newLineFromRun(g[0]);
+      for (let i = 1; i < g.length; i++) {
+        nl.runs.push(g[i]);
+        nl.bbox = unionBBox(nl.bbox, g[i].bbox);
+      }
+      out.push(finalizeLine(nl));
+    }
+  }
+  return out;
 }
 
 function finalizeLine(line) {
@@ -662,11 +799,23 @@ function splitColumnIntoBlocks(colLines, medianLineHeight, columnIdx) {
     const fontDelta = Math.abs((cur.fontSize || 0) - (prev.fontSize || 0));
     const splitOnGap = gap > VERTICAL_GAP_FACTOR * medianLineHeight;
     const splitOnFont = fontDelta > LINE_FONT_SIZE_DELTA_FACTOR * medianLineHeight;
+    // 同 visual row 的兩條 line(top 幾乎相同)= 各自獨立的 cell 級單位:能同 row
+    // 卻沒被 stage 2 / 2.2 合併,代表中間隔著 cell 級 gap(表格同 row 的相鄰 cell),
+    // 不該縱向串進段落。合法縱向流的相鄰行 top 差 ≥ 行距(≈ mlh),0.5× 留 margin
+    const splitOnSameRow = (cur.bbox[1] - prev.bbox[1]) < medianLineHeight * 0.5;
+    // 左緣錨點大幅位移 = 不同版面單位(label 欄行 vs value 欄行),即使行距緊也切。
+    // 置中(中心點重合)/ 靠右(右緣重合)對齊是同一單位的刻意排版,不切
+    const leftDelta = Math.abs(cur.bbox[0] - prev.bbox[0]);
+    const centerDelta = Math.abs((cur.bbox[0] + cur.bbox[2]) - (prev.bbox[0] + prev.bbox[2])) / 2;
+    const rightDelta = Math.abs(cur.bbox[2] - prev.bbox[2]);
+    const alignTol = ALIGN_TOLERANCE_FACTOR * medianLineHeight;
+    const splitOnLeftShift = leftDelta > LEFT_SHIFT_SPLIT_FACTOR * medianLineHeight
+      && centerDelta > alignTol && rightDelta > alignTol;
     // dominantFontName 變化曾用作切點(分離 heading 跟 body)，但實測 Plano news release
     // body 中 italic 引文整行(如「Best Places to Live in Texas」)會誤切；且大段 paragraph
     // 內混 italic 變化會把段落切成 3-5 段。取消此規則：接受同 fontSize 不同字型的 heading
     // 跟 body 黏在一起 trade-off，讓 body 段落完整。
-    if (splitOnGap || splitOnFont) {
+    if (splitOnGap || splitOnFont || splitOnLeftShift || splitOnSameRow) {
       blocks.push(buildBlockFromLines(currentLines, columnIdx));
       currentLines = [cur];
     } else {
@@ -964,6 +1113,9 @@ function mergeLabelValueRows(lines, medianLineHeight) {
           a.plainText = aText + ' ' + (b.plainText || '');
           a.runs = [...(a.runs || []), ...(b.runs || [])];
           a.bbox = unionBBox(a.bbox, b.bbox);
+          // 標記 form 刻意合併——2.2 的 line 級 cell split 對此 line 豁免,
+          // 否則 label 與 value 之間的大 gap 會被立刻切回去,form merge 白做
+          a._formRowMerged = true;
           // fontSize / dominantFontName:沿用 a(label 那段);若需精確可加權平均,
           // 但對 form metadata 影響小
           consumed.add(l);
@@ -1041,6 +1193,155 @@ function maybeSubsplitTableRowCells(block, medianLineHeight) {
   });
 }
 
+// 6.55:row 配對拆分。多行 block B 的「每一行」若在左 / 右側(x 不重疊)同 y band
+// 各有一個「專屬且互不相同」的單行配對塊,代表 B 是被縱向誤黏的表格 row label 群
+// (行距緊 + 同左緣,縱向切分訊號全缺),逐行拆開讓 label / value 逐 row 對位。
+// 嚴格條件(全部滿足才拆):
+//   1. B 為 2-8 行的 paragraph / list-item
+//   2. 每一行都找得到配對:單行塊、與 B x 不重疊(左或右側)、y band 重疊 ≥ 60%
+//      該行高
+//   3. 所有配對彼此不同(垂直置中「共享」一個 partner 的 Thorpe 描述 cell 不中)
+function splitRowPairedBlocks(blocks, medianLineHeight, ctx) {
+  const singles = blocks.filter((b) => b.lineCount === 1);
+  const out = [];
+  for (const b of blocks) {
+    const lines = b._lines || [];
+    if (
+      (b.type !== 'paragraph' && b.type !== 'list-item')
+      || lines.length < 2 || lines.length > 8
+    ) {
+      out.push(b);
+      continue;
+    }
+    const partnerIds = [];
+    let ok = true;
+    for (const l of lines) {
+      const ly0 = l.bbox[1];
+      const ly1 = l.bbox[3];
+      const lh = Math.max(1, ly1 - ly0);
+      let best = null;
+      let bestDx = Infinity;
+      for (const s of singles) {
+        if (s === b) continue;
+        // x 不重疊(容忍 1pt):在 B 的右側或左側
+        if (!(s.bbox[0] >= b.bbox[2] - 1 || s.bbox[2] <= b.bbox[0] + 1)) continue;
+        const ov = Math.min(s.bbox[3], ly1) - Math.max(s.bbox[1], ly0);
+        if (ov < lh * 0.6) continue;
+        const dx = s.bbox[0] >= b.bbox[2] - 1 ? s.bbox[0] - b.bbox[2] : b.bbox[0] - s.bbox[2];
+        if (dx < bestDx) { bestDx = dx; best = s; }
+      }
+      if (!best) { ok = false; break; }
+      partnerIds.push(best);
+    }
+    if (!ok || new Set(partnerIds).size !== lines.length) {
+      out.push(b);
+      continue;
+    }
+    for (const l of lines) {
+      if (!l.plainText || !l.plainText.trim()) continue;
+      const lineBlock = buildBlockFromLines([{
+        bbox: l.bbox,
+        runs: l.runs || [],
+        fontSize: l.fontSize,
+        plainText: l.plainText,
+        dominantFontName: l.dominantFontName,
+      }], b.column);
+      lineBlock.type = classifyBlockType(lineBlock, ctx);
+      out.push(lineBlock);
+    }
+  }
+  return out;
+}
+
+// 6.6:wrap 續行 fragment 再合併。格線表格描述 cell 的跨行句子被「垂直置中的
+// row 序號 cell」插斷行序列後,sameRow / leftShift 在序號兩側切開,描述行各自
+// 成塊 → 句子在行界斷開送翻。本 pass 以幾何配對(不靠序列相鄰,序號 cell 的
+// x-range 與描述欄不重疊,天然不擋路)把續行接回:
+//   A(上)、B(下)同欄,且全部滿足——
+//   1. 垂直 gap ∈ (-0.25, VERTICAL_GAP_FACTOR) × mlh(同塊語意,見常數註解)
+//   2. 左緣差 < WRAP_MERGE_MAX_LEFT_DELTA_FACTOR × mlh(同錨點)
+//   3. x-overlap ≥ WRAP_MERGE_MIN_X_OVERLAP_RATIO × 窄者寬(同一文字欄)
+//   4. fontSize 差 < LINE_FONT_SIZE_DELTA_FACTOR × mlh(對齊 splitOnFont)
+//   5. B 為 paragraph 且首字元為小寫拉丁字母(wrap 續行的強訊號;大寫開頭的
+//      label / 區段標題 / 新句、CJK、list marker 一律不併——窄而準,有中文
+//      續行實例再擴)
+//   6. A、B 都不含 '://'(URL 是原子 token 行,上下兩條 URL 不是句子續行)
+//   A 可為 paragraph / list-item(list item 內文也會 wrap)。合併後繼續向下試併
+// (3+ 行 cell),合併塊沿用 A 的 type 與 _isCellBlock
+function mergeWrapFragments(blocks, medianLineHeight) {
+  const mlh = medianLineHeight || 12;
+  const gapMin = -0.25 * mlh;
+  const gapMax = VERTICAL_GAP_FACTOR * mlh;
+  const leftTol = WRAP_MERGE_MAX_LEFT_DELTA_FACTOR * mlh;
+  const fontTol = LINE_FONT_SIZE_DELTA_FACTOR * mlh;
+
+  // head 必須是 prose 形狀(≥ 4 詞):報價單 header box 的日期 /人名 / 短 label
+  // 行距一樣緊、左緣一樣齊,但都是 1-2 詞,靠詞數排除(Würth 687 實測反例:
+  // 「10/22/2014」+「your sales agent:」曾被誤併——該文件的 form label 小寫開頭,
+  // 打穿單靠小寫的判定)。tail 除小寫開頭外須 ≥ 2 詞且非 label-shape
+  const wordCount = (b) => ((b.plainText || '').trim().split(/\s+/).filter(Boolean).length);
+  const canBeHead = (b) => (b.type === 'paragraph' || b.type === 'list-item')
+    && wordCount(b) >= 4
+    && !(b.plainText || '').includes('://');
+  const canBeTail = (b) => b.type === 'paragraph'
+    && /^[a-z]/.test((b.plainText || '').trim())
+    && wordCount(b) >= 2
+    && !FORM_LABEL_RE.test((b.plainText || '').trim())
+    && !/[:：]\s*$/.test((b.plainText || '').trim())
+    && !(b.plainText || '').includes('://');
+
+  // 同欄由上而下貪婪:每塊只能被併走一次
+  const consumed = new Set();
+  const out = [];
+  const sorted = blocks.slice().sort((a, b) => {
+    if (a.column !== b.column) return a.column - b.column;
+    return a.bbox[1] - b.bbox[1];
+  });
+  for (let i = 0; i < sorted.length; i++) {
+    if (consumed.has(i)) continue;
+    let cur = sorted[i];
+    if (canBeHead(cur)) {
+      let extended = true;
+      while (extended) {
+        extended = false;
+        for (let j = i + 1; j < sorted.length; j++) {
+          if (consumed.has(j)) continue;
+          const cand = sorted[j];
+          if (cand.column !== cur.column) continue;
+          const gap = cand.bbox[1] - cur.bbox[3];
+          if (gap > gapMax) break; // sorted by top,再往下只會更遠
+          if (gap < gapMin) continue;
+          if (!canBeTail(cand)) continue;
+          if (Math.abs(cand.bbox[0] - cur.bbox[0]) > leftTol) continue;
+          const overlap = Math.min(cur.bbox[2], cand.bbox[2]) - Math.max(cur.bbox[0], cand.bbox[0]);
+          const narrower = Math.min(cur.bbox[2] - cur.bbox[0], cand.bbox[2] - cand.bbox[0]);
+          if (narrower <= 0 || overlap < narrower * WRAP_MERGE_MIN_X_OVERLAP_RATIO) continue;
+          if (Math.abs((cur.fontSize || 0) - (cand.fontSize || 0)) > fontTol) continue;
+          // 併:以兩塊的 _lines 重建(styleSegments 自動接回)
+          const mergedBlock = buildBlockFromLines(
+            [...(cur._lines || []), ...(cand._lines || [])].map((l) => ({
+              bbox: l.bbox,
+              runs: l.runs || [],
+              fontSize: l.fontSize,
+              plainText: l.plainText,
+              dominantFontName: l.dominantFontName,
+            })),
+            cur.column
+          );
+          mergedBlock.type = cur.type;
+          if (cur._isCellBlock || cand._isCellBlock) mergedBlock._isCellBlock = true;
+          consumed.add(j);
+          cur = mergedBlock;
+          extended = true; // 合併後 bbox 變大,重掃下一個候選
+          break;
+        }
+      }
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
 // 多行 block 但所有 line 的 max right edge 距 column right edge 太遠 → 視為顯式 \n,
 // 每行各自一個 block。詳見 NARROW_BLOCK_MAX_RIGHT_RATIO 註解。
 function maybeSplitNarrowMultilineBlock(block, colLefts, colRights) {
@@ -1068,7 +1369,8 @@ function maybeSplitNarrowMultilineBlock(block, colLefts, colRights) {
 }
 
 // W7-iter:export 給 unit spec 驗 narrow-multi-line split 路徑
-export { maybeSplitNarrowMultilineBlock, mergeLabelValueRows, maybeSubsplitFormBlock, maybeSubsplitTableRowCells, groupIntoLines };
+// v2.0.75 加 splitLinesAtCellGaps(line 級 cell split 規則)
+export { maybeSplitNarrowMultilineBlock, mergeLabelValueRows, maybeSubsplitFormBlock, maybeSubsplitTableRowCells, groupIntoLines, splitLinesAtCellGaps, mergeWrapFragments, maybeSubsplitListBlock, splitRowPairedBlocks };
 
 function unionBBox(a, b) {
   return [

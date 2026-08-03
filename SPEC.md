@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.74
+- 目前 Extension 版本：2.0.75
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.74 為止）
+### 2.1 已實作（v2.0.75 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -1117,6 +1117,8 @@ File → ArrayBuffer
 | 多列文字 bbox 形成規則格線（同列字 y 接近、欄間距固定）→ getOperatorList 含框線繪製 op | `table` |
 | 以上皆非 + textRuns 長度 ≥ 1 | `paragraph`（預設） |
 
+**table 逐行拆解**：分類為 `table` 的 block 隨即逐行（單行內 runs 有 cell 級 gap 時再逐 cell）拆解為獨立 block 並重新分類——啟發式 table 命中的多為 label / value 行群或無框線數據表，「每行是獨立版面單位」，逐 row 原位翻譯優於整塊跳過。最終版面 IR 不含 `table` type 的 block
+
 **Reading order**:
 - 同欄內按 y 降序（視覺由上往下）
 - 跨欄按欄編號升序（左欄全部讀完再右欄）
@@ -1128,7 +1130,8 @@ File → ArrayBuffer
 | Block type | 處理 |
 |------------|------|
 | `paragraph` / `heading` / `list-item` / `caption` / `footnote` | **送翻譯**——以 `plainText` 為單位送既有 Gemini batch translation pipeline |
-| `formula` / `table` / `figure` / `page-number` | **不送翻譯**——保留原樣；譯文 PDF 該位置直接 render 原文 |
+| `formula` / `figure` / `page-number` | **不送翻譯**——保留原樣；譯文 PDF 該位置直接 render 原文 |
+| `table` | 不會出現在最終 IR——分類後隨即逐行拆解為可翻譯 block（見 §17.4.3「table 逐行拆解」） |
 
 **plainText 構建**：
 - 同 block 內 textRuns 按原順序拼接
@@ -1254,7 +1257,7 @@ UI 進度條讀此事件刷新。
 </div>
 ```
 
-不送翻譯的 block(`formula` / `table` / `figure` / `page-number`）直接 clone 原文 textRuns 的視覺 render:
+不送翻譯的 block(`formula` / `figure` / `page-number`；`table` 已在分類階段逐行拆解,不會到這裡）直接 clone 原文 textRuns 的視覺 render:
 
 ```html
 <div class="sk-block sk-block-formula" data-block-id="p0-b5" data-status="kept">
@@ -1292,7 +1295,7 @@ UI 進度條讀此事件刷新。
    - 用 pdf-lib 把原 page 整頁 embed 進新 doc 第 `2N` 頁（原樣保留向量 + 點陣 + 文字）
    - 創建新 page（尺寸同原頁）為第 `2N+1` 頁，依版面 IR 在對應 bbox 比例位置繪製譯文段落：
      - `paragraph` / `heading` / `list-item` / `caption` / `footnote`：用 `page.drawText()` 寫譯文，字型用內嵌的台灣繁中字型（見 §17.8.1），字級沿用原 block fontSize
-     - `formula` / `table` / `figure` / `page-number`：從原 page 對應 bbox crop 出來貼進譯文頁
+     - `formula` / `figure` / `page-number`：從原 page 對應 bbox crop 出來貼進譯文頁（`table` 已於分類階段逐行拆解為可翻譯 block）
 3. PDFDocument.save() → Uint8Array → Blob → `<a download="<原檔名>-shinkansen.pdf">` 觸發下載
 
 #### 17.8.1 中文字型內嵌

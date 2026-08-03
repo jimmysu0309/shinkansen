@@ -89,11 +89,24 @@ test.describe('stripTrailingSeparatorGarbage', () => {
       .toBe('⟦0⟧ 牛島一邊掏出香菸，一邊走了過來。⟦/0⟧');
   });
 
-  test('內文中段的 <<< 與完整閉合的 >>> 不受影響', () => {
+  test('內文中段的 <<< 不受影響', () => {
     const mid = 'a <<< b 之後還有正文。';
     expect(stripTrailingSeparatorGarbage(mid)).toBe(mid);
-    const closed = '正文<<<SHINKANSEN_SEP>>>';
-    expect(stripTrailingSeparatorGarbage(closed)).toBe(closed);
+  });
+
+  // v2.0.75:SHINKANSEN_SEP 為協定保留字,任何包裹形態(角括號 1-6 個 / 大小寫
+  // 變體 / 段中位置)都不可能合法出現在單段譯文——正常分隔符在 gemini split
+  // 階段就被消耗,殘留者必為模型幻覺(2L ink 亂碼 PDF 實測:整批 cell 殘留
+  // 「<<SHINKANSEN_SEP>>」兩角括號變體)。舊斷言「完整閉合不動」隨政策作廢。
+  // SANITY(已驗證):暫時註解掉 stripTrailingSeparatorGarbage 的 SHINKANSEN_SEP
+  // replace 行 → 本組三條 fail → 還原 pass
+  test('SHINKANSEN_SEP 保留字任何變體一律清(v2.0.75)', () => {
+    expect(stripTrailingSeparatorGarbage('未發現 <<SHINKANSEN_SEP>> PP'))
+      .toBe('未發現 PP');
+    expect(stripTrailingSeparatorGarbage('正文<<<SHINKANSEN_SEP>>>'))
+      .toBe('正文');
+    expect(stripTrailingSeparatorGarbage('通過 <<shinkansen_sep>> 之後還有正文'))
+      .toBe('通過 之後還有正文');
   });
 
   test('repairDocLlmArtifacts 總管：畸形標記 + 分隔符殘片一次修', () => {

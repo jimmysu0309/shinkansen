@@ -429,8 +429,12 @@ if (window.__shinkansen_loaded) {
     if (text == null) return text;
     return String(text)
       // v2.0.70: `i` flag — 模型偶發改寫 token 大小寫(<<<SHINKansen_SEP>>>),
-      // 協定 token 不可能合法出現在譯文,大小寫變體一律清
-      .replace(/\s*<<<SHINKANSEN_SEP>>>\s*/gi, ' ')
+      // 協定 token 不可能合法出現在譯文,大小寫變體一律清。
+      // v2.0.75: 角括號數量放寬(1-6)——模型對亂碼輸入幻覺出「<<SHINKANSEN_SEP>>」
+      // 兩角括號變體(PDF 2L ink 實測);token 名稱本身是保留字,任何包裹形態都清。
+      // 與 translate-doc/translate.js stripTrailingSeparatorGarbage 是同一份事實
+      // 的雙實作,改這裡必同步那邊
+      .replace(/\s*[<«]{1,6}\s*SHINKANSEN_SEP\s*[>»]{1,6}\s*/gi, ' ')
       .replace(/<<<SHINKANSEN_SEG-\d+>>>\s*/gi, '')
       .replace(/«\d+»\s*/g, '')
       .trim();

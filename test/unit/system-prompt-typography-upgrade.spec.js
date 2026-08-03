@@ -23,6 +23,7 @@ globalThis.chrome = {
 
 const {
   DEFAULT_SYSTEM_PROMPT,
+  DEFAULT_DOC_SYSTEM_PROMPT,
   UNIVERSAL_SYSTEM_PROMPT,
   LANG_LABELS,
   getEffectiveSystemPrompt,
@@ -95,9 +96,11 @@ test.describe('v2.0.53 system prompt 升級路徑：舊 default 字面值視為�
     expect(eff).toContain("Mirror the source's sentence-final punctuation");
   });
 
-  test('DOC prompt 同常數同升級路徑：zh-TW saved=舊字面值 → 回新 DEFAULT', () => {
+  test('DOC prompt 同升級路徑：zh-TW saved=舊字面值 → 回新 DOC DEFAULT', () => {
+    // v2.0.75 起 DOC prompt = DEFAULT_SYSTEM_PROMPT + <document_number_fidelity>
+    // 區塊,不再是純別名;升級路徑斷言改對 DEFAULT_DOC_SYSTEM_PROMPT
     expect(getEffectiveDocSystemPrompt('zh-TW', OLD_DEFAULT_SYSTEM_PROMPT))
-      .toBe(DEFAULT_SYSTEM_PROMPT);
+      .toBe(DEFAULT_DOC_SYSTEM_PROMPT);
   });
 
   test('真正客製化的 prompt 不受影響（原樣 return）', () => {

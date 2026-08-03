@@ -255,13 +255,17 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
 
       const m = matMul(viewport.transform, item.transform);
       // 旋轉 / 直排文字 run 偵測:對水平 run,m[1](y 向旋轉分量)≈ 0、|m[0]|
-      // (水平 scale)≈ fontSize;|m[1]| > |m[0]| 代表 glyph 前進方向偏垂直
-      // (旋轉 90° 的圖表軸標籤等)。下方 bbox 公式假設 run 水平(top = baseline -
-      // fontSize、right = left + width),對這類 run 算出的 bbox 完全錯位 → 下游
+      // (水平 scale)≈ fontSize。下方 bbox 公式假設 run 水平(top = baseline -
+      // fontSize、right = left + width),對旋轉 run 算出的 bbox 完全錯位 → 下游
       // mask / 譯文位置全錯。丟棄不送翻(計數告警,doc warning 提示使用者)。
+      // 閾值 0.09 ≈ tan(5°):偏離水平超過約 5° 即丟。原條件 |m[1]| > |m[0]|
+      // 只擋 >45°(直排 / 90° 軸標籤),斜 30-40° 的對角浮水印(「PROPRIETARY
+      // AND CONFIDENTIAL」斜印)漏過,axis-aligned bbox 橫跨半頁 → 譯成一條
+      // 水平大字蓋住頁面內容(Stella 簡報實測)。合法水平 run 的 m[1] ≈ 0,
+      // 5° 容忍值涵蓋數值雜訊;synthetic italic 的 skew 在 m[2],不受此條件影響。
       // 已知限制:RTL(item.dir === 'rtl')的 dir 欄位有抽但下游尚未消費,
       // RTL 文字仍按 LTR bbox 處理
-      if (Math.abs(m[1]) > Math.abs(m[0])) {
+      if (Math.abs(m[1]) > Math.abs(m[0]) * 0.09) {
         droppedRotated++;
         continue;
       }

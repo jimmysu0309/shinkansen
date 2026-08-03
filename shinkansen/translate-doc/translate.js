@@ -568,7 +568,15 @@ export function repairMangledPlaceholders(s) {
 // 不會中）3) 含 >>> 閉合的完整分隔符不動（tempered lookahead）
 export function stripTrailingSeparatorGarbage(s) {
   if (typeof s !== 'string' || s.length === 0) return s;
-  return s.replace(/\s*<{3,}(?:(?!>{3})[^\s㐀-鿿぀-ヿ]){0,24}$/, '');
+  return s
+    // v2.0.75:SHINKANSEN_SEP 是批次協定保留字,任何角括號數量 / 大小寫變體都
+    // 不可能合法出現在譯文——模型對亂碼輸入(字型 CID 壞掉的 PDF)會幻覺出
+    // 「<<SHINKANSEN_SEP>>」兩角括號變體,3 角括號的 split 吃不掉,整批 cell
+    // 殘留字面 token(2L ink 實測)。與 content-ns.js SK.sanitizeMarkers 是
+    // 同一份事實的雙實作,改這裡必同步那邊
+    .replace(/\s*[<«]{1,6}\s*SHINKANSEN_SEP\s*[>»]{1,6}\s*/gi, ' ')
+    .replace(/\s*<{3,}(?:(?!>{3})[^\s㐀-鿿぀-ヿ]){0,24}$/, '')
+    .trim();
 }
 
 // 標記周邊 CJK 空格收斂（v2.0.53）：模型偶發在每個標記前後塞空格

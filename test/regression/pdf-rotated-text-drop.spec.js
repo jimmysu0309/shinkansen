@@ -7,6 +7,10 @@
 // 位置全錯位(白條蓋在不相干位置)。
 // 修法:|m[1]| > |m[0]|(glyph 前進方向偏垂直)的 run 丟棄不送翻 + 計數告警
 // (doc warning 提示使用者「旋轉或直排文字維持原文」)。
+// 2026-08-03 擴充:閾值改 |m[1]| > |m[0]| × 0.09(≈ tan 5°)——斜 30-40° 的
+// 對角浮水印原本漏過(<45°),axis-aligned bbox 橫跨半頁,譯成水平大字蓋住
+// 頁面內容(Stella 簡報實測)。新增斜 35° 浮水印 case。
+// SANITY(已驗證):閾值暫時改回 |m[1]| > |m[0]| → 斜角浮水印斷言 fail → 還原 pass。
 //
 // 訊號層界定:本 spec 驗「parsePdf 抽取層丟棄旋轉 run + warning 產出」;不驗
 // 真實圖表 PDF 的視覺結果(那層靠 pdf-translate-verify 流程)。
@@ -41,6 +45,10 @@ async function makeRotatedTextPdfBytes() {
   });
   // 旋轉 90° 的「圖表軸標籤」
   page.drawText('ROTATEDAXISLABEL', { x: 80, y: 300, size: 12, font, rotate: degrees(90) });
+  // 斜 35° 的對角浮水印(模擬「PROPRIETARY AND CONFIDENTIAL」斜印)——
+  // 原條件 |m[1]| > |m[0]| 只擋 >45°,這類 run 漏過後 axis-aligned bbox 橫跨
+  // 半頁,譯成一條水平大字蓋住頁面內容(Stella 簡報實測)
+  page.drawText('DIAGONALWATERMARK CONFIDENTIAL', { x: 150, y: 200, size: 24, font, rotate: degrees(35) });
   return Buffer.from(await doc.save());
 }
 
@@ -71,6 +79,8 @@ test('pdf-rotated-text-drop: 旋轉 90° 的 run 丟棄不送翻 + 產出 warnin
 
   // 旋轉 run 不得進 textRuns(進了就會以全錯的水平窄帶 bbox 走完 mask / 譯文注入)
   expect(probe.runTexts.some((t) => t.includes('ROTATEDAXISLABEL')), '旋轉 run 不得進 textRuns').toBe(false);
+  // 斜 35° 浮水印同樣丟棄(2026-08-03 閾值改 tan(5°):偏離水平 >5° 即丟)
+  expect(probe.runTexts.some((t) => t.includes('DIAGONALWATERMARK')), '斜角浮水印 run 不得進 textRuns').toBe(false);
   // 水平正文仍在
   expect(probe.runTexts.some((t) => t.includes('horizontal paragraph')), '水平 run 應保留').toBe(true);
   // 計數告警產出(使用者可見 warning banner)
