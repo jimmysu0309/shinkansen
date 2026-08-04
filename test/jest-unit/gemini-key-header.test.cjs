@@ -51,7 +51,7 @@ describe('Gemini API key 走 x-goog-api-key header（不放 URL）', () => {
     expect(headerCount).toBeGreaterThanOrEqual(4);
     // fetchWithRetry 支援 headers 傳遞（主翻譯路徑靠它把 header 帶進 fetch）。
     // v2.0.53 起呼叫多了 timeoutMs / timeoutRetries 選項改為多行——斷言錨定
-    // 「同一個 fetchWithRetry 呼叫的 options 內含 x-goog-api-key header」即可,
+    // 「同一個 fetchWithRetry 呼叫的 options 內含 x-goog-api-key header」即可，
     // 不鎖死參數排列
     expect(geminiSrc).toMatch(/fetchWithRetry\(url, body, \{[\s\S]{0,400}?headers: \{ 'x-goog-api-key': apiKey \}/);
     expect(geminiSrc).toMatch(/\.\.\.headers/);
@@ -59,5 +59,49 @@ describe('Gemini API key 走 x-goog-api-key header（不放 URL）', () => {
 
   test('background.js testGeminiKey 以 x-goog-api-key header 帶金鑰', () => {
     expect(bgSrc).toMatch(/'x-goog-api-key': apiKey/);
+  });
+});
+
+/**
+ * 2026-08-04：同一條規則延伸到 `tools/` 下打 Gemini 的本機 probe / 工具腳本。
+ *
+ * 這些腳本不隨擴充功能發布，金鑰是執行時從 `~/.shinkansen-test-key` 讀進來的
+ * （repo 內沒有任何金鑰字面值），但 URL 帶 key 一樣會把金鑰漏進 shell history、
+ * 錯誤訊息與任何會記 URL 的中間層——跟 production 用同一種寫法比較不會養成
+ * 錯誤肌肉記憶，日後複製既有 probe 開新腳本也不會把舊寫法帶回來。
+ *
+ * 掃描對象是「`tools/` 下實際存在、且 source 含 generativelanguage endpoint 的檔」。
+ * `tools/probe-*.js` 被 .gitignore 排除（本機一次性除錯腳本，不入 repo），在乾淨
+ * checkout 上這條只會掃到 tracked 的 `.mjs` probe 與 `translate-i18n-dict.js`，
+ * 本機則連 gitignored 的一起掃——兩邊都不會誤判。
+ *
+ * 訊號層界定：驗「source 沒有 URL 帶 key 的寫法」。不驗真實 fetch 的 request
+ * headers，也不驗腳本能不能跑通（那些要真 API key + 花錢）。
+ *
+ * SANITY 紀錄（已驗證，2026-08-04）：暫時把 `probe-verge-prompt-ab.mjs` 的 URL 改回
+ * `:generateContent?key=${API_KEY}` → 本 case fail 並列出該檔；還原 → pass。
+ */
+describe('tools/ 的 Gemini probe 腳本同樣不把 key 放 URL', () => {
+  const toolsDir = path.resolve(__dirname, '../../tools');
+  const toolFiles = fs
+    .readdirSync(toolsDir)
+    .filter((f) => f.endsWith('.js') || f.endsWith('.mjs'))
+    .map((f) => ({ name: f, src: fs.readFileSync(path.join(toolsDir, f), 'utf8') }))
+    .filter((f) => f.src.includes('generativelanguage.googleapis.com'));
+
+  test('掃描對象非空（防呆：讀不到檔就不算通過）', () => {
+    expect(toolFiles.length).toBeGreaterThan(0);
+  });
+
+  test('沒有任何腳本用 URL query 帶 key', () => {
+    const offenders = toolFiles
+      .filter(({ src }) =>
+        src
+          .split('\n')
+          .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+          .some((l) => /[?&]key=/.test(l))
+      )
+      .map(({ name }) => name);
+    expect(offenders).toEqual([]);
   });
 });

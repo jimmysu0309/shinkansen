@@ -18,6 +18,42 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      # issue #61：shinkansen/lib/instapaper-keys.js 是 gitignored（consumer 金鑰不進
+      # public repo / git 歷史，擋 bot 爬 code search）。商店版是從本機磁碟打包所以帶得到，
+      # 但本 workflow 是從 git checkout 打包 → 檔案不存在 → 下載版的 background.js
+      # fetch 不到金鑰 → 使用者連 Instapaper 時看到「整合尚未設定 consumer 金鑰」。
+      # 這裡從 repo secret 還原同一支檔，讓 GitHub Releases 的產物跟商店版一致。
+      # （金鑰本來就打包在每個發布版裡、解開就看得到，CI 注入不增加實質曝光；
+      #   關鍵是它仍然不進 repo 與 git 歷史。）
+      - name: Inject Instapaper consumer keys
+        env:
+          CK: ${{ secrets.INSTAPAPER_CONSUMER_KEY }}
+          CS: ${{ secrets.INSTAPAPER_CONSUMER_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CK}" ] || [ -z "${CS}" ]; then
+            echo "::error::缺少 INSTAPAPER_CONSUMER_KEY / INSTAPAPER_CONSUMER_SECRET secret。" \
+                 "沒有金鑰的發布版連不上 Instapaper（issue #61），故直接失敗而不是默默出貨。" \
+                 "設定方式：gh secret set INSTAPAPER_CONSUMER_KEY --repo <repo>"
+            exit 1
+          fi
+          # 檔案格式的單一資料源是 tools/instapaper-keys.template.js（只含 placeholder、
+          # 無金鑰，所以可以進 repo）。這裡只做取代，不在 workflow 裡重寫一份檔案內容。
+          sed -e "s/__INSTAPAPER_CONSUMER_KEY__/${CK}/" \
+              -e "s/__INSTAPAPER_CONSUMER_SECRET__/${CS}/" \
+              tools/instapaper-keys.template.js > shinkansen/lib/instapaper-keys.js
+
+          # 自驗 0：placeholder 必須全部被取代掉
+          ! grep -q '__INSTAPAPER_CONSUMER_' shinkansen/lib/instapaper-keys.js
+          # 自驗 1：產出的檔要能被 background.js 的 regex 抽到兩把金鑰
+          grep -qE "consumerKey\s*:\s*'[^']+'"    shinkansen/lib/instapaper-keys.js
+          grep -qE "consumerSecret\s*:\s*'[^']+'" shinkansen/lib/instapaper-keys.js
+          # 自驗 2：路徑漂移防護——三個載入點都必須指向這支檔
+          grep -q "getURL('lib/instapaper-keys.js')"  shinkansen/background.js
+          grep -q '"../lib/instapaper-keys.js"'       shinkansen/options/options.html
+          grep -q '"../lib/instapaper-keys.js"'       shinkansen/popup/popup.html
+          echo "instapaper-keys.js 已注入（$(wc -c < shinkansen/lib/instapaper-keys.js) bytes）"
+
       - name: Zip shinkansen folder (Chrome)
         run: |
           zip -r shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen/
@@ -48,6 +84,28 @@ jobs:
           cd source-pkg
           zip -r ../shinkansen-firefox-${{ steps.version.outputs.VERSION }}-source.zip .
           cd ..
+
+      # issue #61 的真正 forcing function：使用者拿到的是 ZIP，不是 workspace。
+      # 三個產物都必須真的含 instapaper-keys.js，少一個就讓 release 失敗。
+      - name: Verify packaged artifacts contain Instapaper keys
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.VERSION }}"
+          # 註：不能用 `unzip -l | grep -q`——grep -q 命中就結束，unzip 收到 SIGPIPE
+          # 回非零，在 pipefail 下會把「有找到」誤判成失敗（本機模擬時踩過）。
+          # 改成先收下完整清單再比對。
+          check() {
+            local list
+            list="$(unzip -l "$1")"
+            if ! printf '%s' "$list" | grep -F "$2" > /dev/null; then
+              echo "::error::$1 內找不到 $2（issue #61 回歸：下載版會連不上 Instapaper）"
+              exit 1
+            fi
+            echo "ok: $1 含 $2"
+          }
+          check "shinkansen-${V}.zip"                'shinkansen/lib/instapaper-keys.js'
+          check "shinkansen-firefox-${V}.zip"        'lib/instapaper-keys.js'
+          check "shinkansen-firefox-${V}-source.zip" 'shinkansen/lib/instapaper-keys.js'
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

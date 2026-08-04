@@ -2,6 +2,10 @@
   /* 同 column 兄弟元件對齊基準寬（CLAUDE.md §1）——.display-mode-toggle + .row select
      共用同一寬，所有 locale 內 toggle 自然寬都 ≤ 此值（zh-TW 139px / en 132px 量過）。 */
   --popup-row-control-w: 140px;
+
+  /* issue #57：配色寫死淺色，宣告 light 讓 UA 不要用深色 appearance 畫原生控制項
+     （否則 select 的文字與下拉箭頭會被畫成白色 → 白底白字）。 */
+  color-scheme: light;
 }
 
 body {
@@ -75,6 +79,8 @@ button.secondary:hover { background: #f0f4ff; }
   border-radius: 6px;
   font-size: 12px;
   background: #fff;
+  /* issue #57：背景鎖淺色就要連文字色一起鎖（第二層保險，同 options.css） */
+  color: #1d1d1f;
   width: var(--popup-row-control-w);
 }
 

@@ -134,7 +134,7 @@ Example output:
 }
 
 async function callGemini(apiKey, target, entries) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
   const sys = buildSystemPrompt(target);
   const inputJson = {};
   entries.forEach((e) => { inputJson[e.key] = e.value; });
@@ -153,7 +153,7 @@ async function callGemini(apiKey, target, entries) {
 
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
   });
 

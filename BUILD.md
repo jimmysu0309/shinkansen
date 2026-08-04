@@ -58,6 +58,29 @@ winget install jqlang.jq
 
 ---
 
+## Note on `shinkansen/lib/instapaper-keys.js`
+
+The source ZIP contains `shinkansen/lib/instapaper-keys.js`, a 20-line file
+holding the Instapaper Full API **consumer key / consumer secret** for the
+optional "Send to Instapaper" feature.
+
+- It is **not** in the public git repository. It is generated at release time
+  from CI secrets using `tools/instapaper-keys.template.js`, then packaged.
+  Keeping it out of the repository (and out of git history) is only meant to
+  reduce automated scraping of public code search — the credential is
+  inherently distributed inside every published build and is not a secret in
+  any strong sense.
+- It contains no logic: it assigns two string constants onto
+  `globalThis.__SK.INSTAPAPER_KEYS`. `lib/instapaper.js` reads them from there.
+- The build script does not transform it. It is copied verbatim, like every
+  other file.
+- If the file is absent, the extension still builds and runs; only the
+  Instapaper integration is disabled (`lib/instapaper.js` returns a
+  configuration error). Tests inject the credentials rather than reading
+  this file.
+
+---
+
 ## What the Build Does
 
 The repository's `shinkansen/manifest.json` is the **Chrome version**

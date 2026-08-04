@@ -115,8 +115,8 @@ async function callGemini(inputJson) {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     generationConfig: { temperature: 0.1, thinkingConfig: { thinkingLevel: 'minimal' } },
   };
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY }, body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();

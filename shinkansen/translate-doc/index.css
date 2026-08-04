@@ -2,6 +2,10 @@
  * 視覺基調對齊 options.css / popup.css（深灰白底、Apple 藍主色 #0071e3） */
 
 :root {
+  /* issue #57：配色寫死淺色，宣告 light 讓 UA 不要用深色 appearance 畫原生控制項
+     （checkbox / select 箭頭 / 捲軸等）。本頁自家的 input 已各自明寫 color。 */
+  color-scheme: light;
+
   --bg: #ffffff;
   --bg-soft: #f7f7f8;
   --bg-zone: #fbfbfc;

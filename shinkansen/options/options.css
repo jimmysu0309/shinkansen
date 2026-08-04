@@ -1,3 +1,10 @@
+/* issue #57：本頁配色是寫死的淺色（背景 #fff / 文字 #1d1d1f），但頁面沒宣告
+   color-scheme 時，瀏覽環境被解析成深色 appearance（Firefox「網站外觀：深色」、
+   系統深色模式下的部分瀏覽器、強制深色模式旗標 / 外掛）就會讓 UA 把表單控制項的
+   預設文字色與下拉箭頭畫成白色 —— 白底白字，欄位明明有值卻看起來全空。
+   宣告 light 讓 UA 一律用淺色 appearance 畫原生控制項。 */
+:root { color-scheme: light; }
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
@@ -35,6 +42,7 @@ label.checkbox-label input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
 .checkbox-body small { display: block; line-height: 1.5; }
 
 input[type="text"],
+input[type="email"],
 input[type="password"],
 input[type="number"],
 input[type="date"],
@@ -49,6 +57,9 @@ textarea {
   font: 13px -apple-system, 'PingFang TC', monospace;
   box-sizing: border-box;
   background: #fff;
+  /* issue #57：背景鎖死淺色就必須連文字色一起鎖，否則深色 appearance 下 UA 預設
+     文字色是白的 → 白底白字。這是 :root color-scheme 之外的第二層保險。 */
+  color: #1d1d1f;
 }
 
 textarea { resize: vertical; font-family: -apple-system, 'PingFang TC', sans-serif; }
