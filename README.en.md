@@ -10,8 +10,9 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
-- Added **Floating button** — tap it to translate the page; long-press to switch translation engine or open the menu.
-- Added **Send to Instapaper** — save the fully translated article to your own Instapaper with one tap, to read again later.
+- Added **EPUB book translation** (beta) — drop a whole ebook into the "Translate document" page; a book-wide glossary keeps name translations consistent across chapters, and the translated book can be downloaded in monolingual or bilingual format.
+- Added **free Chinese variant conversion** — Simplified (or Traditional) Chinese content is converted locally with built-in dictionaries: no API key, no API calls, works offline.
+- **Greatly improved PDF translation quality** — layout detection and rendering for tables and spec sheets have been thoroughly reworked; translated PDFs stay much closer to the original layout.
 - **iOS / iPadOS version** is coming soon to the App Store — stay tuned.
 
 ## Why Shinkansen
@@ -33,6 +34,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
+- **Document translation (PDF / EPUB)**: upload a PDF or EPUB and translate the whole file — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output. Details in "Document translation" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with Traditional Chinese; styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
 - **Bilingual subtitles**: one-click toggle in the toolbar icon menu makes subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. YouTube and Google Drive videos share the same setting. Details in "Bilingual subtitles" below.
 - **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
@@ -132,6 +134,28 @@ Google Docs renders text via Canvas, so generic web translation extensions can't
 3. Once the new tab loads, translation starts automatically — no second keystroke needed
 
 Notes: you must have view access to the document. Mobile reading view is read-only and does not affect the original document.
+
+## Document translation (PDF / EPUB)
+
+Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF or EPUB file onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine.
+
+**PDF translation**:
+
+- **Layout preserved**: the PDF layout is analyzed to rebuild paragraphs (columns, tables, lists, captions), and the translation is rendered at the original positions
+- **Online reader**: side-by-side original / translation view with synchronized scrolling
+- **Download translated PDF**: the translation is written directly onto the original page layout (with an embedded CJK font); downloads as `<filename>-shinkansen.pdf` for offline reading or archiving
+- **Limits**: 50 pages / 10 MB; scanned-image PDFs (OCR required) and encrypted PDFs are not supported
+
+**EPUB book translation** (beta):
+
+- **Book-wide glossary**: before translating, the whole book is scanned to extract a glossary of names / places / terms (including nicknames, short forms, and standalone-surname variants); review and edit it, then it stays frozen for the entire book so translated names remain consistent across chapters. Export / import as JSON — reuse a previous book's glossary for sequels
+- **Per-chapter translation**: after parsing, a chapter list shows word counts and estimated cost per chapter; translate a chapter or two to check quality before continuing — finished chapters hit the cache and are never billed again
+- **Post-translation consistency scan**: after each round, drift ("same source term, multiple translations") is detected automatically; unify with one click and feed the fix back into the glossary
+- **Preview and editing**: per-chapter and whole-book preview, click-to-edit paragraphs, search & replace, original-text comparison view
+- **Automatic session saving**: translation progress, glossary, and accumulated cost are saved locally as a bundle; closing and reopening the page restores everything, and sessions can be exported to a file and imported on another computer
+- **Translated book download**: the translation is written back into the original book structure (CSS / images / fonts and untranslated chapters preserved as-is), in monolingual or bilingual format; 100 MB limit, DRM-protected books are rejected
+
+Document translation shares the same translation cache and usage tracking as web translation. The "Translation settings" dialog also lets you set the batch size and a per-document extra prompt (e.g., "this is a 19th-century novel — keep the tone classical").
 
 ## YouTube subtitle translation
 
