@@ -1032,7 +1032,7 @@ window.__shinkansen = {
 使用者透過 popup 點選「翻譯文件」開啟獨立分頁，本機上傳 PDF 檔案，選擇要使用的翻譯 preset（沿用既有三組 preset 設定），系統將 PDF 解析、抽取段落、批次送翻、重建對照版本，提供：
 
 1. **線上閱讀器**：雙頁並排顯示（左原 / 右譯），支援雙向 scroll sync（任一側 scroll 帶動另一側對應段落定位）
-2. **下載對照 PDF**：使用者可下載 `<原檔名>-shinkansen.pdf`，雙頁並排版型（每張原文頁後接一張譯文頁），供離線閱讀或存檔
+2. **下載譯文 PDF**：使用者可下載 `<原檔名>-shinkansen.pdf`，譯文直接寫在原頁面版面上（原頁嵌為底層、譯文蓋原文位置，頁數與原檔相同），供離線閱讀或存檔
 
 ### 17.2 限制與上限
 
@@ -1340,14 +1340,14 @@ UI 進度條讀此事件刷新。
 
 ### 17.8 譯文 PDF 下載（pdf-renderer.js）
 
-點「下載譯文 PDF」觸發 pdf-lib pipeline:
+點「下載譯文 PDF」觸發 pdf-lib pipeline（「只譯文頁」單頁形式，非雙頁並排對照——視覺等同 reader 的「換成中文版的 PDF」）:
 
 1. 創建新 PDFDocument
-2. 對每張原 page:
-   - 用 pdf-lib 把原 page 整頁 embed 進新 doc 第 `2N` 頁（原樣保留向量 + 點陣 + 文字）
-   - 創建新 page（尺寸同原頁）為第 `2N+1` 頁，依版面 IR 在對應 bbox 比例位置繪製譯文段落：
-     - `paragraph` / `heading` / `list-item` / `caption` / `footnote`：用 `page.drawText()` 寫譯文，字型用內嵌的台灣繁中字型（見 §17.8.1），字級沿用原 block fontSize
-     - `formula` / `figure` / `page-number`：從原 page 對應 bbox crop 出來貼進譯文頁（`table` 已於分類階段逐行拆解為可翻譯 block）
+2. 對每張原 page 各創一張新 page（尺寸同原頁）:
+   - `embedPages` 把原 page 變成 form XObject 畫進新頁**底層**（原樣保留向量 + 點陣 + 文字）
+   - 對每個 translatable block（`paragraph` / `heading` / `list-item` / `caption` / `footnote`；`table` 已於分類階段逐行拆解為可翻譯 block）：先以白底遮罩蓋住原文字身位置，再依版面 IR 的 bbox 位置 `drawText()` 寫譯文——字型用內嵌的台灣繁中字型（見 §17.8.1），字級沿用原 block fontSize，bold 比例 ≥ 50% 的 block 用 Bold 字型
+   - 不可翻譯 type（`formula` / `figure` / `page-number` 等）與翻譯失敗的 block 不蓋遮罩，露出底層原文
+   - 原 PDF 的 link annotation 另以 PDF.js `getAnnotations()` 抽出、在新 page 重建（embedPages 不會自動帶 `/Annots`）
 3. PDFDocument.save() → Uint8Array → Blob → `<a download="<原檔名>-shinkansen.pdf">` 觸發下載
 
 #### 17.8.1 中文字型內嵌
