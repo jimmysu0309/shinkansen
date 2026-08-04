@@ -550,7 +550,18 @@
 
   // ─── Fragment 抽取 ────────────────────────────────────
 
-  function extractInlineFragments(el) {
+  // opts(v2.0.79,媒體卡片路徑用;預設值 = 原本行為,既有 caller 不受影響):
+  //   containerBoundary — CONTAINER_TAGS 子元素(DIV / SECTION…)一律當 run 邊界,
+  //     不吸進 fragment。isInlineRunNode 對「不含 block 子孫的 DIV」回 true,一般
+  //     inline 抽取靠這點把 wrapper 併進 run;但媒體卡片的內容區塊正是這些容器,
+  //     吸進來等於把整張卡片當一段送翻(注入 clean-slate 會清掉 img),
+  //     正是 mediaCardSkip 要防的事。
+  //   requireDirectText — run 內「直屬 text node」至少 2 字才成 fragment。媒體卡片
+  //     分支只負責撿 el 自己的直屬文字;純由 inline 元素構成的 run(圖示連結等)
+  //     留給既有 leaf / Case A-E 路徑處理,避免重複收同一段文字。
+  function extractInlineFragments(el, opts) {
+    const containerBoundary = !!(opts && opts.containerBoundary);
+    const requireDirectText = !!(opts && opts.requireDirectText);
     const fragments = [];
     const children = Array.from(el.childNodes);
     let runStart = null;
@@ -604,6 +615,10 @@
           runStart = null; runEnd = null;
           return;
         }
+        if (requireDirectText && _directTextLen < 2) {
+          runStart = null; runEnd = null;
+          return;
+        }
         fragments.push({
           kind: 'fragment',
           el,
@@ -616,7 +631,9 @@
     };
 
     for (const child of children) {
-      if (SK.isInlineRunNode(child)) {
+      const isBoundaryContainer = containerBoundary &&
+        child.nodeType === Node.ELEMENT_NODE && SK.CONTAINER_TAGS.has(child.tagName);
+      if (!isBoundaryContainer && SK.isInlineRunNode(child)) {
         if (!runStart) runStart = child;
         runEnd = child;
       } else {
@@ -1336,6 +1353,29 @@
           directTextLength(el) < 20
         ) {
           if (stats) stats.mediaCardSkip = (stats.mediaCardSkip || 0) + 1;
+          // v2.0.79: 卡片本體不當 unit(保住 img),但 el 的「直屬 inline 文字」得有人接——
+          // walker 往內只會抓到子容器裡的段落,直屬 text node 沒有任何補抓路徑會撿走
+          //(leaf 補抓要求元素本身是葉節點,Case A-E 要求非媒體卡片結構)。
+          // 真實案例:ifanr 首頁 header nav 的
+          //   <li>媒体品牌<img arrow><div panel>…<div qrcode-box>…</div></div></li>
+          // ——「媒体品牌」四字整條漏偵測(連免費簡繁轉換也吃不到,同列沒下拉面板的
+          // 「知晓云」則正常轉成「知曉雲」,視覺上就是同一列有的轉有的沒轉)。
+          // 抽成 fragment unit 後注入只動該 inline run,img / 子容器原地保留,
+          // 與下方 containsBlockDescendant 分支同一處理模式(單一資料源)。
+          if (!fragmentExtracted.has(el)) {
+            const frags = extractInlineFragments(el, { containerBoundary: true, requireDirectText: true });
+            if (frags.length > 0) {
+              fragmentExtracted.add(el);
+              for (const f of frags) {
+                results.push(f);
+                seen.add(f.startNode);
+                let _n = f.startNode;
+                while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
+                if (stats) stats.mediaCardDirectTextFragment = (stats.mediaCardDirectTextFragment || 0) + 1;
+              }
+            }
+          }
           if (SK.BLOCK_TAGS_SET.has(el.tagName)) structurallySkippedBlocks.add(el);
           return NodeFilter.FILTER_SKIP;
         }

@@ -20,6 +20,35 @@ function _sk_shouldDisableInFrame(isFrame, width, height, visible) {
   return false;
 }
 
+// ─── v2.0.79: 嵌入式播放器 frame 不翻（pure function 設計，給 spec unit-test 用）───
+// 整頁翻譯指令由 background 廣播給分頁內「所有 frame」(tabs.sendMessage 不帶 frameId),
+// 頁面嵌入的影片播放器 iframe 因此也各自跑一輪翻譯,把播放器 UI(影片標題 / 頻道名 /
+// 訂閱數)送進 LLM —— 使用者按一次快速鍵卻多付一份錢,譯文還只在播放器角落一閃而過
+//(GitHub issue #58:使用者用量紀錄冒出 youtube.com/embed 那筆,誤以為是字幕翻譯沒關掉)。
+//
+// 判準是結構特徵、不綁站點(硬規則 §8):
+//   1. frame 內有 media element(video / audio)= 播放器核心標誌
+//   2. 可見文字量少於門檻(200 字元)= 這是「播放器介面」不是「內含影片的文章」
+//      門檻取 200:實測嵌入式播放器 UI(標題 + 頻道 + 訂閱數)約 30-100 字元,而
+//      「影片 + 摘要」型的內容 iframe 通常一段就破 200——寧可放行多翻一點,
+//      也不要誤殺真內容(守門誤殺是使用者看不見的損失,比多花一點錢更難察覺)
+// 圖表類 iframe(Flourish / Datawrapper 等)沒有 media element,第一條就不成立,
+// 既有的「嵌入式圖表照翻」行為完全不受影響。
+//
+// 為什麼不放在載入期的 iframe gate:content script 注入時播放器 JS 還沒建出 <video>,
+// 那時判不出來。改在翻譯入口(translatePage / translatePageGoogle)判,DOM 已完整。
+const _SK_EMBED_PLAYER_TEXT_LIMIT = 200;
+function _sk_isEmbeddedPlayerFrame(doc, win) {
+  try {
+    if (!win || win === win.top) return false;   // 主 frame 永遠不套用
+    if (!doc || !doc.querySelector('video, audio')) return false;
+    const text = (doc.body?.innerText || '').replace(/\s+/g, ' ').trim();
+    return text.length < _SK_EMBED_PLAYER_TEXT_LIMIT;
+  } catch (_e) {
+    return false;   // 判斷失敗一律放行,不因守門邏輯本身讓翻譯功能消失
+  }
+}
+
 function _sk_isCurrentFrameDisabled() {
   const isFrame = window !== window.top;
   if (!isFrame) return false;
@@ -59,7 +88,11 @@ if (window.__shinkansen_loaded) {
   // 在不合格 iframe 內（廣告/分析/cookie consent 等）或非 HTML 文件（RSS/XML feed 等），
   // 不建立完整命名空間，避免在沒有 HTMLElement 能力的文件上注入時 throw
   window.__shinkansen_loaded = true;
-  window.__SK = { disabled: true, shouldDisableInFrame: _sk_shouldDisableInFrame };
+  window.__SK = {
+    disabled: true,
+    shouldDisableInFrame: _sk_shouldDisableInFrame,
+    isEmbeddedPlayerFrame: _sk_isEmbeddedPlayerFrame,
+  };
 } else {
   window.__shinkansen_loaded = true;
 
@@ -68,6 +101,8 @@ if (window.__shinkansen_loaded) {
   const SK = window.__SK;
   SK.disabled = false;
   SK.shouldDisableInFrame = _sk_shouldDisableInFrame;
+  SK.isEmbeddedPlayerFrame = _sk_isEmbeddedPlayerFrame;
+  SK.EMBED_PLAYER_TEXT_LIMIT = _SK_EMBED_PLAYER_TEXT_LIMIT;
 
   // ─── 共用狀態 ──────────────────────────────────────────
   SK.STATE = {

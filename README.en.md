@@ -151,6 +151,7 @@ Shinkansen has a dedicated pipeline for ASR captions:
 - **Default "hybrid mode"**: a fast local heuristic shows segmented captions immediately (subsecond, no waiting), while AI segmentation runs in the background and replaces them with the polished version when ready — best of both worlds.
 - **Stable subtitle overlay**: Shinkansen's own overlay completely bypasses YouTube's native caption-segment rendering (which causes "word-by-word popup" behavior); whole sentences appear and disappear cleanly. Auto-shifts up to avoid the progress bar when the controls appear.
 - **Toggleable**: if you only want minimum latency with YouTube's original segmentation, uncheck "AI segmentation mode" in the "YouTube subtitles" tab.
+- **Automatically disabled with the Google Translate engine**: AI segmentation needs an LLM, which would call Gemini and incur cost. When the free engine is selected, YouTube's original segmentation is always used — your API key is never touched behind your back.
 
 Human-uploaded captions (professional / community-contributed) are unaffected by this setting; they continue using the original sentence-by-sentence translation pipeline.
 
@@ -220,7 +221,7 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
    - **Base URL**: e.g., `https://openrouter.ai/api/v1` (Shinkansen automatically appends `/chat/completions`)
    - **Model ID**: e.g., `anthropic/claude-sonnet-4-5` (OpenRouter format is `provider/model`)
    - **API Key**: the Bearer token for that provider; click "Test" to verify connectivity instantly (~1 token cost)
-3. Optional: translation prompt (leave blank = use the built-in compact default, identical to Gemini's) / temperature / model pricing input & output rates (USD per 1M tokens; 0 = don't display cost)
+3. Optional: translation prompt (leave blank = use the built-in compact default, identical to Gemini's) / temperature (leave blank = omit the parameter entirely, for reasoning models that only accept their own default) / model pricing input & output rates (USD per 1M tokens; 0 = don't display cost)
 4. Save
 5. In the "General settings" tab → "Translation shortcuts", change any preset's engine to "Custom model"
 6. Triggering that preset's shortcut now routes through your custom endpoint
@@ -270,7 +271,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.0.78 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.0.79 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

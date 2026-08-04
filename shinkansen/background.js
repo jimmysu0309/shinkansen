@@ -2019,6 +2019,11 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   if (!cpOverrides || !('systemPrompt' in cpOverrides)) {
     cp.systemPrompt = getEffectiveSystemPrompt(settings.targetLanguage, cp.systemPrompt);
   }
+  // v2.0.79:「自訂模型」的 temperature 留空(null)= 該 provider / model 不接受這個參數
+  //(部分 reasoning model 帶了直接 400,GitHub issue #60)。這是 provider 層級屬性,
+  // 文件(translateDoc.temperature)/ ASR 字幕(ytSubtitle.temperature)路徑的 override
+  // 一律讓位——否則使用者在自訂模型分頁留空了,文件 / ASR 仍偷送預設值照樣失敗。
+  if (settings.customProvider?.temperature === null) cp.temperature = null;
   // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key)；商用後端漏填會自然 401
   // v1.8.41 對齊：Model 也允許為空（llama.cpp / Ollama 啟動時鎖 model,adapter 不送
   // model 欄位讓 server 用啟動 model)— lib/openai-compat.js translateChunk 本來就支援，

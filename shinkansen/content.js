@@ -1157,6 +1157,14 @@
     // v1.4.13: options.label 由 preset 傳入，在 loading toast 顯示讓使用者知道目前哪個 preset 在跑。
     const labelPrefix = options.label ? `[${options.label}] ` : '';
 
+    // v2.0.79: 嵌入式播放器 frame 靜默結束(GitHub issue #58)。快速鍵指令是廣播給
+    // 分頁內所有 frame,嵌入的 YouTube / Vimeo 播放器會各自跑一輪把播放器 UI 送去翻,
+    // 使用者按一次卻付兩份錢。判準見 content-ns.js isEmbeddedPlayerFrame（結構通則）。
+    if (SK.isEmbeddedPlayerFrame?.(document, window)) {
+      SK.sendLog('info', 'translate', 'embedded player frame, skip translate', { url: location.href });
+      return;
+    }
+
     // v1.8.8 instrumentation: 入口 STATE 狀態
     SK.sendLog('info', 'translate', 'translatePage entry', {
       ignorePartialMode: !!options.ignorePartialMode,
@@ -2080,6 +2088,11 @@
     // v1.4.12: gtOptions.slot 由 preset 快速鍵注入，供 STICKY_SET
     // v1.4.13: gtOptions.label 顯示於 loading toast
     const labelPrefix = gtOptions.label ? `[${gtOptions.label}] ` : '';
+    // v2.0.79: 嵌入式播放器 frame 靜默結束（同 translatePage,見 issue #58）
+    if (SK.isEmbeddedPlayerFrame?.(document, window)) {
+      SK.sendLog('info', 'translate', 'embedded player frame, skip translate (google)', { url: location.href });
+      return;
+    }
     // 若同一引擎已翻譯 → 還原（toggle）
     // v1.8.7: ignorePartialMode 豁免，讓「翻譯剩餘段落」按鈕能在已翻譯狀態重觸發
     if (STATE.translated && STATE.translatedBy === 'google' && !gtOptions.ignorePartialMode) {

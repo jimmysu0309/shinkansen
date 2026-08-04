@@ -787,6 +787,7 @@
       <label>
         <span data-i18n="options.cp.tempLabel">Temperature</span>
         <input type="number" id="cp-temperature" step="0.1" min="0" max="2" placeholder="0.7">
+        <small class="muted" data-i18n="options.cp.tempHint">留空 = 不送 temperature 參數。部分推理模型只接受自家預設值，帶了會直接失敗</small>
       </label>
 
       <details>
@@ -1097,6 +1098,9 @@
           <strong>關閉</strong>：使用 YouTube 自動產生字幕的原始分句邏輯
         </small>
       </label>
+      <small id="yt-asr-google-note" class="muted" hidden data-i18n="options.yt.asr.googleDisabled">
+        翻譯引擎選 Google Translate 時無法使用 AI 分句——分句需要 LLM，會走 Gemini 並產生費用，此時一律使用 YouTube 原始分句
+      </small>
     </section>
 
     <section>

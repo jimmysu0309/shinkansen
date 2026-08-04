@@ -249,10 +249,15 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
       { role: 'system', content: effectiveSystem },
       { role: 'user', content: joined },
     ],
-    temperature: typeof temperature === 'number' ? temperature : 0.7,
     stream: false,
     ...thinkingPayload,
   };
+  // v2.0.79:temperature 留空(存成 null)= 此 provider / model 不接受這個參數,body 一律
+  // 不送。部分 reasoning model 只吃自家預設值,帶任何 temperature 直接回 400
+  //(GitHub issue #60)。undefined(舊設定沒寫過這個欄位)維持既有 0.7 fallback。
+  if (temperature !== null) {
+    body.temperature = typeof temperature === 'number' ? temperature : 0.7;
+  }
   // v1.8.41:model 為空（llama.cpp / Ollama）時不送 model 欄位，讓 server 用啟動時鎖定的 model。
   if (model) body.model = model;
 
@@ -422,9 +427,12 @@ export async function extractGlossary(compressedText, settings) {
       { role: 'system', content: glossaryPrompt },
       { role: 'user', content: compressedText },
     ],
-    temperature,
     stream: false,
   };
+  // v2.0.79:術語表抽取打的是同一個 provider endpoint——自訂模型 temperature 留空
+  //(null)代表該 provider 不接受此參數,術語表路徑也必須不送,否則主翻譯正常、
+  // 一開術語表就 400(issue #60)。術語表自己的 temperature 設定只在有送時生效。
+  if (cp.temperature !== null) body.temperature = temperature;
   // v1.8.41 對齊:model 為空(llama.cpp / Ollama)時不送 model 欄位
   if (model) body.model = model;
 

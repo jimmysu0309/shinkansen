@@ -219,7 +219,11 @@ async function load() {
   refreshFirefoxShortcutWarn();
   $('cp-model').value = cp.model || '';
   $('cp-systemPrompt').value = cp.systemPrompt || '';
-  $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : 0.7;
+  // v2.0.79:null = 使用者刻意留空(不送 temperature 給 provider)→ UI 也顯示空白;
+  // undefined(舊設定沒寫過)才回填預設 0.7
+  $('cp-temperature').value = (typeof cp.temperature === 'number')
+    ? cp.temperature
+    : (cp.temperature === null ? '' : 0.7);
   $('cp-fetchTimeout').value = (typeof cp.fetchTimeoutSec === 'number') ? cp.fetchTimeoutSec : 90;
   $('cp-inputPerMTok').value = cp.inputPerMTok != null ? cp.inputPerMTok : '';
   $('cp-outputPerMTok').value = cp.outputPerMTok != null ? cp.outputPerMTok : '';
@@ -813,6 +817,13 @@ function updateYtSectionVisibility() {
   const promptSection = document.getElementById('yt-prompt-section');
   if (geminiOnly) geminiOnly.hidden = (engine !== 'gemini');
   if (promptSection) promptSection.hidden = (engine === 'google');
+  // v2.0.79:Google Translate 引擎下 AI 分句一律停用 —— LLM 合句路徑固定打 Gemini,
+  // 使用者選了免費引擎卻被扣 token(issue #58)。content-youtube.js 端強制走 heuristic,
+  // 這裡把 toggle 停用 + 顯示原因,不讓使用者以為勾著就有作用(§UI 語意陷阱)
+  const asrToggle = $('ytAsrProgressive');
+  const asrGoogleNote = document.getElementById('yt-asr-google-note');
+  if (asrToggle) asrToggle.disabled = (engine === 'google');
+  if (asrGoogleNote) asrGoogleNote.hidden = (engine !== 'google');
 }
 
 // v1.5.8: 字幕分頁 prompt 開銷估算 — 用「目前字幕用的 model + input 單價」算
@@ -1135,7 +1146,13 @@ async function _saveImpl() {
       model: ($('cp-model').value || '').trim(),
       systemPrompt: $('cp-systemPrompt').value || '',
       // v1.8.20: temperature 改 parseUserNum 避免 0 被當 falsy；單價 0 是合法值改 parseUserNum 0
-      temperature: parseUserNum($('cp-temperature').value, DEFAULTS.customProvider?.temperature ?? 0.7),
+      // v2.0.79:空欄改存 null(= 請求不送 temperature,給只吃自家預設值的 reasoning model
+      // 用,issue #60),不再 fallback 預設 0.7——0.7 讓那些 model 直接 400
+      temperature: (() => {
+        const raw = String($('cp-temperature').value ?? '').trim();
+        if (raw === '') return null;
+        return parseUserNum(raw, DEFAULTS.customProvider?.temperature ?? 0.7);
+      })(),
       fetchTimeoutSec: parseUserNum($('cp-fetchTimeout').value, DEFAULTS.customProvider?.fetchTimeoutSec ?? 90),
       // 單價空欄 fallback 0 是刻意 sentinel（空 = 無計價，費用顯示 $0），不引 DEFAULTS 的
       // OpenRouter 校準單價——清空欄位不該悄悄用別人的價格估費
@@ -1935,7 +1952,9 @@ function sanitizeImport(raw) {
     if (typeof cp.baseUrl === 'string') cpClean.baseUrl = cp.baseUrl.trim();
     if (typeof cp.model === 'string') cpClean.model = cp.model.trim();
     if (typeof cp.systemPrompt === 'string') cpClean.systemPrompt = cp.systemPrompt;
-    if (typeof cp.temperature === 'number' && cp.temperature >= 0 && cp.temperature <= 2) {
+    // v2.0.79:null = 匯出時使用者留空(請求不送 temperature),照原樣收下
+    if (cp.temperature === null) cpClean.temperature = null;
+    else if (typeof cp.temperature === 'number' && cp.temperature >= 0 && cp.temperature <= 2) {
       cpClean.temperature = cp.temperature;
     }
     if (typeof cp.fetchTimeoutSec === 'number' && cp.fetchTimeoutSec >= 5 && cp.fetchTimeoutSec <= 600) cpClean.fetchTimeoutSec = cp.fetchTimeoutSec;

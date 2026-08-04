@@ -151,6 +151,7 @@ Shinkansen 對自動產生字幕導入專用流程：
 - **預設「混合模式」**：先用本地啟發式快速分句顯示（秒出，使用者不必等），背景同時跑 AI 分句，回來後用更精緻版本替換——兼顧速度與品質。
 - **字幕顯示 overlay 整句穩定**：自家 overlay 完全旁路 YouTube 原生 caption-segment（避免「一個字一個字跳出來」），整句進整句出。控制列出現時自動上移避開進度條。
 - **可關閉**：如果只想要最低延遲、用 YouTube 原始分句邏輯翻，到設定頁「YouTube 字幕 → AI 分句模式」取消勾選即可。
+- **翻譯引擎選 Google Translate 時自動停用**：AI 分句需要 LLM，會走 Gemini 並產生費用；選了免費引擎時一律使用 YouTube 原始分句，不會在背後動用你的 API Key。
 
 人工上傳字幕（professional / community-contributed）不受此設定影響，沿用原來的逐句翻譯路徑。
 
@@ -220,7 +221,7 @@ Shinkansen 有兩層快取機制，各自在不同階段省錢：
    - **Base URL**：例如 `https://openrouter.ai/api/v1`（系統會自動接 `/chat/completions`）
    - **模型 ID**：例如 `anthropic/claude-sonnet-4-5`（OpenRouter 的格式為 `provider/model`）
    - **API Key**：對應 provider 的 Bearer token，按右側「測試」按鈕可立即驗證連線（耗 ~1 token）
-3. 選填：翻譯 Prompt（留空 = 用內建簡短預設，預設值與 Gemini 相同）/ Temperature / 模型計價 input / output 單價（USD / 1M tokens；填 0 = 不顯示費用）
+3. 選填：翻譯 Prompt（留空 = 用內建簡短預設，預設值與 Gemini 相同）/ Temperature（留空 = 請求不送這個參數，給只接受自家預設值的推理模型用）/ 模型計價 input / output 單價（USD / 1M tokens；填 0 = 不顯示費用）
 4. 儲存
 5. 到「一般設定」分頁的「翻譯快速鍵」，把任一組預設引擎改為「自訂模型」
 6. 對該 preset 的快速鍵翻譯時就會走自訂模型端點
@@ -274,7 +275,7 @@ LLM 在翻譯長文時，前後文的人名、地名翻譯容易出現不一致�
 
 ## 目前版本
 
-v2.0.78 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
+v2.0.79 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 
 ## 授權
 

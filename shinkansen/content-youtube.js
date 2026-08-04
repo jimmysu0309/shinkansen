@@ -2748,7 +2748,14 @@
       //   - 'heuristic'   = F:啟發式合句 + 既有 TRANSLATE_SUBTITLE_BATCH(逐句翻)。延遲低、精度中。
       //   - 'llm'         = D':LLM 自由合句 + timestamp mode(_runAsrWindow)。延遲高、精度最高。
       //   - 'progressive' = E:先 heuristic 顯示(秒出),同時 fire-and-forget LLM 跑覆蓋。
-      const asrMode = config.asrMode || 'progressive';  // 預設 progressive(混合模式)
+      // v2.0.79:字幕引擎選 Google Translate(免費)時強制 heuristic —— LLM 合句路徑
+      //(_runAsrWindow → TRANSLATE_ASR_SUBTITLE_BATCH)固定打 Gemini(Google MT 不支援
+      // JSON timestamp 合句模式),使用者選了免費引擎卻仍被扣 Gemini token,且 AI 分句
+      // 預設開啟 → 「引擎改成 Google 還是在燒我的 API」(GitHub issue #58)。
+      // options 端同步把「AI 分句」toggle 停用並說明,兩邊是同一份事實。
+      const asrMode = (config.engine === 'google')
+        ? 'heuristic'
+        : (config.asrMode || 'progressive');  // 預設 progressive(混合模式)
 
       // v1.9.22:seek / 緊急場景的 ASR 加速 — 算 wallLead(視窗起點距影片當前位置的
       // wall-clock ms,負數=video 已過視窗起點;這是 seek 進入此視窗的特徵)。

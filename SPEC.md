@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.78
+- 目前 Extension 版本：2.0.79
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.78 為止）
+### 2.1 已實作（v2.0.79 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -196,6 +196,8 @@ v1.5.7 新增。除了 Gemini 與 Google Translate 兩條既有引擎，使用�
 **API Key 儲存**：`customProvider.apiKey` 存 `chrome.storage.local`（key `customProviderApiKey`），不跨裝置同步、不在匯出 JSON 範圍內。設計理由與主 Gemini API Key 一致。
 
 **強化段序號標記 `useStrongSegMarker`（預設 `true`）**：自訂 Provider 多段批次時，每段開頭加「<<<SHINKANSEN_SEG-N>>>」STRONG 格式序號標記，弱模型（如 gemma-4 量化版等本機量化 LLM）不會把它當自然語言誤譯為「N1、N2」洩漏到譯文。代價是每段批次多約 7 tokens（input 加 output 雙倍開銷）。商用 LLM 使用者（OpenRouter / Groq 等）可在「自訂 Provider」分頁關閉此 toggle 改用緊湊「«N»」省 token。Gemini 主路徑不受此選項影響——固定使用「«N»」COMPACT。
+
+**`customProvider.temperature` 為空的行為**：欄位留空存成 `null`，`lib/openai-compat.js`（translateChunk / extractGlossary）**不送** `body.temperature`。部分 reasoning model 只接受自家預設 temperature，帶了這個欄位直接回 400，原本空欄回填預設 0.7 等於沒有「不送」的選項。`null` 是 provider 層級屬性：`background.js handleTranslateCustom` 會讓文件（`translateDoc.temperature`）/ ASR 字幕（`ytSubtitle.temperature`）路徑的 override 讓位，術語表抽取（自己讀 `glossary.temperature`）同樣不送——否則主翻譯正常、一開術語表就失敗。欄位為數字時照送（含 0）；`undefined`（舊設定沒寫過此 key）維持 0.7 fallback。
 
 **`customProvider.model` 為空的行為**:`lib/openai-compat.js`（translateChunk / extractGlossary）在 model 為空字串時**不送** `body.model` 欄位,讓 server 用啟動時鎖定的 model;對應 llama.cpp / Ollama 等本機 server 沒指定 model ID 的場景。商用後端（OpenAI / OpenRouter 等）漏填會自然回 4xx「model required」,讓 provider error 自己講話。`background.js handleTranslateCustom` / `handleExtractGlossaryCustomProvider` 對齊此行為,**不**在前面提早擋空 model;`baseUrl` 仍是必填（連 endpoint 都沒有沒辦法呼叫）。
 
@@ -716,7 +718,7 @@ shinkansen/
 }
 ```
 
-註：`customProvider.apiKey` **不存** sync，存 `chrome.storage.local`（key `customProviderApiKey`），與主 Gemini `apiKey` 設計一致。
+註：`customProvider.apiKey` **不存** sync，存 `chrome.storage.local`（key `customProviderApiKey`），與主 Gemini `apiKey` 設計一致。`customProvider.temperature` 可為 `null`（options 欄位留空）＝ 請求不送 `temperature`，見 §3.8。
 
 - **API Key** 存 `chrome.storage.local`（key `apiKey`），不跨裝置同步。舊版（≤v0.61）存在 sync 的 Key 會自動遷移至 local
 - 快捷鍵由 Chrome 原生 `commands` API 管理，不存設定
@@ -788,6 +790,7 @@ shinkansen/
 - command id 字典序決定 `chrome://extensions/shortcuts` 的顯示順序，故「主要預設」用 id `0` 對應 storage slot `2`（`COMMAND_ID_TO_SLOT` 寫死在 `background.js`）
 - Toggle 語意：未翻譯 → 翻譯；翻譯中 → 取消並立即還原原文；已翻譯 → 還原原文
 - 另有 `send-to-instapaper`（Alt+I）command：把當前頁面正文送到 Instapaper（§3.11），非 preset 翻譯快速鍵，不對應 storage slot
+- **廣播範圍與嵌入式播放器守門**（v2.0.79，GitHub issue #58）：`TRANSLATE_PRESET` 由 background 以 `browser.tabs.sendMessage(tabId, …)` 送出、**刻意不帶 frameId**（＝廣播到分頁內所有 frame），嵌入式圖表 iframe（Flourish／Datawrapper 等）要靠這條才翻得到。代價是頁面嵌的影片播放器 iframe 也各自跑一輪 `translatePage`，把播放器 UI（影片標題／頻道／訂閱數）送進 LLM——使用者按一次快速鍵付兩份錢，用量紀錄冒出 `youtube.com/embed/<id>` 那筆（`url` 由發起 frame 自填 `location.href`，字幕路徑 gate 在 `/watch`，embed 頁不可能是字幕翻譯）。守門判定 `SK.isEmbeddedPlayerFrame(doc, win)`（`content-ns.js`，結構通則不綁站點）：非主 frame ＋ 有 media element（`video`／`audio`）＋ 可見文字量 < 200 字元 ＝ 播放器介面 → `translatePage`／`translatePageGoogle` 入口靜默結束。門檻取 200 是「寧可放行多翻、不要誤殺真內容」：實測嵌入式播放器 UI 約 30–100 字元，而「影片＋摘要」型內容 iframe 通常一段就破 200；圖表 iframe 沒有 media element，第一條就不成立
 
 ### 10.1 自訂快速鍵（in-page recorder）
 
@@ -906,7 +909,9 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 **字幕路由**:`content-youtube.js` 所有字幕翻譯訊息類型都透過 `SK.getSubtitleBatchType(engine, asr)`（`content-ns.js`）統一路由，不在多處 inline 三元式判斷以避免 drift:
 
 - 非 ASR（人工字幕 / heuristic 整句字幕）:`google` → `_GOOGLE` / `openai-compat` → `_CUSTOM` / 其餘 → Gemini
-- ASR LLM（JSON timestamp 模式）:Google MT 不支援 JSON 包裝，只有 Gemini / `openai-compat` 兩路；`engine='google'` 在 ASR LLM 下走 Gemini fallback
+- ASR LLM（JSON timestamp 模式）:Google MT 不支援 JSON 包裝，只有 Gemini / `openai-compat` 兩路
+
+**`engine='google'` 時 AI 分句一律停用**（v2.0.79，GitHub issue #58）:ASR 合句的 LLM 路徑（`_runAsrWindow` → `TRANSLATE_ASR_SUBTITLE_BATCH`）沒有 Google MT 對應實作，`engine='google'` 落到這條等於「使用者選了免費引擎卻被扣 Gemini token」，而 `asrMode` 預設 `progressive`（AI 分句開啟）讓它默默常態發生。`content-youtube.js` 的 asrMode 決策改為 `engine === 'google'` 時強制 `'heuristic'`（純規則合句 + 逐條走 Google MT，零 LLM 呼叫）；options「AI 分句」toggle 在該引擎下同步 `disabled` 並顯示原因（`options.yt.asr.googleDisabled`），兩端是同一份事實。
 
 **術語表路由**:`content.js` 兩處 `EXTRACT_GLOSSARY` dispatch 透過 `SK.getGlossaryExtractType(engine)`（`content-ns.js`）統一路由:
 
