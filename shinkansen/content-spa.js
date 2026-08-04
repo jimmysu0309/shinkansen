@@ -317,10 +317,19 @@
     }
     return true;
   }
+  // review B8:過期 entry 原本只在「同 text 再被 isSeenTextRecent 查到」時才 GC,
+  // X / Reddit 無限捲動長 session 累積數千條全文 key(多數不會再被查到)永不釋放。
+  // rescan 時順掃一輪整批清過期 entry(Map 迭代中 delete 是安全操作)。
+  function sweepExpiredSeenTexts(now) {
+    for (const [text, ts] of spaObserverSeenTexts) {
+      if (now - ts > SPA_OBSERVER_SEEN_TEXTS_TTL_MS) spaObserverSeenTexts.delete(text);
+    }
+  }
   // 給 spec 用
   SK._spaObserverSeenTexts = spaObserverSeenTexts;
   SK._isSeenTextRecent = isSeenTextRecent;
   SK._SPA_OBSERVER_SEEN_TEXTS_TTL_MS = SPA_OBSERVER_SEEN_TEXTS_TTL_MS;
+  SK._sweepExpiredSeenTexts = sweepExpiredSeenTexts;
 
   // Debug Bridge 用:暴露 SPA observer 內部狀態以判斷 rescan 是否 fire / 為何 silent
   SK._spaDebug = function _spaDebug() {
@@ -597,12 +606,23 @@
   // 之後 SPA observer rescan 看到 textContent 命中此 cache 的「全新 element」,直接 inject 既有譯文,
   // 不送 API、不重翻、譯文一致(典型場景:Twitter / Reddit / Threads / Mastodon virtualized timeline
   // 滑出 viewport 後使用者滑回頂,React unmount 原 element + 重 mount 全新 element)。
+  // review B8:byText cache 加條數上限(LRU)。每段存 originalText → innerHTML
+  // 永不修剪,無限捲動數小時累積數千條全文 + HTML 字串(可達數十 MB)。Map 迭代
+  // 序 = 插入序,重複 set 前先 delete、命中時 touch 重插 = 插入序即近期使用序,
+  // 超限淘汰最舊。
+  const TRANSLATED_BY_TEXT_MAX = 1000;
+  SK._TRANSLATED_BY_TEXT_MAX = TRANSLATED_BY_TEXT_MAX;  // 測試 seam
   SK._recordTranslatedByText = function _recordTranslatedByText(el, savedHTML) {
     if (!STATE.translatedHTMLByText) return;
     if (!el || !savedHTML) return;
     const orig = STATE.originalText && STATE.originalText.get(el);
     if (!orig) return;
-    STATE.translatedHTMLByText.set(orig, savedHTML);
+    const m = STATE.translatedHTMLByText;
+    if (m.has(orig)) m.delete(orig);
+    m.set(orig, savedHTML);
+    while (m.size > TRANSLATED_BY_TEXT_MAX) {
+      m.delete(m.keys().next().value);
+    }
   };
 
   // SPA observer rescan 收進的 newUnits 預檢:對 element unit 用 textContent 查 byText cache,
@@ -628,6 +648,10 @@
       const text = (unit.el.textContent || '').trim();
       const savedHTML = STATE.translatedHTMLByText.get(text);
       if (!savedHTML) { remaining.push(unit); continue; }
+      // LRU touch:命中即重插,讓熱 entry(virtualization 反覆 remount 的段)
+      // 不被容量淘汰(review B8)
+      STATE.translatedHTMLByText.delete(text);
+      STATE.translatedHTMLByText.set(text, savedHTML);
       try {
         // 覆寫前先快照原文——此刻 el 顯示的正是 remount 後的原文。少這步的話
         // restorePage / resetForSpaNavigation 都以 STATE.originalHTML 為迭代源，
@@ -1631,6 +1655,8 @@
       return;
     }
     spaObserverRescanCount++;
+    // review B8:每輪 rescan 順掃 seenTexts 過期 entry,長 session Map 不無上限成長
+    sweepExpiredSeenTexts(Date.now());
 
     let newUnits = SK.collectParagraphs();
     if (STATE.translatedMode === 'dual' && SK.consolidateDualInlineUnits) {

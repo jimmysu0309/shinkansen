@@ -339,11 +339,33 @@
     // 純時長： "5 minutes" / "3 days"
     /^\d+\s+(?:minute|hour|day|week|month|year)s?$/i,
   ];
+  // review A8:acceptNode 對每個未被前置條件擋掉的元素都會呼叫 isDateLikeText,
+  // 直接取 el.textContent 會把近 root wrapper 的整棵子樹文字 materialize——長頁
+  // (1MB 文字、深度 20)每層 wrapper 各串接一次整頁文字,單次 collectParagraphs
+  // 數十 MB 字串 churn,SPA rescan 還反覆跑。日期 cell 必近 leaf:先用
+  // childElementCount 廉價早退,再用 TreeWalker 有界取樣(原始字元一超過 cap 就
+  // 放棄——cap 遠大於日期字串連同縮排空白的實際長度),全程不串接整棵子樹。
+  const _DATE_SAMPLE_CAP = 200;
+  function _sampleShortText(el) {
+    const doc = el.ownerDocument || document;
+    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let out = '';
+    let n;
+    while ((n = walker.nextNode())) {
+      out += n.nodeValue;
+      if (out.length >= _DATE_SAMPLE_CAP) return null;
+    }
+    return out;
+  }
   function isDateLikeText(el) {
-    const text = (el.textContent || '').trim();
+    if (el.childElementCount > 3) return false;
+    const sample = _sampleShortText(el);
+    if (sample === null) return false;
+    const text = sample.trim();
     if (text.length === 0 || text.length >= 30) return false;
     return DATE_PATTERNS.some((re) => re.test(text));
   }
+  SK._isDateLikeText = isDateLikeText;  // 測試 seam(review A8 regression)
   function isCodeContainer(el) {
     if (!el || el.nodeType !== 1) return false;
     // <pre> 有專屬規則（pre+code→skip,pre 單獨→當文字段落，例如 Medium 留言),
@@ -770,7 +792,11 @@
           if (el.getAttribute('contenteditable') === 'true') continue;      // 編輯模式不動
           if (el.hasAttribute('data-shinkansen-dual-source')) continue;     // dual 原文槽本就是原文
           if (el.querySelector('shinkansen-translation')) continue;        // dual wrapper 容器
-          const _txt = (el.textContent || '').trim();
+          // review A9:全頁轉換後每個段落都帶 marker,每輪 rescan 對每個 marked
+          // 元素取全文跑 isConvertibleVariant(內部兩趟字元掃描)≈ 每輪重掃整頁
+          // 文字兩遍。比照 footer 放行(isInsideExcludedContainer)取樣 400 字——
+          // 殭屍偵測只需變體特徵單邊乾淨,段落前 400 字足以判定
+          const _txt = (el.textContent || '').slice(0, 400).trim();
           if (!_txt || !SK.isConvertibleVariant(_txt, _dir)) continue;
           el.removeAttribute('data-shinkansen-translated');
           el.removeAttribute('data-shinkansen-nodevalue-mutated');

@@ -58,7 +58,12 @@ export function getZhConverter(direction) {
   if (!_converterPromises.has(direction)) {
     const p = (async () => {
       const groups = await Promise.all(chain.map((g) => Promise.all(g.map(loadDictText))));
-      return ConverterFactory(...groups);
+      const converter = ConverterFactory(...groups);
+      // review F8:Trie 建成後字典原始文字(合計 ~1.1MB 字串)已無用途,清掉對應
+      // cache 釋放 SW 長駐記憶體。兩方向目前無共用字典,直接清安全;未來若出現
+      // 共用字典,代價只是另一方向首次建 Trie 時多一次 fetch 自家打包資源
+      for (const g of chain) for (const name of g) _dictPromises.delete(name);
+      return converter;
     })();
     p.catch(() => _converterPromises.delete(direction));
     _converterPromises.set(direction, p);

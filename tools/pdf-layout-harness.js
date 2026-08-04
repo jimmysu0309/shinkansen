@@ -201,8 +201,12 @@ async function main() {
       // 不靠 viewport screenshot(會被 reader scroll 區裁切)
       try {
         await page.waitForSelector('.reader-page-translated canvas', { timeout: 30_000 });
+        // review G5:reader 改可視區 lazy render,離區頁 canvas 沒 bitmap。
+        // 截圖要全書 raster → 先呼叫 reader 的全量 render hook(等 hook 存在再呼叫)
+        await page.waitForFunction(() => typeof window.__skReaderRenderAll === 'function', { timeout: 30_000 });
+        await page.evaluate(() => window.__skReaderRenderAll());
         // 等所有譯文頁的 reader-page 設好 dataset.baseHeight + canvas 尺寸 > 100x100
-        // (reader.js render 完成才寫 baseHeight),避免 PDF.js 還沒 render 完就抓 0x0 canvas
+        // 避免 PDF.js 還沒 render 完就抓 0x0 canvas
         await page.waitForFunction(() => {
           const ps = Array.from(document.querySelectorAll('.reader-page-translated'));
           if (ps.length === 0) return false;

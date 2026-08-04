@@ -318,6 +318,25 @@ export function mineCandidates(chapters, glossary, { minBlocks = 2, maxCandidate
   }
   const corpus = corpusParts.join('\n');
 
+  // review H8:原本下方迴圈對每個單詞候選 `new RegExp` + 全書 corpus matchAll——
+  // O(候選 × 全書),50 萬字 × 上百候選是數千萬字元級,主執行緒可感卡頓(同檔
+  // compileTermMatcher 已做同類快取,這條漏網)。改一次 pass 先建「詞 → 後接
+  // 大寫/數字次數」Map。語意同原 per-term regex `(?<![A-Za-z])term\.?\s+[A-Z0-9]`:
+  // token 取法與 RE_LATIN_NAME 同字元集(maximal token,候選詞本就來自該 regex),
+  // 後接判定用 sticky regex 原地測,不消耗下一個 token(「Mr Smith Goes」的
+  // Smith 也要算到自己的後接)。
+  const followedByCapMap = new Map();
+  {
+    const reToken = /(?<![A-Za-z])[A-Z][A-Za-z''-]*/g;
+    const reFollow = /\.?\s+[A-Z0-9]/y;
+    for (const m of corpus.matchAll(reToken)) {
+      reFollow.lastIndex = m.index + m[0].length;
+      if (reFollow.test(corpus)) {
+        followedByCapMap.set(m[0], (followedByCapMap.get(m[0]) || 0) + 1);
+      }
+    }
+  }
+
   const out = [];
   for (const [term, rec] of map) {
     if (rec.blocks.size < minBlocks) continue;
@@ -331,7 +350,7 @@ export function mineCandidates(chapters, glossary, { minBlocks = 2, maxCandidate
       // 的一部分；緊跟數字 → 日期 / 章節 / 編號等更大單位的一部分（April 1 /
       // Chapter 3 / Lap 42），兩者都不是獨立譯名單位（2026-07-10 Jimmy 回報
       // 月份名 April 被掃出、各日期被當多種譯名）
-      const followedByCap = [...corpus.matchAll(new RegExp(`(?<![A-Za-z])${escapeRe(term)}\\.?\\s+[A-Z0-9]`, 'g'))].length;
+      const followedByCap = followedByCapMap.get(term) || 0;
       if (rec.count > 1 && followedByCap / rec.count > 0.5) continue;
     }
     out.push({ term, blocks: [...rec.blocks.values()], count: rec.count });

@@ -923,13 +923,28 @@ test('session save debounce flush：編輯後立即重新上傳，編輯不掉�
   let found = false;
   const start = Date.now();
   while (Date.now() - start < 5000) {
+    // v2 schema(review G11):blocks 拆到 session-blocks store 逐塊存,
+    // sessions 只剩 meta;legacy v1 內嵌 blocks 也一併檢查(向下相容)
     found = await page.evaluate(() => new Promise((resolve) => {
       const req = indexedDB.open('shinkansen-epub-sessions');
       req.onsuccess = () => {
-        const get = req.result.transaction('sessions').objectStore('sessions').getAll();
-        get.onsuccess = () => resolve((get.result || []).some((s) =>
-          Object.values(s.blocks || {}).some((b) => b.edited === '快速離開前的編輯')));
-        get.onerror = () => resolve(false);
+        const db = req.result;
+        const stores = [...db.objectStoreNames];
+        const checks = [];
+        if (stores.includes('session-blocks')) {
+          checks.push(new Promise((res) => {
+            const g = db.transaction('session-blocks').objectStore('session-blocks').getAll();
+            g.onsuccess = () => res((g.result || []).some((b) => b && b.edited === '快速離開前的編輯'));
+            g.onerror = () => res(false);
+          }));
+        }
+        checks.push(new Promise((res) => {
+          const g = db.transaction('sessions').objectStore('sessions').getAll();
+          g.onsuccess = () => res((g.result || []).some((s) =>
+            Object.values(s.blocks || {}).some((b) => b.edited === '快速離開前的編輯')));
+          g.onerror = () => res(false);
+        }));
+        Promise.all(checks).then((r) => { db.close(); resolve(r.some(Boolean)); });
       };
       req.onerror = () => resolve(false);
     }));
@@ -937,6 +952,81 @@ test('session save debounce flush：編輯後立即重新上傳，編輯不掉�
     await page.waitForTimeout(100);
   }
   expect(found).toBe(true);
+  await page.close();
+});
+
+test('session 增量存檔：編輯單一 block 的存檔只寫該 block（review G11）', async ({ context, extensionId }) => {
+  // code review 2026-08-03 G11(效能):原本每次 debounced 存檔 collectSessionBlocks
+  // 把全書 done block 的 raw/plain/edited 整包重寫(大書單次數 MB)。修法:
+  // epub-session-db v2 schema(blocks 拆 session-blocks store 逐 key 存)+
+  // persistEpubSession 以字串 reference 簽章差異寫入。
+  // 本 test 鎖:首次存檔全量落地(兼 v1 搬遷)後,編輯 1 個 block 的下一次存檔
+  // 對 session-blocks 恰好 put 1 筆(不整本重寫)。
+  //
+  // SANITY 紀錄(已驗證,2026-08-05):persistEpubSession 簽章比對行改
+  // `if (false && sig …)`(退化回全量)→ 「恰好 put 1 筆」斷言 fail(blockPuts=5,
+  // = 全部 done block 整本重寫)→ 還原後 pass。
+  const page = await openDocPage(context, extensionId);
+  await page.evaluate(() => chrome.storage.sync.set({ targetLanguage: 'zh-TW' }));
+  await uploadEpub(page);
+  await selectOnlyChapter(page, 2);
+  await page.click('#chapters-translate-btn');
+  await page.waitForSelector('#stage-chapters:not([hidden])', { timeout: 15_000 });
+
+  // 等翻譯後首次(全量)存檔落地:session-blocks 至少 2 筆(前置條件,證明
+  // 後面的「只寫 1 筆」不是因為全書本來就只有 1 塊)
+  let baseCount = 0;
+  const start = Date.now();
+  while (Date.now() - start < 8_000) {
+    baseCount = await page.evaluate(() => new Promise((resolve) => {
+      const req = indexedDB.open('shinkansen-epub-sessions');
+      req.onsuccess = () => {
+        const db = req.result;
+        if (![...db.objectStoreNames].includes('session-blocks')) { db.close(); resolve(0); return; }
+        const g = db.transaction('session-blocks').objectStore('session-blocks').count();
+        g.onsuccess = () => { db.close(); resolve(g.result); };
+        g.onerror = () => { db.close(); resolve(0); };
+      };
+      req.onerror = () => resolve(0);
+    }));
+    if (baseCount >= 2) break;
+    await page.waitForTimeout(100);
+  }
+  expect(baseCount, '首次全量存檔應已把全部 done block 落地').toBeGreaterThanOrEqual(2);
+
+  // 開預覽並讓預覽觸發的既有存檔(空格自動校正等)先 settle,再 instrument
+  await page.locator('.chapter-preview-btn').first().click();
+  await page.waitForSelector('#stage-epub-preview:not([hidden])', { timeout: 10_000 });
+  await page.waitForTimeout(2_000);
+
+  await page.evaluate(() => {
+    window.__skPutLog = [];
+    const orig = IDBObjectStore.prototype.put;
+    window.__skPutOrig = orig;
+    IDBObjectStore.prototype.put = function (...args) {
+      window.__skPutLog.push(this.name);
+      return orig.apply(this, args);
+    };
+    const el = document.querySelectorAll('.epub-preview-block[data-state="done"]')[1];
+    el.innerHTML = '增量存檔只寫這一塊';
+    el.dispatchEvent(new Event('blur'));
+  });
+  // debounce 800ms → 輪詢等 session-blocks 有 put
+  let putLog = [];
+  const start2 = Date.now();
+  while (Date.now() - start2 < 5_000) {
+    putLog = await page.evaluate(() => window.__skPutLog);
+    if (putLog.includes('session-blocks')) break;
+    await page.waitForTimeout(100);
+  }
+  await page.evaluate(() => { IDBObjectStore.prototype.put = window.__skPutOrig; });
+
+  const blockPuts = putLog.filter((n) => n === 'session-blocks').length;
+  const metaPuts = putLog.filter((n) => n === 'sessions').length;
+  // 核心:編輯 1 個 block → 恰好寫 1 筆 block 記錄(非整本重寫)
+  expect(blockPuts, `編輯 1 個 block 應只寫 1 筆 block 記錄(實際 ${blockPuts},put log: ${JSON.stringify(putLog)})`).toBe(1);
+  // meta 每次存檔照寫(小記錄)
+  expect(metaPuts).toBeGreaterThanOrEqual(1);
   await page.close();
 });
 
@@ -2190,6 +2280,57 @@ test('一致性掃描不把日期數字當譯名漂移（mineCandidates / aggreg
   expect(res.dateCases.length).toBe(0);
   expect(res.driftCases.length).toBe(1);
   expect(res.driftCases[0].renderings.map((r) => r.text).sort()).toEqual(['普勒', '普爾'].sort());
+  await page.close();
+});
+
+test('mineCandidates 稱謂前綴偵測一次 pass,不再 per-term new RegExp（review H8）', async ({ context, extensionId }) => {
+  // code review 2026-08-03 H8(效能):原本前綴偵測對每個單詞候選 `new RegExp` +
+  // 全書 corpus matchAll——O(候選 × 全書),50 萬字 × 上百候選 = 數千萬字元級,
+  // 主執行緒可感卡頓。修法:corpus 一次 pass 先建「詞 → 後接大寫/數字次數」Map。
+  // 本 test 鎖兩層:(1) 行為等價——稱謂詞(多數出現緊跟大寫)仍被擋、一般名字
+  // 仍進候選,含「Sir Smith Goes」型連續大寫時後接判定不吞掉下一個 token;
+  // (2) 效能契約——mineCandidates 全程 0 次 new RegExp(一次 pass 用 regex 字面值)。
+  //
+  // SANITY 紀錄(已驗證,2026-08-05):把 mineCandidates 內 followedByCapMap 查表
+  // 改回舊 per-term `new RegExp(...)` matchAll → 「不得 new RegExp」斷言 fail
+  // (ctorCalls=21)→ 還原後 pass。
+  const page = await openDocPage(context, extensionId, { stub: false });
+  const res = await page.evaluate(async () => {
+    const mod = await import('/translate-doc/epub-scan.js');
+    const block = (id, plainText) => ({
+      blockId: id, translationStatus: 'done', plainText, translation: '譯文',
+    });
+    // 20 個一般名字(後接小寫 → 應進候選)+ 稱謂 Sir(多數出現緊跟大寫 → 應被擋;
+    // 兩個 standalone 出現讓它成為單詞候選)
+    const names = Array.from({ length: 20 }, (_, i) => 'Zk' + String.fromCharCode(65 + i) + 'name');
+    // 名字前導詞用小寫,避免被 RE_LATIN_NAME 併成多詞 term(那樣 standalone 名字
+    // 就收不到 hit)
+    const sent1 = names.map((n) => `we saw ${n} walk east.`).join(' ')
+      + ' Sir Smith arrived. Sir Jones left. Sir Kane won. Sir said hello.';
+    const sent2 = names.map((n) => `you heard ${n} sing today.`).join(' ')
+      + ' Sir Brown ran. Sir Green hid. Sir Stone dug. Sir told more.';
+    const chapters = [{ index: 0, title: 'ch', blocks: [block('b1', sent1), block('b2', sent2)] }];
+
+    const OrigRegExp = RegExp;
+    let ctorCalls = 0;
+    const Patched = function (...args) { ctorCalls++; return new OrigRegExp(...args); };
+    Patched.prototype = OrigRegExp.prototype;
+    window.RegExp = Patched;
+    let terms;
+    try {
+      terms = mod.mineCandidates(chapters, []).map((c) => c.term);
+    } finally {
+      window.RegExp = OrigRegExp;
+    }
+    return { terms, ctorCalls };
+  });
+
+  // 行為等價:一般名字進候選、稱謂被前綴規則擋下
+  expect(res.terms).toContain('ZkAname');
+  expect(res.terms).toContain('ZkTname');
+  expect(res.terms).not.toContain('Sir');
+  // 效能契約:一次 pass,全程不建 RegExp(候選 20+ 個也一樣)
+  expect(res.ctorCalls, `mineCandidates 不得 per-term new RegExp(實際 ${res.ctorCalls} 次)`).toBe(0);
   await page.close();
 });
 

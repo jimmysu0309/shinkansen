@@ -23,7 +23,13 @@ import { repairDocLlmArtifacts, alignTrailingPeriodWithSource, stripPlaceholderT
 
 const DB_NAME = 'shinkansen-epub-sessions';
 const STORE = 'sessions';
-const VERSION = 1;
+// v2(review G11):blocks 從 sessions 整包記錄拆出,獨立 store 以 [bookHash, blockId]
+// 為 key 逐塊寫入——大書每次 debounced 存檔不再整本重寫(單次數 MB)。sessions
+// store 只放 meta(title / glossary / forbidden / extraPrompt / costUSD / scanIgnored)。
+// v1 舊記錄(meta 內嵌 blocks)load 時仍讀得到;第一次 v2 存檔會全量寫進 blocks
+// store 並以不帶 blocks 的 meta 覆寫,即完成搬遷
+const BLOCKS_STORE = 'session-blocks';
+const VERSION = 2;
 
 let _dbPromise = null;
 
@@ -34,6 +40,7 @@ function openDb() {
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(BLOCKS_STORE)) db.createObjectStore(BLOCKS_STORE);
     };
     req.onsuccess = () => {
       const db = req.result;
@@ -54,31 +61,65 @@ function reqAsPromise(req) {
   });
 }
 
+function txDone(tx) {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+function blocksRange(bookHash) {
+  // IDB key 排序:[bookHash] < [bookHash, 任何字串] < [bookHash, []](array > string),
+  // 此界界定「該書全部 per-block 記錄」,不依賴 blockId 字元範圍
+  return IDBKeyRange.bound([bookHash], [bookHash, []]);
+}
+
 /** @returns {Promise<object|null>} 沒有存檔回 null；任何錯誤靜默回 null（存檔是加值功能，不可擋主流程） */
 export async function loadEpubSession(bookHash) {
   if (!bookHash) return null;
   try {
     const db = await openDb();
-    const tx = db.transaction(STORE, 'readonly');
-    const got = await reqAsPromise(tx.objectStore(STORE).get(bookHash));
-    return got || null;
+    const tx = db.transaction([STORE, BLOCKS_STORE], 'readonly');
+    const bstore = tx.objectStore(BLOCKS_STORE);
+    const range = blocksRange(bookHash);
+    const [meta, keys, vals] = await Promise.all([
+      reqAsPromise(tx.objectStore(STORE).get(bookHash)),
+      reqAsPromise(bstore.getAllKeys(range)),
+      reqAsPromise(bstore.getAll(range)),
+    ]);
+    if (!meta && keys.length === 0) return null;
+    // v1 整包記錄的內嵌 blocks 為底,v2 per-block 記錄疊上(較新)
+    const blocks = { ...((meta && meta.blocks) || {}) };
+    for (let i = 0; i < keys.length; i++) blocks[keys[i][1]] = vals[i];
+    return { ...(meta || {}), blocks };
   } catch (err) {
     console.warn('[Shinkansen] epub session load failed', err && err.message);
     return null;
   }
 }
 
-export async function saveEpubSession(bookHash, data) {
-  if (!bookHash || !data) return false;
+/**
+ * v2(review G11)增量存檔:meta(小)每次全寫;blocks(大)只寫呼叫端標記有變的。
+ * @param meta 不含 blocks 的 session meta(帶了也會被剝掉——meta 記錄永遠不再內嵌整包)
+ * @param changedBlocks { [blockId]: { raw, plain, edited } } 本次要落地的 block
+ * @param removedBlockIds 已離開 done 集合、要從存檔移除的 blockId
+ */
+export async function saveEpubSession(bookHash, meta, { changedBlocks = {}, removedBlockIds = [] } = {}) {
+  if (!bookHash || !meta) return false;
   try {
     const db = await openDb();
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put({ ...data, updatedAt: Date.now() }, bookHash);
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
+    const tx = db.transaction([STORE, BLOCKS_STORE], 'readwrite');
+    const { blocks: _legacyEmbedded, ...metaOnly } = meta;
+    tx.objectStore(STORE).put({ ...metaOnly, updatedAt: Date.now() }, bookHash);
+    const bstore = tx.objectStore(BLOCKS_STORE);
+    for (const [blockId, rec] of Object.entries(changedBlocks || {})) {
+      bstore.put(rec, [bookHash, blockId]);
+    }
+    for (const blockId of removedBlockIds || []) {
+      bstore.delete([bookHash, blockId]);
+    }
+    await txDone(tx);
     return true;
   } catch (err) {
     console.warn('[Shinkansen] epub session save failed', err && err.message);
@@ -90,13 +131,10 @@ export async function deleteEpubSession(bookHash) {
   if (!bookHash) return false;
   try {
     const db = await openDb();
-    const tx = db.transaction(STORE, 'readwrite');
+    const tx = db.transaction([STORE, BLOCKS_STORE], 'readwrite');
     tx.objectStore(STORE).delete(bookHash);
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
+    tx.objectStore(BLOCKS_STORE).delete(blocksRange(bookHash));
+    await txDone(tx);
     return true;
   } catch (err) {
     console.warn('[Shinkansen] epub session delete failed', err && err.message);

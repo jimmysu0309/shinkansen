@@ -181,6 +181,11 @@ async function processOnePdf(context, extensionId, pdfFilename, outDir) {
     await page.click('#translate-btn');
     await page.waitForSelector('#stage-reader:not([hidden])', { timeout: TRANSLATE_TIMEOUT_MS });
 
+    // review G5:reader 改可視區 lazy render,離區頁 canvas 沒 bitmap。
+    // 批次驗收要全書 raster → 先呼叫 reader 的全量 render hook
+    await page.waitForFunction(() => typeof window.__skReaderRenderAll === 'function', { timeout: 30_000 });
+    await page.evaluate(() => window.__skReaderRenderAll());
+
     // 等所有譯文 canvas render 完成(reader.js 寫好 dataset.baseHeight 才能信)
     await page.waitForFunction(
       () => {

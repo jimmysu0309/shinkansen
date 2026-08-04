@@ -201,6 +201,7 @@ function releaseCurrentDoc() {
   currentArticleGlossary = null;
   epubCumulativeCostUSD = 0;
   epubBookHash = null;
+  _sessionSavedSig = new Map();  // review G11:換檔清增量簽章,下本書首存全量寫
   currentBookForbidden = [];
   currentDocExtraPrompt = '';
   epubPreviewScope = null;
@@ -4710,8 +4711,32 @@ async function extractGlossaryForBook(doc, { forceRefresh = false } = {}) {
 // 翻譯進度 / 手動編輯 / 術語表 / 本書禁用詞整包存檔。不放 chrome.storage.local
 // ——「清除翻譯快取」不可波及使用者工作成果
 
+// review G11:session 存檔增量化。原本每次 debounced 存檔 collectSessionBlocks
+// 序列化整本書所有 done block 的 raw / plain / edited 三份字串整包重寫 IndexedDB,
+// 大書單次數 MB。改 per-block 差異寫入:以「上次已落地的三欄字串 reference」為
+// 簽章(字串不可變,欄位有變必換 reference,=== 比對零成本),只把有變的 block
+// put 進 blocks store。頁面載入後首次存檔簽章表為空 → 全量寫一次(兼作 v1 整包
+// schema 的搬遷);換檔 / 放棄時清簽章表
+let _sessionSavedSig = new Map();  // blockId -> { raw, plain, edited }
+
 async function persistEpubSession() {
   if (!currentDoc || currentDoc.kind !== 'epub' || !epubBookHash) return;
+  // 首個 await 前同步快照差異(flushPendingSessionSave 依賴此語意)
+  const changedBlocks = {};
+  const doneIds = new Set();
+  for (const ch of currentDoc.chapters) {
+    for (const b of ch.blocks) {
+      if (b.translationStatus !== 'done') continue;
+      doneIds.add(b.blockId);
+      const raw = b.translationRaw ?? null;
+      const plain = b.translation ?? null;
+      const edited = b.editedHtml ?? null;
+      const sig = _sessionSavedSig.get(b.blockId);
+      if (sig && sig.raw === raw && sig.plain === plain && sig.edited === edited) continue;
+      changedBlocks[b.blockId] = { raw, plain, edited };
+    }
+  }
+  const removedBlockIds = [..._sessionSavedSig.keys()].filter((id) => !doneIds.has(id));
   const ok = await saveEpubSession(epubBookHash, {
     title: currentDoc.meta.title || '',
     glossary: Array.isArray(currentArticleGlossary) ? currentArticleGlossary : null,
@@ -4723,8 +4748,11 @@ async function persistEpubSession() {
     // 一致性掃描的略過清單（2026-07-10）：人工 review 決策也是工作成果
     scanIgnored: [...epubScanIgnored.values()],
     scanIgnoredDrift: [...epubScanIgnoredDrift],
-    blocks: collectSessionBlocks(currentDoc),
-  });
+  }, { changedBlocks, removedBlockIds });
+  if (ok) {
+    for (const [id, rec] of Object.entries(changedBlocks)) _sessionSavedSig.set(id, rec);
+    for (const id of removedBlockIds) _sessionSavedSig.delete(id);
+  }
   // session 落地成功後清掉舊版 bookgloss_ key——session 已是單一資料源，
   // legacy key 留著只會在邊角把清空過的術語表復活
   if (ok) {

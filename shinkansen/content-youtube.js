@@ -3629,10 +3629,21 @@
   // 暴露給 spec 端直接驅動 on-the-fly 批次路徑(M8 res.result 缺失防禦回歸測試用),
   // 不影響 production behaviour。
   SK._flushOnTheFly = flushOnTheFly;
+  SK._startCaptionObserver = startCaptionObserver;  // 測試 seam(review C9 regression)
 
-  function startCaptionObserver() {
+  // review C9:activation 早於 player mount 時 observer fallback 掛 #movie_player
+  // 甚至整個 body(childList + characterData + subtree),watch 頁 DOM 變動極頻繁,
+  // 每個 mutation batch 都掃 .ytp-caption-segment;原版 container 出現後也不重掛。
+  // fallback 期間排短重試(比照 _startCaptionScaleObserver 的 retry 模式),窄 root
+  // (.ytp-caption-window-container)出現即整顆重掛收斂觀察範圍。
+  let _captionObserverRootRetryTimer = 0;
+  function startCaptionObserver(retries) {
     const YT = SK.YT;
     if (YT.observer) { YT.observer.disconnect(); YT.observer = null; }
+    if (_captionObserverRootRetryTimer) {
+      clearTimeout(_captionObserverRootRetryTimer);
+      _captionObserverRootRetryTimer = 0;
+    }
 
     // 先替換現有字幕
     document.querySelectorAll('.ytp-caption-segment').forEach(replaceSegmentEl);
@@ -3662,8 +3673,9 @@
       }
     });
 
+    const container = document.querySelector('.ytp-caption-window-container');
     const root =
-      document.querySelector('.ytp-caption-window-container') ||
+      container ||
       document.querySelector('#movie_player') ||
       document.body;
 
@@ -3673,6 +3685,25 @@
       translatedUpToMs: YT.translatedUpToMs,
     });
     _debugUpdate(`Observer 已啟動（root: ${root.className?.slice(0,30) || root.tagName}）`);
+
+    // fallback root(#movie_player / body)→ 排重試等窄 container 出現後重掛。
+    // 重試 callback 先驗 observer 仍是本輪這顆(stop / 重啟會 disconnect 換新),
+    // 已停用或已被換掉就放手,不誤重啟。
+    if (!container) {
+      const left = retries == null ? 20 : retries;
+      if (left > 0) {
+        const myObserver = YT.observer;
+        _captionObserverRootRetryTimer = setTimeout(() => {
+          _captionObserverRootRetryTimer = 0;
+          if (SK.YT.observer !== myObserver) return;
+          if (document.querySelector('.ytp-caption-window-container')) {
+            startCaptionObserver();          // 窄 root 已就緒 → 整顆重掛
+          } else {
+            startCaptionObserver(left - 1);  // 還沒出現 → 繼續倒數
+          }
+        }, 1000);
+      }
+    }
   }
 
   // ─── v1.2.39: 用量累積與紀錄 ──────────────────────────────
@@ -3724,6 +3755,11 @@
     clearTimeout(YT.batchTimer);
     YT.batchTimer = null;
     if (YT.observer) { YT.observer.disconnect(); YT.observer = null; }
+    // review C9:fallback root 收斂重試 timer 隨 session 停止一併清掉
+    if (_captionObserverRootRetryTimer) {
+      clearTimeout(_captionObserverRootRetryTimer);
+      _captionObserverRootRetryTimer = 0;
+    }
     _teardownIosFsTrack();   // iOS 全螢幕字幕軌:清 cue + 解綁 fullscreen 事件(須在 videoEl 清空前)
     if (YT.videoEl) {
       YT.videoEl.removeEventListener('timeupdate',  onVideoTimeUpdate);
