@@ -765,7 +765,8 @@
       const _dir = _t === 'zh-TW' ? 'cn2twp' : (_t === 'zh-CN' ? 'twp2cn' : null);
       if (_dir && SK.isConvertibleVariant) {
         let _staleCount = 0;
-        for (const el of root.querySelectorAll('[data-shinkansen-translated], [data-shinkansen-nodevalue-mutated]')) {
+        const _reconcileScope = (scope) => {
+        for (const el of scope.querySelectorAll('[data-shinkansen-translated], [data-shinkansen-nodevalue-mutated]')) {
           if (el.getAttribute('contenteditable') === 'true') continue;      // 編輯模式不動
           if (el.hasAttribute('data-shinkansen-dual-source')) continue;     // dual 原文槽本就是原文
           if (el.querySelector('shinkansen-translation')) continue;        // dual wrapper 容器
@@ -788,6 +789,14 @@
           S.nodeValueMutateBackup?.delete?.(el);
           S.nvMutateTranslation?.delete?.(el);
           _staleCount++;
+        }
+        };
+        _reconcileScope(root);
+        // open shadow root 內的元素同樣會被 framework 重用(下方 processScope 明確
+        // 收集 shadow 內容),querySelectorAll 不穿 shadow boundary → 各 shadow root
+        // 各跑一次,否則 shadow 內殭屍 marker 永不清、內容永遠停在原文(review A6)
+        if (typeof SK.findOpenShadowRoots === 'function') {
+          for (const _sr of SK.findOpenShadowRoots(root)) _reconcileScope(_sr);
         }
         if (_staleCount > 0) {
           SK.sendLog?.('info', 'detect', 'stale conversion markers reconciled (framework-reused elements unmarked)', { count: _staleCount });

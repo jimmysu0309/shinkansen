@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.80
+- 目前 Extension 版本：2.0.81
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.80 為止）
+### 2.1 已實作（v2.0.81 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -50,7 +50,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 設定頁 | ✅ | 5 Tab：一般設定 / Gemini / 術語表 / 用量紀錄 / Debug；匯入匯出 |
 | Popup 面板 | ✅ | 翻譯/還原；快取/費用統計；自動翻譯開關；YouTube 字幕 toggle |
 | Toast 提示 | ✅ | 進度條 + 計時器；可調透明度與位置（設定頁透明度旁附即時範例預覽）；`toastAutoHide` 自動關閉選項 |
-| 懸浮按鈕 | ✅ | 頁面邊緣可拖移方形「新」icon（`content-floating-icon.js`）；短按走 `popupButtonSlot` 預設翻譯、長按選三組 preset 或「功能選單」（在頁內用 closed Shadow DOM + iframe 載入 `popup/popup.html?panel=1` 當浮層叫出工具列圖示選單，`popup.html` 列入 `web_accessible_resources`；popup 端偵測 `?panel=1` → 關閉改 postMessage 收浮層、並回報內容高度讓 iframe 收緊）；在 YouTube 影片頁（`SK.isYouTubePage()`）長按選單額外加一列「啟動／關閉字幕翻譯」（依 `SK.YT.active` 決定 label 與動作，與 popup `SET_SUBTITLE` 同一份事實，只切當前影片、不持久化 `ytSubtitle.autoTranslate`）、拖移吸附左右緣（`floatingIconPos` 位置記憶）；**僅 iPadOS** 渲染時把按鈕夾離螢幕上下角落（避開視窗縮放拖曳角／系統手勢角，防止停太靠近角落被 OS 攔走觸控而拖不出來），iPadOS 預設右下角即落在此安全極限；iPhone 與桌面瀏覽器不設角落禁制區（`isIPadOSEnv` 以 UA + `maxTouchPoints` 判定，排除 iPhone／Android／桌面 Mac）；手機／平板預設開、桌面預設關（`floatingIcon`）；可調透明度（`floatingIconOpacity`）與大小（`floatingIconSize`：16 小／24 中／32 大，預設 24 中；視覺邊長 = icon 尺寸、可點範圍 = icon + 透明 padding）；closed Shadow DOM，不注入文章內容 |
+| 懸浮按鈕 | ✅ | 頁面邊緣可拖移方形「新」icon（`content-floating-icon.js`）；短按走 `popupButtonSlot` 預設翻譯、長按選三組 preset 或「功能選單」（在頁內用 closed Shadow DOM + iframe 載入 `popup/popup.html?panel=1` 當浮層叫出工具列圖示選單，`popup.html` 列入 `web_accessible_resources`；popup 端偵測 `?panel=1` → 關閉改 postMessage 收浮層、並回報內容高度讓 iframe 收緊）；在 YouTube 影片頁（`SK.isYouTubePage()`）長按選單額外加一列「啟動／關閉字幕翻譯」（依 `SK.YT.active` 決定 label 與動作，與 popup `SET_SUBTITLE` 同一份事實，只切當前影片、不持久化 `ytSubtitle.autoTranslate`）、拖移吸附左右緣（`floatingIconPos` 位置記憶）；長按選單預設從按鈕底緣向上展開，按鈕靠視窗頂緣時 openMenu 量測後翻轉向下（`.v-down`，對稱左右緣的 `side-left/right` 處理）；**僅 iPadOS** 渲染時把按鈕夾離螢幕上下角落（避開視窗縮放拖曳角／系統手勢角，防止停太靠近角落被 OS 攔走觸控而拖不出來），iPadOS 預設右下角即落在此安全極限；iPhone 與桌面瀏覽器不設角落禁制區（`isIPadOSEnv` 以 UA + `maxTouchPoints` 判定，排除 iPhone／Android／桌面 Mac）；手機／平板預設開、桌面預設關（`floatingIcon`）；可調透明度（`floatingIconOpacity`）與大小（`floatingIconSize`：16 小／24 中／32 大，預設 24 中；視覺邊長 = icon 尺寸、可點範圍 = icon + 透明 padding）；closed Shadow DOM，不注入文章內容 |
 | 用量紀錄 | ✅ | IndexedDB + 折線圖 + CSV 匯出；日期/模型/網域/文字搜尋篩選 |
 | Debug 工具 | ✅ | Debug Bridge（CustomEvent）；Log buffer 1000 筆 + 持久化 100 筆（`youtube` / `api` / `translate` 跨 SW 重啟）；YouTube `GET_YT_DEBUG` action |
 | Google Docs 支援 | ✅ | 偵測編輯頁自動導向 `/mobilebasic` 閱讀版再翻譯 |
@@ -299,6 +299,8 @@ userOverride trim 為空 OR userOverride.trim() === DEFAULT_*_PROMPT.trim()
 - target=`zh-TW` → 跳 `zh-Hant` / `zh-TW` / `zh-HK` / `zh-MO` / `zh-Hans` / `zh-CN` / `zh-SG`（簡中系也跳：繁中使用者可直讀簡中字幕，不花 API 簡轉繁；模糊 `zh` 軌的內容偵測補判同步——偵測到繁中或簡中都跳。僅字幕路徑，整頁翻譯的簡中段落仍照翻）
 - target=`zh-CN` → 跳 `zh-Hans` / `zh-CN` / `zh-SG`
 - target=`en` → 跳 `en` / `en-US` / `en-GB` / `en-CA` / `en-AU` / `en-IE` / `en-NZ`
+
+**語言身份以 `tlang` 為準**：`/api/timedtext` URL 帶 `tlang` 參數（YouTube 自動翻譯軌，`lang=<原軌>&tlang=<翻譯目標>`，body 已是 tlang 語言）時，`YT.captionLang` 取 `tlang` 而非 `lang`——skip 判斷才不會把已是 target 語言的自動翻譯字幕再送 API 翻一次；來源身份 `captionSourceId`（`videoId|captionLang|kind`）同步反映，mid-session 從原軌切自動翻譯軌視為來源變更，觸發視窗簿記重置
 
 **Cache key 區隔**（詳見 §9.1）：非 zh-TW target 加 `_lang<x>` suffix；zh-TW 不加（向下相容 v1.8.58 之前 cache）。
 
@@ -810,7 +812,7 @@ manifest `commands` 的預設鍵位（Alt+S／A／D）由瀏覽器層管理，�
 ### 10.2 iOS／iPadOS 四指手勢
 
 - **四指輕點**（壓住 < 600ms 即抬起）= 主要預設完整 toggle——`content-touch.js` 偵測手勢後送 `FOUR_FINGER_TAP` 給 background，轉發 `TRANSLATE_PRESET` slot 2，與快速鍵共用同一條派送路徑
-- **四指長按**（四指同時壓住、不移動且持續達 600ms）= 第一組預設（slot 1，預設 Flash）——計時器在門檻當下送 `FOUR_FINGER_LONGPRESS` 給 background，轉發 `TRANSLATE_PRESET` slot 1；抬起時以 `longPressFired` 旗標擋住，不重複觸發 slot 2。輕點 / 長按以「壓住時長」單一門檻區分，主要動作（輕點）於抬起當下零延遲觸發
+- **四指長按**（四指同時壓住、不移動且持續達 600ms）= 第一組預設（slot 1，預設 Flash）——計時器在門檻當下送 `FOUR_FINGER_LONGPRESS` 給 background，轉發 `TRANSLATE_PRESET` slot 1；抬起時以 `longPressFired` 旗標擋住，不重複觸發 slot 2。輕點 / 長按以「壓住時長」單一門檻區分，主要動作（輕點）於抬起當下零延遲觸發。長按語意 = 四指**全程**壓住：任一指抬起（touchend 時剩餘 touches < 4）即取消長按計時器，只留輕點路徑在全抬起時判定
 - 以 `IS_IOS_BUILD`（`lib/distribution.js`，iOS build script override 為 true）gate，桌面 build 為 no-op。外接硬體鍵盤時三組快速鍵照常可用，也可用上述 recorder 自訂
 
 ### 10.3 iOS background keep-alive
@@ -1146,6 +1148,11 @@ File → ArrayBuffer
 - 同 column 內按 y 座標降序排列 text run（PDF 座標系 y 由下往上，渲染上由上往下）
 - 兩 text run 的垂直間距 > 1.5 × medianLineHeight → 切 block 邊界
 - 字型 / 字級從 body text 跳變（差距 > 1pt 或 weight 由 normal 變 bold / 由 bold 變 normal）→ 也切 block 邊界（分離 heading / body / caption）
+
+**上標／下標附屬吸收**（分行階段，column 偵測之前）：
+- 字高 ≤ 主行 × 0.75、垂直中心落在主行縱向 span 內、水平落在主行範圍（± 1×mlh）、文字 ≤ 6 字的 run／line，視為主行 inline 附屬（註腳 ref「1」、變數下標「t」「model」、規格標註「(H)」），runs 併回主行按 x 排序歸位
+- 行內 x gap 判定（同行合併與 cell 級切分）先扣掉 sup/sub run 填補的部分，殘餘連續空白 ≤ 門檻才視為同行（sup/sub 挪出的洞不是 cell gap；殘餘仍超門檻的表格 cell gap 照常切）
+- Why：sup/sub 的 raised/lowered baseline 讓 top 差超出同行容忍，不吸收會被分成獨立 line → K-means 按 line left 把段中下標分去獨立 column 自成 block、散文段落在上標處句中切碎
 
 **Block type 分類啟發式**：
 

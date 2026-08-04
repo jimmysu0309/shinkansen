@@ -128,6 +128,9 @@
     .menu.show { display: flex; }
     .menu.side-left  { left: calc(var(--fab-hit, 32px) + 8px); }
     .menu.side-right { right: calc(var(--fab-hit, 32px) + 8px); }
+    /* 垂直翻轉:預設 bottom:0 從按鈕底緣向上長;按鈕靠視窗頂緣時向上空間不足,
+       openMenu 量測後加 .v-down 改從按鈕頂緣向下長(對稱 side-left/right 的水平處理) */
+    .menu.v-down { bottom: auto; top: 0; }
     .menu-item {
       display: flex;
       align-items: center;
@@ -364,6 +367,14 @@
     if (host.style.display === 'none') return;
     await buildMenu();
     menuEl.classList.add('show');
+    // 垂直方向選邊:按鈕拖到視窗頂緣時,預設向上長的選單會超出畫面點不到(review
+    // D3)。.show 後可量測選單高度,向上空間(host 底緣到 viewport 頂)放不下就翻
+    // 向下長。同一 task 內同步完成,不會閃爍
+    menuEl.classList.remove('v-down');
+    try {
+      const hostRect = host.getBoundingClientRect();
+      if (hostRect.bottom - menuEl.offsetHeight < 0) menuEl.classList.add('v-down');
+    } catch (_e) { /* 量測失敗維持預設向上 */ }
     menuOpen = true;
     host.style.opacity = '1';   // 選單開啟時拉到全不透明，讓使用者看清選單（task：長按降透明度）
     // 點選單外 / 捲動 → 收

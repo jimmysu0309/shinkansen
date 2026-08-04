@@ -419,7 +419,13 @@
     try {
       const u = new URL(url, location.href);
       YT.isAsr = u.searchParams.get('kind') === 'asr';
-      YT.captionLang = u.searchParams.get('lang') || null;
+      // v2.0.81(review C4): YouTube 自動翻譯軌 URL 是 lang=<原軌>&tlang=<翻譯目標>
+      // (真實 probe:lang=en&tlang=zh-Hant),body 已是 tlang 語言——語言身份以
+      // tlang 為準。只看 lang 的舊行為兩處都錯:(a) sourceId 與原軌相同,mid-session
+      // 切自動翻譯軌不觸發 _resetCaptionSourceBookkeeping,舊軌 translatedWindows /
+      // captionMap 殘留;(b) already-in-target skip 判斷看到 'en',把已是 target
+      // 語言的字幕再送 Gemini 翻一次(燒 token 翻自己)。
+      YT.captionLang = u.searchParams.get('tlang') || u.searchParams.get('lang') || null;
     } catch (_) {
       YT.isAsr = false;
       YT.captionLang = null;

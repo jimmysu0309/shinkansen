@@ -41,6 +41,17 @@ function getSelectedModel() {
 
 const $ = (id) => document.getElementById(id);
 
+// per-model 計價覆蓋欄位的單一資料源——load(fillOverride)/ save(collect)/
+// 「重設所有參數」三處共用同一份清單,新增模型列只改這裡。
+// 先前三處各自手列 ID,reset 清單漏掉 lite35 三欄 → 按重設後 3.5 Flash Lite
+// 自訂單價殘留、autosave 把殘留值繼續物化進 storage(2026-08-03 review D1)
+const MODEL_OVERRIDE_FIELDS = [
+  { model: 'gemini-3.1-flash-lite', input: 'override-lite-input',   output: 'override-lite-output',   discount: 'override-lite-discount' },
+  { model: 'gemini-3.5-flash-lite', input: 'override-lite35-input', output: 'override-lite35-output', discount: 'override-lite35-discount' },
+  { model: 'gemini-3-flash-preview', input: 'override-flash-input', output: 'override-flash-output',  discount: 'override-flash-discount' },
+  { model: 'gemini-3.6-flash',      input: 'override-pro-input',    output: 'override-pro-output',    discount: 'override-pro-discount' },
+];
+
 // 翻譯目標語言已從 options 搬到 popup(v1.9.16),options 不再有 #targetLanguage
 // picker,但 options 內多處仍需「當前 target」決定 prompt textarea / 語言偵測 label /
 // 禁用詞表預設。改成 module-level cache:load() 從 storage 讀進來,storage.onChanged
@@ -91,18 +102,11 @@ async function load() {
     const v = overrides[model]?.cachedDiscount;
     el.value = (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) : '');
   };
-  fillOverride('override-lite-input',  'gemini-3.1-flash-lite', 'inputPerMTok');
-  fillOverride('override-lite-output', 'gemini-3.1-flash-lite', 'outputPerMTok');
-  fillOverrideDiscount('override-lite-discount', 'gemini-3.1-flash-lite');
-  fillOverride('override-flash-input', 'gemini-3-flash-preview', 'inputPerMTok');
-  fillOverride('override-flash-output','gemini-3-flash-preview', 'outputPerMTok');
-  fillOverrideDiscount('override-flash-discount', 'gemini-3-flash-preview');
-  fillOverride('override-lite35-input',  'gemini-3.5-flash-lite', 'inputPerMTok');
-  fillOverride('override-lite35-output', 'gemini-3.5-flash-lite', 'outputPerMTok');
-  fillOverrideDiscount('override-lite35-discount', 'gemini-3.5-flash-lite');
-  fillOverride('override-pro-input',   'gemini-3.6-flash', 'inputPerMTok');
-  fillOverride('override-pro-output',  'gemini-3.6-flash', 'outputPerMTok');
-  fillOverrideDiscount('override-pro-discount', 'gemini-3.6-flash');
+  for (const f of MODEL_OVERRIDE_FIELDS) {
+    fillOverride(f.input,  f.model, 'inputPerMTok');
+    fillOverride(f.output, f.model, 'outputPerMTok');
+    fillOverrideDiscount(f.discount, f.model);
+  }
   $('whitelist').value = (s.domainRules.whitelist || []).join('\n');
   $('debugLog').checked = s.debugLog;
 
@@ -1104,12 +1108,9 @@ async function _saveImpl() {
         // entry 只有 model 一個 key → 沒有任何合法覆蓋值
         return Object.keys(entry).length > 1 ? entry : null;
       };
-      const rows = [
-        collect('gemini-3.1-flash-lite', 'override-lite-input',  'override-lite-output',  'override-lite-discount'),
-        collect('gemini-3.5-flash-lite', 'override-lite35-input', 'override-lite35-output', 'override-lite35-discount'),
-        collect('gemini-3-flash-preview',         'override-flash-input', 'override-flash-output', 'override-flash-discount'),
-        collect('gemini-3.6-flash',         'override-pro-input',   'override-pro-output',   'override-pro-discount'),
-      ].filter(Boolean);
+      const rows = MODEL_OVERRIDE_FIELDS
+        .map((f) => collect(f.model, f.input, f.output, f.discount))
+        .filter(Boolean);
       const out = {};
       for (const r of rows) {
         const { model, ...rest } = r;
@@ -1393,13 +1394,12 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   // 計價
   // v1.6.16: 後備路徑單價 UI 已移除，reset 不再動 settings.pricing 欄位。
   // v1.6.14: per-model override 欄位 reset 為空（預設 modelPricingOverrides:{} 對應 UI 全空 = 走內建表）。
-  for (const id of [
-    'override-lite-input',  'override-lite-output',  'override-lite-discount',
-    'override-flash-input', 'override-flash-output', 'override-flash-discount',
-    'override-pro-input',   'override-pro-output',   'override-pro-discount',
-  ]) {
-    const el = $(id);
-    if (el) el.value = '';
+  // 清單由 MODEL_OVERRIDE_FIELDS 驅動(單一資料源),不再手列 ID
+  for (const f of MODEL_OVERRIDE_FIELDS) {
+    for (const id of [f.input, f.output, f.discount]) {
+      const el = $(id);
+      if (el) el.value = '';
+    }
   }
   $('maxRetries').value = D.maxRetries;
   // 效能

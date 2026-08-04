@@ -65,7 +65,7 @@
       clearGestureTimer();
       gesture = { t0: Date.now(), pts, timer: null, longPressFired: false };
       // 四指壓住達門檻仍未抬起 / 未超移動容差 → 長按 → slot 1。touchmove / 第五指 /
-      // 全抬起都會清掉此計時器，所以計時器觸發時必然四指仍合格壓著。
+      // 任一指抬起都會清掉此計時器，所以計時器觸發時必然四指仍合格壓著。
       gesture.timer = setTimeout(() => {
         if (!gesture || gesture.longPressFired) return;
         gesture.longPressFired = true;
@@ -95,7 +95,15 @@
 
   window.addEventListener('touchend', (e) => {
     if (!gesture) return;
-    if (e.touches.length > 0) return; // 還有指頭沒抬起，等下一個 touchend
+    if (e.touches.length > 0) {
+      // 部分手指抬起:長按語意 = 四指「全程」壓住,任一指抬起即取消長按候選
+      // (只清計時器,保留 gesture 讓 tap 路徑在全抬起時照常判定)。touchend 的
+      // e.touches 已不含剛抬起的指頭,四指手勢任一 touchend 必然 < 4 → 第一根
+      // 抬起即取消。先前這裡直接 return 不清 timer:抬三指剩一指壓超過 600ms,
+      // 計時器照樣觸發 FOUR_FINGER_LONGPRESS 誤發 slot 1(2026-08-03 review D2)
+      if (e.touches.length < 4) clearGestureTimer();
+      return; // 還有指頭沒抬起，等下一個 touchend
+    }
     clearGestureTimer();
     const fired = gesture.longPressFired;
     const elapsed = Date.now() - gesture.t0;

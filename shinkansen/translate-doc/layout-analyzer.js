@@ -23,6 +23,22 @@
 // 同視覺行的 y_top 容忍誤差(pt)。同一行 baseline 可能因上下標、字型差略有微差。
 const SAME_LINE_Y_TOLERANCE = 2;
 
+// 上標/下標附屬 line 吸收(2026-08-04 review H4):字級 ≤ host 字級 × 此比例、
+// 垂直中心落在 host line 縱向 span 內、水平範圍落在 host span(含 1×mlh 邊緣
+// 餘裕)、文字 ≤ SUP_APPENDAGE_MAX_CHARS 字 → 視為主文本行的 inline 附屬
+// (註腳 ref「1」、序數「st」、變數下標「t」「model」、規格標註「(H)」),把 runs
+// 併回 host line(finalizeLine 按 x 排序,文字順序天然正確)。
+// Why:raised/lowered baseline 讓 sup/sub 的 top 差超出 SAME_LINE_Y_TOLERANCE
+// 被 groupIntoLines 分成獨立 line(實測 arXiv 論文:主字 10pt、上標 7pt,top 差
+// 3-4.5pt),不吸收的下游災難鏈——(a) K-means column 偵測按 line left 分群,
+// 段中下標的 left 落在欄中央被分去獨立 column 自成 block;(b) splitOnSameRow
+// (top 差 < 0.5×mlh)把散文段落在上標處句中切碎。
+// 0.75 依據:典型 sup/sub 字級比 0.58-0.72;不同 row 的正文字高比 ≈ 1 不誤吸。
+// ≤6 字涵蓋「model」「steps」類變數下標,同時排除表格 heading/body cell 的長
+// cell 文字(「Timing Controller」字級比也可 < 0.75,靠字數擋)
+const SUPERSCRIPT_MAX_HEIGHT_RATIO = 0.75;
+const SUP_APPENDAGE_MAX_CHARS = 6;
+
 // 同視覺行的 run 與既有右緣的最大 x 間距(以 medianLineHeight 為單位)：超過視為
 // 「跨欄同 y」不該合併。Wikipedia / 雙欄論文 / 兩欄聯絡資訊兩欄第一行 baseline 可能接近，
 // 不加這條會被誤合併成單一跨欄 line。
@@ -200,7 +216,13 @@ function analyzePage(rawPage) {
   //      豁免。Why:未切開的多 cell line 會帶著跨 cell 內容進縱向分組,黏出 franken
   //      block(表頭「QTY|Unit Cost」line 與下方金額 rows 縱向黏成一塊);且 2-run
   //      短 line 會逃過 4.5e(它要求 ≥3 runs 且只處理單行 block)
-  const lines = splitLinesAtCellGaps(mergedLines, medianLineHeight);
+  const cellSplitLines = splitLinesAtCellGaps(mergedLines, medianLineHeight);
+
+  // 2.3) sup/sub 附屬 line 吸收(review H4):把上標/下標 line 的 runs 併回 host
+  //      主行。必須在 markSiblingsInRow(2.5)與 column 偵測(3)之前——sibling
+  //      標記與 K-means 都不該看到附屬 line(詳見 SUPERSCRIPT_MAX_HEIGHT_RATIO
+  //      常數註解的下游災難鏈)
+  const lines = absorbSupSubLines(cellSplitLines, medianLineHeight);
 
   // 2.5) 標「同一視覺行」的兄弟 line — same-line x gap 太大被切散的多條 line(典型:
   //      News Release 第一行「For Immediate Release ............ February 12, 2024」
@@ -469,11 +491,18 @@ function groupIntoLines(runs, medianLineHeight) {
     }
     // 階段 2:row 內按 left 升序,x gap 過大處切開(雙欄 / 左右分置)
     const row = sorted.slice(i, j + 1).sort((a, b) => a.bbox[0] - b.bbox[0]);
+    // sup/sub 洞豁免(review H4,與 splitLinesAtCellGaps 同名豁免同構):gap 被
+    // 「別的 row 的上標/下標 run」填補後殘餘空白仍 ≤ 門檻,代表這段空白是行內
+    // sup/sub 挪出來的洞(「dimension d⟨model⟩ = 512」的 model 佔位),不是跨欄
+    // 空白——切開會把句子在下標處斷成兩條 line
+    let rowY1 = row[0].bbox[3];
+    for (const r of row) { if (r.bbox[3] > rowY1) rowY1 = r.bbox[3]; }
     let currentLine = newLineFromRun(row[0]);
     for (let k = 1; k < row.length; k++) {
       const run = row[k];
       const xGap = run.bbox[0] - currentLine.bbox[2]; // 正值 = run 在 line 右邊有空白；負值 = 重疊
-      if (xGap <= sameLineMaxXGap) {
+      if (xGap <= sameLineMaxXGap
+          || residualGapAfterSupFill(currentLine.bbox[2], run.bbox[0], sorted, refTop, rowY1) <= sameLineMaxXGap) {
         currentLine.runs.push(run);
         currentLine.bbox = unionBBox(currentLine.bbox, run.bbox);
       } else {
@@ -509,6 +538,20 @@ function splitLinesAtCellGaps(lines, medianLineHeight) {
       out.push(line);
       continue;
     }
+    // sup/sub 洞豁免(review H4):gap 被「另一條 line 的上標/下標 run」填補後
+    // 殘餘空白仍 ≤ 門檻,代表這段空隙是行內 sup/sub 挪出來的洞(「h⟨t−1⟩ and…」
+    // 的 t−1 佔位),不是表格 cell gap——切開會把散文句子在下標處斷成兩條 line,
+    // 下游 sameRow / sibling 再切成獨立 block 句中送翻
+    const isSupOccupiedGap = (x0, x1) => {
+      const ly0 = line.bbox[1], ly1 = line.bbox[3];
+      const otherRuns = [];
+      for (const other of lines) {
+        if (other === line) continue;
+        if (other.bbox[3] < ly0 || other.bbox[1] > ly1) continue; // 縱向不重疊快篩
+        for (const r of (other.runs || [])) otherRuns.push(r);
+      }
+      return residualGapAfterSupFill(x0, x1, otherRuns, ly0, ly1) <= gapThreshold;
+    };
     const sorted = runs.slice().sort((a, b) => a.bbox[0] - b.bbox[0]);
     const groups = [[sorted[0]]];
     for (let i = 1; i < sorted.length; i++) {
@@ -522,7 +565,8 @@ function splitLinesAtCellGaps(lines, medianLineHeight) {
       // 「(a)」),marker 與內文之間的寬間距是排版慣例,切開會讓 marker 孤立成 block
       const groupText = groups[groups.length - 1].map((r) => r.text || '').join('').trim();
       const isListMarker = /^(?:[-•·*–—]|\d+[.)]|\([a-zA-Z0-9]+\))$/.test(groupText);
-      if (gap > gapThreshold && !isFormBoundary && !isListMarker) groups.push([sorted[i]]);
+      if (gap > gapThreshold && !isFormBoundary && !isListMarker
+          && !isSupOccupiedGap(sorted[i - 1].bbox[2], sorted[i].bbox[0])) groups.push([sorted[i]]);
       else groups[groups.length - 1].push(sorted[i]);
     }
     if (groups.length < 2) {
@@ -537,6 +581,85 @@ function splitLinesAtCellGaps(lines, medianLineHeight) {
       }
       out.push(finalizeLine(nl));
     }
+  }
+  return out;
+}
+
+// review H4:計算水平空白 [x0,x1] 被 sup/sub run(字高 ≤ row 高 × ratio、垂直
+// 中心落在 row span 內)填補後,剩餘最大「連續」空白寬。呼叫端拿回傳值與自己的
+// gap 門檻比較——sup/sub 只佔洞的一小角時(表格 cell gap 恰好有小字標註 / 圖例),
+// 殘餘空白仍超門檻就照切,不可整個 gap 豁免(Stella KPI row / MCS 報表 header
+// 實測:整段豁免會把相鄰 cell 黏成一行)
+function residualGapAfterSupFill(x0, x1, runs, rowY0, rowY1) {
+  const rh = rowY1 - rowY0;
+  if (!(rh > 0)) return x1 - x0;
+  const ivs = [];
+  for (const r of runs) {
+    const rb = r.bbox;
+    if (rb[2] <= x0 || rb[0] >= x1) continue;
+    const h = rb[3] - rb[1];
+    if (!(h > 0 && h <= rh * SUPERSCRIPT_MAX_HEIGHT_RATIO)) continue;
+    const cy = (rb[1] + rb[3]) / 2;
+    if (cy < rowY0 || cy > rowY1) continue;
+    ivs.push([Math.max(x0, rb[0]), Math.min(x1, rb[2])]);
+  }
+  if (ivs.length === 0) return x1 - x0;
+  ivs.sort((a, b) => a[0] - b[0]);
+  let maxGap = 0;
+  let cursor = x0;
+  for (const [a, b] of ivs) {
+    if (a > cursor && a - cursor > maxGap) maxGap = a - cursor;
+    if (b > cursor) cursor = b;
+  }
+  if (x1 - cursor > maxGap) maxGap = x1 - cursor;
+  return maxGap;
+}
+
+// 2.3(review H4):sup/sub 附屬 line 吸收。判定條件見 SUPERSCRIPT_MAX_HEIGHT_RATIO
+// 常數註解。吸收 = host 的 runs 併入附屬 runs 後重跑 finalizeLine(runs 按 x0
+// 排序 → 「(x⟨1⟩, ..., x⟨n⟩)」的下標文字落回正確位置)。一個 host 可吸多個附屬
+// (同行多個下標);附屬不可再當別人的 host(絕不連鎖)
+function absorbSupSubLines(lines, medianLineHeight) {
+  const mlh = medianLineHeight || 12;
+  const absorbedIdx = new Set();
+  const hostExtraRuns = new Map(); // host index → 併入的 runs
+  for (let si = 0; si < lines.length; si++) {
+    const s = lines[si];
+    const sTxt = (s.plainText || '').trim();
+    if (!sTxt || sTxt.length > SUP_APPENDAGE_MAX_CHARS) continue;
+    const sFs = s.fontSize || 0;
+    if (!(sFs > 0)) continue;
+    const cy = (s.bbox[1] + s.bbox[3]) / 2;
+    let host = -1;
+    let hostOverlap = -Infinity;
+    for (let hi = 0; hi < lines.length; hi++) {
+      if (hi === si || absorbedIdx.has(hi)) continue;
+      const h = lines[hi];
+      const hFs = h.fontSize || 0;
+      if (!(hFs > 0 && sFs <= hFs * SUPERSCRIPT_MAX_HEIGHT_RATIO)) continue;
+      if (!(cy >= h.bbox[1] && cy <= h.bbox[3])) continue;                       // 垂直中心落在 host span
+      if (!(s.bbox[0] >= h.bbox[0] - mlh && s.bbox[2] <= h.bbox[2] + mlh)) continue; // 水平在 host span(含餘裕)
+      // 多 host 命中時取水平重疊最大者(同視覺行的 host 幾乎必然重疊最大)
+      const overlap = Math.min(s.bbox[2], h.bbox[2]) - Math.max(s.bbox[0], h.bbox[0]);
+      if (overlap > hostOverlap) { hostOverlap = overlap; host = hi; }
+    }
+    if (host < 0) continue;
+    absorbedIdx.add(si);
+    if (!hostExtraRuns.has(host)) hostExtraRuns.set(host, []);
+    hostExtraRuns.get(host).push(...(s.runs || []));
+  }
+  if (absorbedIdx.size === 0) return lines;
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (absorbedIdx.has(i)) continue;
+    const extra = hostExtraRuns.get(i);
+    if (!extra) { out.push(lines[i]); continue; }
+    const l = lines[i];
+    const merged = { runs: l.runs.concat(extra), bbox: l.bbox.slice(), refTop: l.refTop };
+    for (const r of extra) merged.bbox = unionBBox(merged.bbox, r.bbox);
+    const fl = finalizeLine(merged);
+    if (l._formRowMerged) fl._formRowMerged = true; // 保留 2.1 的豁免標記
+    out.push(fl);
   }
   return out;
 }

@@ -47,6 +47,9 @@
 //     再生 → 104 條全 pass。繁體安全對照(吃飯/恒生)在破壞前後都 pass。
 //   ⑬ translatePage collect=0 分支的 convertOnly 靜默 gate 暫改 if(true)(一律跳
 //     noContent toast)→ case 8「不得跳任何 toast」fail。還原 → pass。
+//   ⑭ (2026-08-04 review A6)殭屍 marker reconcile 的 open shadow root 迴圈暫改
+//     `if (false && …)`(回到只掃主 root 的舊 code)→ case 7b「shadow 內殭屍 marker
+//     元素的新簡體內容應被重轉」fail(停在簡體原文)。還原 → 9 case 全 pass。
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
@@ -411,6 +414,74 @@ test('zh-convert case 7: SPA 元素重用殭屍 marker → 收集時 reconcile �
   const after = await evaluate(`document.querySelector('#p-simp').innerText`);
   expect(after, '殭屍 marker 元素的新簡體內容應被重轉(導航後)').toContain('導航後');
   expect(after, '不得殘留簡體(标记)').not.toContain('标记');
+
+  await page.close();
+});
+
+test('zh-convert case 7b: open shadow root 內的殭屍 marker 也要 reconcile 重轉', async ({
+  context,
+  localServer,
+}) => {
+  // Regression(2026-08-03 code review A6):reconcile 的 root.querySelectorAll 不穿
+  // shadow boundary,open shadow root 內被 framework 重用的元素殭屍 marker 永不清
+  // → 內容永遠停在原文(收集本身 processScope 有進 shadow,只有 reconcile 漏掉)。
+  // case 7 是主 root 版本,本 case 鎖 shadow 內同一條路徑。
+  const { page, evaluate } = await openFixture(context, localServer);
+
+  // 建 open shadow host,塞一段簡體內容
+  await evaluate(`
+    (() => {
+      const host = document.createElement('div');
+      host.id = 'sr-host';
+      document.body.appendChild(host);
+      const sr = host.attachShadow({ mode: 'open' });
+      const p = document.createElement('p');
+      p.id = 'sr-p';
+      p.textContent = '这是阴影内的简体软件内容，需要被转换成繁体。';
+      sr.appendChild(p);
+    })()
+  `);
+
+  // 第一輪 convertOnly:shadow 內段落轉換完成、帶 marker(v1.9.13 shadow descent)
+  await evaluate(`
+    window.__runDone = false;
+    window.__SK.translatePage({ convertOnly: true })
+      .then(() => { window.__runDone = true; })
+      .catch(() => { window.__runDone = true; });
+    null
+  `);
+  await waitRunDone(page, evaluate);
+  const converted = await evaluate(`document.querySelector('#sr-host').shadowRoot.querySelector('#sr-p').innerText`);
+  expect(converted, '第一輪 shadow 內轉換完成(前置條件)').toContain('軟體');
+
+  // 模擬 framework 重用 shadow 內元素:同顆元素文字換成新文章簡體,STATE 清空
+  const hasMarker = await evaluate(`
+    (() => {
+      const el = document.querySelector('#sr-host').shadowRoot.querySelector('#sr-p');
+      el.textContent = '这是导航后新文章的简体内容，阴影内元素被框架重用而标记残留。';
+      window.__SK.STATE.translated = false;
+      window.__SK.STATE.originalHTML?.clear?.();
+      window.__SK.STATE.originalText?.clear?.();
+      window.__SK.STATE.translatedHTML?.clear?.();
+      window.__SK.STATE.nodeValueMutateBackup?.clear?.();
+      return el.hasAttribute('data-shinkansen-translated') || el.hasAttribute('data-shinkansen-nodevalue-mutated');
+    })()
+  `);
+  expect(hasMarker, 'shadow 內重用元素應仍帶殭屍 marker(前置條件)').toBe(true);
+
+  // 第二輪 convertOnly:shadow 內殭屍 marker 應被 reconcile,新簡體內容照常轉換
+  await evaluate(`
+    window.__runDone = false;
+    window.__SK.translatePage({ convertOnly: true })
+      .then(() => { window.__runDone = true; })
+      .catch(() => { window.__runDone = true; });
+    null
+  `);
+  await waitRunDone(page, evaluate);
+
+  const after = await evaluate(`document.querySelector('#sr-host').shadowRoot.querySelector('#sr-p').innerText`);
+  expect(after, 'shadow 內殭屍 marker 元素的新簡體內容應被重轉(導航後)').toContain('導航後');
+  expect(after, 'shadow 內不得殘留簡體(标记)').not.toContain('标记');
 
   await page.close();
 });

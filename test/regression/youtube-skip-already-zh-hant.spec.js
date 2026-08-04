@@ -40,6 +40,10 @@
 //   SANITY(已驗證 2026-05-11):把 _AMBIGUOUS_LANGS_BY_TARGET['zh-TW'] 改成空集合
 //   → trad+lang=zh 那條 fail(TRANSLATE_SUBTITLE_BATCH 被呼叫)。還原後 pass。
 //
+// review C4 SANITY(已驗證 2026-08-04):暫時把 XHR listener 的 captionLang 改回只讀
+//   lang(不折 tlang)→ 「自動翻譯軌 lang=en&tlang=zh-Hant」case fail(TRANSLATE_SUBTITLE_BATCH
+//   被呼叫 2 次 = 燒 token 翻自己)。還原後 pass;captionLang=en 對照組確保無 tlang 軌不誤殺。
+//
 // v2.0.72 SANITY(已驗證 2026-07-30):同時破壞兩處——(1) SKIP_LANGS_BY_TARGET['zh-TW']
 //   拿掉 zh-Hans/zh-CN/zh-SG;(2) 模糊 zh 分支的 detectTextLang 判斷改 if(false) 還原成
 //   只走 isAlreadyInTarget → 正好 4 條新 case fail(zh-Hans / zh-CN / zh-SG 三條
@@ -210,6 +214,58 @@ test.describe('youtube-skip-already-zh-hant', () => {
       statusText,
       `captionLang=en 應顯示「翻譯中…」status,實際 ${JSON.stringify(statusText)}`,
     ).toBe('翻譯中…');
+
+    await page.close();
+  });
+
+  test('自動翻譯軌 lang=en&tlang=zh-Hant → 不送 TRANSLATE_SUBTITLE_BATCH(review C4,語言身份看 tlang)', async ({ context, localServer }) => {
+    // 自動翻譯軌 URL 形態經真實 YT 頁 probe 驗證(2026-08-04):lang=<原軌>&tlang=<目標>,
+    // body 已是 tlang 語言。舊 code 只看 lang → captionLang='en' 不 skip,把已是繁中的
+    // 內容再送 Gemini 翻一次(燒 token 翻自己)。上面 captionLang=en 對照組確保修法
+    // 沒把無 tlang 的英文軌一起誤殺。
+    const page = await context.newPage();
+    await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.ytp-caption-window-container', { timeout: 10_000, state: 'attached' });
+
+    const { evaluate } = await getShinkansenEvaluator(page);
+    await evaluate(`window.__SK.isYouTubePage = () => true`);
+
+    await evaluate(`
+      window.__translateBatchCalled = 0;
+      chrome.runtime.sendMessage = async function(msg) {
+        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH') {
+          window.__translateBatchCalled++;
+          const texts = (msg.payload && msg.payload.texts) || [];
+          return { ok: true, result: texts.map(t => '[ZH] ' + t),
+            usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0,
+                     billedInputTokens: 1, billedCostUSD: 0, cacheHits: 0 }};
+        }
+        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH_STREAM') {
+          return { ok: false, error: 'streaming disabled in test' };
+        }
+        return { ok: true };
+      };
+    `);
+
+    await evaluate(`window.__SK.translateYouTubeSubtitles()`);
+
+    await evaluate(`
+      window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
+        detail: {
+          url: 'https://www.youtube.com/api/timedtext?v=${VIDEO_ID}&lang=en&tlang=zh-Hant',
+          responseText: ${JSON.stringify(MOCK_JSON3)},
+        }
+      }));
+    `);
+    await page.waitForTimeout(800);
+
+    const calls = await evaluate(`window.__translateBatchCalled`);
+    expect(
+      calls,
+      `tlang=zh-Hant 自動翻譯軌應 skip 翻譯,TRANSLATE_SUBTITLE_BATCH 不該被呼叫,實際 ${calls} 次`,
+    ).toBe(0);
+    const captionLang = await evaluate(`window.__SK.YT.captionLang`);
+    expect(captionLang, 'captionLang 應為 tlang 值 zh-Hant').toBe('zh-Hant');
 
     await page.close();
   });

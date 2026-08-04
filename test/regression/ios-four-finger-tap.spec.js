@@ -27,6 +27,10 @@
 // SANITY CHECK 紀錄(fourFingerGesture 開關,已驗證):
 //   暫時把 isEnabled() 改成只回 SK.IS_IOS_BUILD===true(忽略 fourFingerEnabled)→
 //   「Options 關閉 fourFingerGesture → 四指 tap 不觸發」case fail(1 call),還原後全綠。
+// SANITY CHECK 紀錄(部分抬起取消長按,已驗證,2026-08-04):
+//   暫時把 content-touch.js touchend 部分抬起分支的 clearGestureTimer() 註解掉
+//   (回到「> 0 直接 return 不清計時器」舊 code)→ 「部分抬起後剩一指壓超過門檻
+//   不得誤發長按 slot 1」case fail(收到 slot 1 call),還原後全綠。
 // SANITY CHECK 紀錄(預設關閉,已驗證):
 //   暫時把 content-touch.js 的 `let fourFingerEnabled = false` 改回 true →
 //   「production 預設(無 key)→ 四指 tap 不觸發」case fail(getter 收到 true),還原後全綠。
@@ -223,4 +227,31 @@ test('四指長按達門檻 → 走 TRANSLATE_PRESET slot 1 → translatePage �
   expect(calls.length, '長按應觸發恰好 1 次(抬起不重複送 slot 2)').toBe(1);
   expect(calls[0].slot, '應走次要預設 slot 1(預設 Flash)').toBe(1);
   expect(calls[0].google, 'DEFAULT preset slot 1 是 gemini,不該走 translatePageGoogle').toBeUndefined();
+});
+
+test('四指按下後抬三指剩一指壓超過門檻 → 不觸發 slot 1(部分抬起取消長按)', async ({ context, localServer }) => {
+  // Regression(2026-08-03 code review D2):touchend 在 e.touches.length > 0 時
+  // 直接 return 不清計時器 → 抬起三指、剩一指壓超過 LONGPRESS_MS,計時器照樣
+  // 觸發 FOUR_FINGER_LONGPRESS 誤發 slot 1。長按語意 = 四指「全程」壓住,
+  // 任一指抬起即取消長按候選。上一個 case(四指壓好壓滿 → slot 1)是本 case 的
+  // 正向對照組,確保修法沒把合法長按一起殺掉。
+  const { page, evaluate } = await setupPage(context, localServer, { iosBuild: true, enableGesture: true });
+
+  await page.evaluate(`
+    (() => {
+      const ts = window.__mkTouches(4);
+      window.__touch('touchstart', ts);
+      // 立即抬起三指:touchend 的 e.touches = 剩餘 1 指(不含已抬起的)
+      window.__touch('touchend', ts.slice(0, 1));
+    })()
+  `);
+  // 剩一指壓超過 LONGPRESS_MS(600)——舊 code 計時器未清,此處會誤發 slot 1
+  await page.waitForTimeout(900);
+  await page.evaluate(`window.__touch('touchend', [])`); // 最後一指抬起
+
+  await page.waitForTimeout(800); // 給訊息 round-trip 時間(若誤發的話)
+  const calls = await evaluate(`window.__tapCalls`);
+  expect(calls.filter((c) => c.slot === 1).length, '部分抬起後剩一指壓超過門檻不得誤發長按 slot 1').toBe(0);
+  // elapsed >= LONGPRESS_MS 的防禦性早退也擋 tap → 全程不該有任何觸發
+  expect(calls.length, '此手勢全程不該觸發任何翻譯').toBe(0);
 });

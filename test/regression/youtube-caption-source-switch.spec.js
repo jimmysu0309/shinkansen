@@ -26,6 +26,11 @@
 //       → case 1 fail（translatedWindows / captionMap 未被清）→ 還原 pass。
 //   (b) 暫時把 translateWindowFrom 結尾的 `_myCaptionGen !== (YT.captionSourceGen || 0)`
 //       分支拿掉 → case 3 fail（舊軌 in-flight 完成後仍標 translatedWindows）→ 還原 pass。
+// SANITY 紀錄（case 6 / review C4,已驗證 2026-08-04）:
+//   暫時把 XHR listener 的 captionLang 改回只讀 lang(不折 tlang)→ case 6 fail
+//   （captionLang='en',sourceId 與原軌相同不重置）→ 還原 pass。
+//   自動翻譯軌 URL 形態(lang=en&tlang=zh-Hant)經真實 YT 頁 probe 驗證(2026-08-04,
+//   jNQXAC9IVRw 切「英文→中文(繁體)」自動翻譯軌抓 timedtext request)。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -263,6 +268,62 @@ test.describe('youtube-caption-source-switch', () => {
     `);
     expect(r.captionLang, 'SPA reset 後 captionLang 應為 null').toBeNull();
     expect(r.captionSourceId, 'SPA reset 後 captionSourceId 應為 null').toBeNull();
+
+    await page.close();
+  });
+
+  test('case 6(review C4): 切 YT 自動翻譯軌(lang=en → lang=en&tlang=zh-Hant)→ 身份變更重置 + captionLang=tlang', async ({ context, localServer }) => {
+    // 自動翻譯軌 URL 形態經真實 YT 頁 probe 驗證(2026-08-04):lang=<原軌>&tlang=<目標>,
+    // body 已是 tlang 語言。舊 code sourceId 只含 lang → 與原軌同 id,mid-session 切
+    // 自動翻譯軌不重置簿記;captionLang 也停在 'en' → skip 判斷失效(把 zh-Hant 內容
+    // 再送 Gemini 翻一次)。修法:tlang 存在時折進 captionLang(sourceId 用 captionLang
+    // 組,連帶修正)。
+    const { page, evaluate } = await setupPage(context, localServer);
+
+    // 原軌(en)進來,建立來源身份 + 模擬已翻視窗簿記
+    await evaluate(dispatchCaptions('en', JSON3_EN));
+    await page.waitForTimeout(100);
+    await evaluate(`
+      const YT = window.__SK.YT;
+      YT.translatedWindows.add(0);
+      YT.captionMap.set('hello world', '哈囉世界');
+      window.__genBefore = YT.captionSourceGen;
+    `);
+
+    // 切「英文 → 自動翻譯 → 中文(繁體)」軌:同 lang=en 但多 tlang=zh-Hant
+    const JSON3_ZH_HANT = JSON.stringify({
+      events: [
+        { tStartMs: 0,    segs: [{ utf8: '哈囉世界' }] },
+        { tStartMs: 3000, segs: [{ utf8: '這是一個測試' }] },
+      ],
+    });
+    await evaluate(`
+      window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
+        detail: {
+          url: 'https://www.youtube.com/api/timedtext?v=${VIDEO_ID}&lang=en&tlang=zh-Hant',
+          responseText: ${JSON.stringify(JSON3_ZH_HANT)},
+        }
+      }));
+    `);
+    await page.waitForTimeout(100);
+
+    const r = await evaluate(`
+      (() => {
+        const YT = window.__SK.YT;
+        return {
+          captionLang: YT.captionLang,
+          translatedWindowsSize: YT.translatedWindows.size,
+          captionMapSize: YT.captionMap.size,
+          genBumped: YT.captionSourceGen > window.__genBefore,
+          sourceId: YT.captionSourceId,
+        };
+      })()
+    `);
+    expect(r.captionLang, '自動翻譯軌語言身份應以 tlang 為準').toBe('zh-Hant');
+    expect(r.sourceId, 'sourceId 應含 tlang 語言(與原軌不同 id)').toContain('zh-Hant');
+    expect(r.translatedWindowsSize, '舊軌 translatedWindows 應被清空(身份變更)').toBe(0);
+    expect(r.captionMapSize, '舊軌 captionMap 應被清空(身份變更)').toBe(0);
+    expect(r.genBumped, 'captionSourceGen 應遞增').toBe(true);
 
     await page.close();
   });
