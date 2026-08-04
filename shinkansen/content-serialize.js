@@ -94,7 +94,10 @@
           }
           continue;
         }
-        if (child.tagName === 'IMG') continue; // atomic(v1.9.31)
+        // atomic(v1.9.31 IMG；v2.0.78 補 media-like 鏡像——v2.0.61 序列化端把
+        // media-like 改 atomic 後這裡漏同步，media-like 內部 anchor/b/i 被計進
+        // paired 數 → count 虛高誤觸發 degrade → 真實 paired ≤5 的段落連結全丟)
+        if (isGtAtomicMedia(child)) continue;
         if (SK.GT_INLINE_TAGS.has(child.tagName)) {
           count++;
           if (count > GT_MAX_PAIRED_SLOTS) return;
@@ -105,6 +108,13 @@
     }
     walk(topLevelNodes);
     return count;
+  }
+
+  // v2.0.78（批次 4 A4/A5）：IMG 與 media-like 元素的 atomic 判定——序列化端與
+  // countPairedInlineForGT 鏡像共用同一條（v2.0.61 序列化端加 media-like 時鏡像漏同步，
+  // 抽共用讓下次改判定只有一處）。atomic 不產 paired 標記、不透明展開。
+  function isGtAtomicMedia(child) {
+    return child.tagName === 'IMG' || SK.isMediaLikeElement(child);
   }
 
   // v1.9.31: 判斷 element 是否含 element child(用於 Google MT 對 anchor atomic 判斷)。
@@ -268,7 +278,11 @@
           // v2.0.61:media-like 元素(含無文字自訂元素,如 AMP 元件)比照 IMG atomic,
           // 理由同 LLM 路徑 serializeNodeIterable 對應分支(透明展開會拆掉元件本體)。
           // atomic 不產 paired 標記,不影響 GT_MAX_PAIRED_SLOTS 計數。
-          if (!degrade && (child.tagName === 'IMG' || SK.isMediaLikeElement(child))) {
+          // v2.0.78（批次 4 A4）：拿掉原 `!degrade` gate——degrade 只該關 paired 標記，
+          // atomic 本就不受 GT paired 上限影響(同上方零文字 BUTTON atomic 不 gate 的
+          // 設計理由)；原 gate 讓 degrade 段落的 emoji IMG 落到尾端透明展開(IMG 無
+          // 子節點)從 source 流消失——v1.9.31 修過的 bug 在 degrade 模式復發
+          if (isGtAtomicMedia(child)) {
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
             out += '【*' + idx + '】';

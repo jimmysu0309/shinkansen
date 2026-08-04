@@ -124,3 +124,34 @@ test.describe('v2.0.52 glossary prompt 升級路徑：舊 default 字面值視�
     expect(UNIVERSAL_GLOSSARY_PROMPT).toContain('never a category token');
   });
 });
+
+// ── code review 2026-08-03 批次 4 F1:strip 規則錨定預設字面值 ──
+//
+// 原 bug:_normalizePromptForComparison 的 <source_fidelity> strip 規則用
+// `[\s\S]*?` 吞「任意內容」——使用者只客製區塊內文後儲存，saved 與 default
+// normalize 後相等 → 誤判未客製 → runtime 靜默改吃預設 prompt，客製內容失效無提示。
+// 修法：strip 規則改錨定預設區塊完整字面值(從 prompt 常數抽，單一資料源)。
+//
+// SANITY 紀錄(已驗證，2026-08-04)：暫時把 storage.js 的
+// _PROMPT_DEFAULT_BLOCK_STRIP_RES 改回萬用字元版
+// `/<source_fidelity>[\s\S]*?<\/source_fidelity>\n/g` → 「只客製 source_fidelity
+// 內文」case fail(回預設 prompt 而非客製版)→ 還原 → pass。
+test.describe('F1：只客製區塊內文必須視為已客製', () => {
+  test('只客製 <source_fidelity> 內文(zh-TW)→ 原樣 return，不得靜默改吃預設', () => {
+    const customized = DEFAULT_GLOSSARY_PROMPT.replace(
+      /<source_fidelity>[\s\S]*?<\/source_fidelity>/,
+      '<source_fidelity>\n我的自訂規則：source 一律轉成羅馬拼音。\n</source_fidelity>',
+    );
+    expect(customized).not.toBe(DEFAULT_GLOSSARY_PROMPT); // 前置：確實有改到
+    expect(getEffectiveGlossaryPrompt('zh-TW', customized)).toBe(customized);
+  });
+
+  test('只客製 <source_fidelity> 內文(en universal 注入後)→ 原樣 return', () => {
+    const savedEn = UNIVERSAL_GLOSSARY_PROMPT.replaceAll('{targetLanguage}', LANG_LABELS.en)
+      .replace(
+        /<source_fidelity>[\s\S]*?<\/source_fidelity>/,
+        '<source_fidelity>\nMy custom rule: always romanize the source.\n</source_fidelity>',
+      );
+    expect(getEffectiveGlossaryPrompt('en', savedEn)).toBe(savedEn);
+  });
+});

@@ -118,3 +118,33 @@ test.describe('v2.0.75 SYSTEM / DOC prompt 升級路徑：舊 default 字面值�
     expect(src).toMatch(/migrateClearTranslationCacheOnce\(V2075_PROMPT_CACHE_FLAG\)/);
   });
 });
+
+// ── code review 2026-08-03 批次 4 F1:strip 規則錨定預設字面值 ──
+//
+// 原 bug:<document_number_fidelity> strip 規則用 `[\s\S]*?` 吞任意內容——使用者
+// 只客製區塊內文後儲存，normalize 後與 default 相等 → 誤判未客製 → runtime 靜默
+// 改吃預設 prompt。修法：錨定預設區塊字面值(DOC_NUMBER_FIDELITY_ZH / _EN 常數本體)。
+//
+// SANITY 紀錄(已驗證，2026-08-04)：暫時把 storage.js 的
+// _PROMPT_DEFAULT_BLOCK_STRIP_RES 改回萬用字元版
+// `/\n*<document_number_fidelity>[\s\S]*?<\/document_number_fidelity>/g` →
+// 「只客製 number 區塊內文」兩 case fail(回預設而非客製版)→ 還原 → pass。
+test.describe('F1：只客製 <document_number_fidelity> 內文必須視為已客製', () => {
+  test('zh-TW DOC：只改區塊內文 → 原樣 return，不得靜默改吃預設', () => {
+    const customized = DEFAULT_DOC_SYSTEM_PROMPT.replace(
+      /<document_number_fidelity>[\s\S]*?<\/document_number_fidelity>/,
+      '<document_number_fidelity>\n我的自訂數值規則：所有金額改用中文大寫數字。\n</document_number_fidelity>',
+    );
+    expect(customized).not.toBe(DEFAULT_DOC_SYSTEM_PROMPT);
+    expect(getEffectiveDocSystemPrompt('zh-TW', customized)).toBe(customized);
+  });
+
+  test('en DOC(universal 注入後)：只改區塊內文 → 原樣 return', () => {
+    const effectiveEnDefault = getEffectiveDocSystemPrompt('en', '');
+    const customized = effectiveEnDefault.replace(
+      /<document_number_fidelity>[\s\S]*?<\/document_number_fidelity>/,
+      '<document_number_fidelity>\nMy custom rule: spell out all amounts.\n</document_number_fidelity>',
+    );
+    expect(getEffectiveDocSystemPrompt('en', customized)).toBe(customized);
+  });
+});

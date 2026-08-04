@@ -297,6 +297,8 @@
         <span class="reader-toolbar-spacer"></span>
         <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照譯文（每張原頁後接一張譯文頁）" data-i18n="doc.reader.btn.download" data-i18n-attr-title="doc.reader.btn.download.title">下載譯文</button>
       </div>
+      <!-- 翻譯整體失敗（translateDocument throw）的原因顯示；鏡像 EPUB 的 chapters-error -->
+      <div id="reader-error" class="error-banner" hidden></div>
       <div class="reader-grid">
         <div class="reader-col reader-col-original" id="reader-col-original"></div>
         <div class="reader-col reader-col-translated" id="reader-col-translated"></div>

@@ -188,8 +188,18 @@ export async function translateBatch(texts, settings, glossary, fixedGlossary, f
       result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
     } catch (err) {
       // 多 chunk 中途失敗：前面 chunk 已付費——把累積 usage 掛上 err 讓呼叫端記帳
-      // (對齊 lib/gemini.js translateBatch 的 err.usage 慣例，兩引擎對帳準確度一致)
-      if (err && typeof err === 'object' && !err.usage) err.usage = { ...usage };
+      // (對齊 lib/gemini.js translateBatch 的 err.usage 慣例，兩引擎對帳準確度一致)。
+      // v2.0.78:err.usage 已存在(perSegmentFallback 半途 throw 掛上該 chunk 的
+      // aggUsage）時仍須「相加」外層已完成 chunk 的累積——之前 `!err.usage` 直接跳過，
+      // 前面成功 chunk 的已付費 token 被丟棄（gemini.js:728 是相加，兩引擎 drift）
+      if (err && typeof err === 'object') {
+        const partial = err.usage || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+        err.usage = {
+          inputTokens: usage.inputTokens + (partial.inputTokens || 0),
+          outputTokens: usage.outputTokens + (partial.outputTokens || 0),
+          cachedTokens: usage.cachedTokens + (partial.cachedTokens || 0),
+        };
+      }
       throw err;
     }
     for (let j = 0; j < result.parts.length; j++) out[start + j] = result.parts[j];

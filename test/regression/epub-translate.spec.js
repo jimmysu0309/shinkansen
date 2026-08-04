@@ -2797,3 +2797,79 @@ test('翻譯入口防重入:同 tick 連點兩下只跑一輪(批次段數等於
   expect(doubled, '雙擊批次段數應等於單擊基準(防重入,不可翻倍)').toBe(baseline);
   await page2.close();
 });
+
+// ── code review 2026-08-03 批次 5 G4：預覽 blur 零變動不烙後處理視圖 ──
+//
+// 原 bug:appendPreviewBlock 的 blur 早退條件是
+// `el.innerHTML === before && !b.editedHtml`——對「有 editedHtml、內容零變動」的
+// block 恆不早退：已編輯 block 渲染的是 dedupe 後處理視圖(dedupe.get(id)?.editedHtml
+// ?? b.editedHtml)，點進去再點出去就把下載期後處理版本存成手動編輯資料並排入
+// session 存檔；之後取消 dedupe 勾選 / 改術語表都回不到未處理狀態，
+// computeAnnotationDedupe 的「首次出現」判定位移。
+// 修法：早退條件改 `el.innerHTML === before`(不論 editedHtml 有無)。
+//
+// 驅動方式：「渲染視圖 ≠ 儲存值」用 editedHtml 的 HTML normalize 差異代理
+// (存 `<em >`(tag 內帶空格),innerHTML 讀出為 normalize 後的 `<em>`)——與
+// dedupe 後處理視圖走同一條 blur 判斷路徑，信號等價且 fixture 構造成本低。
+//
+// SANITY 紀錄(已驗證，2026-08-04)：暫時把 blur 早退條件改回
+// `el.innerHTML === before && !b.editedHtml` → 「零變動 blur 不覆寫 editedHtml」
+// 斷言 fail(editedHtml 被 normalize 視圖覆寫，<em > 空格消失)→ 還原 → pass。
+test('G4：已編輯 block 點進點出(零變動)不得把渲染視圖烙進 editedHtml', async ({ context, extensionId }) => {
+  const page = await openDocPage(context, extensionId);
+  await page.evaluate(() => chrome.storage.sync.set({ targetLanguage: 'zh-TW' }));
+  await uploadEpub(page);
+  await selectOnlyChapter(page, 2);
+  await page.click('#chapters-translate-btn');
+  await page.waitForSelector('#stage-chapters:not([hidden])', { timeout: 15_000 });
+
+  // 給一個 done block 設「儲存形態 ≠ 渲染 normalize 形態」的 editedHtml
+  const stored = '眾人跟著<em >甲</em>前行。';
+  const blockId = await page.evaluate((html) => {
+    const doc = window.__skEpubDoc;
+    const blocks = doc.chapters[2].blocks.filter((b) => b.translationStatus === 'done');
+    blocks[1].editedHtml = html;
+    blocks[1].translation = '眾人跟著甲前行。';
+    window.__g4BlockId = blocks[1].blockId;
+    return blocks[1].blockId;
+  }, stored);
+
+  await page.locator('.chapter-preview-btn').first().click();
+  await page.waitForSelector('#stage-epub-preview:not([hidden])', { timeout: 10_000 });
+
+  // 對已編輯 block 點進去再點出去(focus + blur)，內容零變動。
+  // 用 data-sk-block-id 精準鎖定(預覽內可能有其他 is-edited 元素)
+  const el = page.locator(`.epub-preview-block[data-sk-block-id="${blockId}"]`);
+  await el.evaluate((node) => {
+    node.focus();
+    node.dispatchEvent(new Event('blur'));
+  });
+
+  const after = await page.evaluate(() => {
+    const doc = window.__skEpubDoc;
+    for (const ch of doc.chapters) {
+      for (const b of (ch.blocks || [])) {
+        if (b.blockId === window.__g4BlockId) return b.editedHtml;
+      }
+    }
+    return null;
+  });
+  expect(after, '零變動 blur 不得覆寫 editedHtml(儲存形態必須原封不動)').toBe(stored);
+
+  // 對照組：真編輯 → editedHtml 更新
+  await el.evaluate((node) => {
+    node.innerHTML = '真的改了<em>內容</em>喔';
+    node.dispatchEvent(new Event('blur'));
+  });
+  const after2 = await page.evaluate(() => {
+    const doc = window.__skEpubDoc;
+    for (const ch of doc.chapters) {
+      for (const b of (ch.blocks || [])) {
+        if (b.blockId === window.__g4BlockId) return b.editedHtml;
+      }
+    }
+    return null;
+  });
+  expect(after2).toContain('真的改了');
+  await page.close();
+});

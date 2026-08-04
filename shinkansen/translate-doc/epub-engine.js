@@ -98,7 +98,18 @@ function decodeEntryText(u8) {
 // 相對路徑解析（zip 內 path，無 scheme）：resolvePath('OEBPS/text', '../images/a.png')
 // → 'images/a.png'。href 可能帶 URL encode（%20）。
 export function resolvePath(baseDir, href) {
-  const raw = decodeURIComponent((href || '').split('#')[0]);
+  // v2.0.78（批次 5 H2）：decode 失敗 fallback 原字串——href 含裸 `%`（非合法
+  // escape，如 `50%off.xhtml`，手工／劣質轉檔 EPUB 會出現）時 decodeURIComponent
+  // throw URIError，呼叫點（parseEpub / parseTocTitles）都沒 try → 一個壞 href
+  // 毀整本書 parse，且錯誤碼非 EpubParseError、UI 只能顯示 generic 錯誤。
+  // zip 內 entry 名若本來就含字面 %，原字串反而是對的查找 key
+  const _rawHref = (href || '').split('#')[0];
+  let raw;
+  try {
+    raw = decodeURIComponent(_rawHref);
+  } catch (_) {
+    raw = _rawHref;
+  }
   if (!raw) return '';
   const parts = (baseDir ? baseDir.split('/') : []).filter(Boolean);
   for (const seg of raw.split('/')) {

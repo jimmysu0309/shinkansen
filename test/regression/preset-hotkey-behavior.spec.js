@@ -2,9 +2,12 @@
 //
 // 驗證 content.js 的 `handleTranslatePreset(slot)`：
 //   行為 (a) 閒置：依 preset 的 engine + model 啟動翻譯
-//              - slot 1: Gemini Flash Lite (gemini-3.1-flash-lite)
-//              - slot 2: Gemini Flash (gemini-3-flash-preview)
+//              - slot 1: Gemini Flash (gemini-3-flash-preview)
+//              - slot 2: Gemini Flash Lite (gemini-3.1-flash-lite)
 //              - slot 3: Google Translate (no modelOverride)
+//              （v2.0.78 批次 4 B4：test 環境 storage 未寫入 → 走 content-ns.js
+//                fallback；v1.10.67 storage.js 對調 slot 1/2 後 fallback 漏跟，
+//                本 spec 原斷言鎖在漂移的舊 fallback 上，隨 B4 修正一併對齊）
 //   行為 (b) 翻譯中：呼叫任一 slot 都 abort（`STATE.abortController.abort()`）
 //   行為 (c) 已翻譯（v1.10.57 起以 DOM marker / SK.isPageTranslated 為裁決源，非
 //            STATE.translated 旗標）：呼叫任一 slot 都 restorePage（STATE.translated 翻 false）
@@ -49,7 +52,7 @@ async function setupEvaluatorAndStubs(page) {
   return { evaluate };
 }
 
-test('preset-hotkey-behavior: idle + slot 1 → translatePage(Gemini Flash Lite) 呼叫，translatePageGoogle 不呼叫', async ({
+test('preset-hotkey-behavior: idle + slot 1 → translatePage(Gemini Flash) 呼叫，translatePageGoogle 不呼叫', async ({
   context,
   localServer,
 }) => {
@@ -70,13 +73,13 @@ test('preset-hotkey-behavior: idle + slot 1 → translatePage(Gemini Flash Lite)
   expect(tp.length, `translatePage 應被呼叫 1 次，實際 ${tp.length}`).toBe(1);
   expect(tpg.length, `translatePageGoogle 不應被呼叫，實際 ${tpg.length}`).toBe(0);
   expect(tp[0].slot).toBe(1);
-  expect(tp[0].modelOverride).toBe('gemini-3.1-flash-lite');
-  expect(tp[0].label).toBe('Flash Lite');
+  expect(tp[0].modelOverride).toBe('gemini-3-flash-preview');
+  expect(tp[0].label).toBe('Flash');
 
   await page.close();
 });
 
-test('preset-hotkey-behavior: idle + slot 2 → translatePage(Gemini Flash)', async ({
+test('preset-hotkey-behavior: idle + slot 2 → translatePage(Gemini Flash Lite)', async ({
   context,
   localServer,
 }) => {
@@ -95,8 +98,8 @@ test('preset-hotkey-behavior: idle + slot 2 → translatePage(Gemini Flash)', as
   expect(tp.length).toBe(1);
   expect(tpg.length).toBe(0);
   expect(tp[0].slot).toBe(2);
-  expect(tp[0].modelOverride).toBe('gemini-3-flash-preview');
-  expect(tp[0].label).toBe('Flash');
+  expect(tp[0].modelOverride).toBe('gemini-3.1-flash-lite');
+  expect(tp[0].label).toBe('Flash Lite');
 
   await page.close();
 });

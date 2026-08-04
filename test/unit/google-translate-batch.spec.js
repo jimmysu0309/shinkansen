@@ -402,3 +402,79 @@ test('2-8: 25 段但僅部分 echo → 不觸發 skip(非全 echo),echo 段仍�
     globalThis.fetch = originalFetch;
   }
 });
+
+// ── code review 2026-08-03 批次 2 E3:SEP 中間丟失 → 整組 retry ──
+//
+// 原 bug:`parts = full.split(SEP)` 後只逐位比對，`parts[j] == null`(尾端缺)才進
+// retry。Google 只吞掉「中間」一個 SEP 時(程式註解自己承認會發生),parts 整體前移
+// ——合併點之後每段都拿到「上一段的譯文」，非 null 也非 echo → 三檢查全 pass，錯位
+// 譯文靜默回傳並在 background cache.setBatch 永久快取；只有最後一段(undefined)進 retry。
+//
+// 修法：`parts.length !== group.length` 時整組視為 SEP 邊界丟失，全數用原文
+// placeholder 進逐筆 retry；並以 hadSepLoss 旗標把這批 retry 排除在
+// 「>20 段全 echo = 整頁已是 target」的 skip 推定之外(placeholder 也是原文，
+// 跟 echo 分不開，skip 會讓整組永遠停在原文)。
+//
+// SANITY 紀錄(已驗證，2026-08-04)：暫時把 google-translate.js 的
+// `if (parts.length !== group.length) { ... continue; }` 整段註解掉 →
+// 「SEP 中間丟失」case fail(translations[0] 收到 '[ZH] Alpha[ZH] Beta' 錯位串、
+// translations[1] 收到 '[ZH] Gamma')、「25 段 SEP 丟失」case fail(translations
+// 全維持原文，retry 被全 echo skip 誤殺)→ 還原 → 兩條 pass。
+
+test('E3: SEP 中間丟失(3 段回 2 parts)→ 整組逐筆 retry，譯文不錯位', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    const match = String(url).match(/[?&]q=([^&]*)/);
+    const q = match ? decodeURIComponent(match[1]) : '';
+    const sourceParts = q.split(SEP);
+    if (sourceParts.length > 1) {
+      // initial batch：模擬 Google 吞掉第一個 SEP——前兩段譯文黏成一段，回 2 parts
+      const joined = [`[ZH] ${sourceParts[0]}[ZH] ${sourceParts[1]}`, `[ZH] ${sourceParts[2]}`].join(SEP);
+      return { ok: true, json: async () => [[[joined, q]]] };
+    }
+    return { ok: true, json: async () => [[[`[ZH] ${q}`, q]]] }; // retry 真翻
+  };
+
+  try {
+    const inputs = ['Alpha', 'Beta', 'Gamma'];
+    const { translations } = await translateGoogleBatch(inputs);
+
+    // 1 initial + 3 retry(整組進 retry)
+    expect(fetchCalls.length).toBe(4);
+    // 原 bug:translations = ['[ZH] Alpha[ZH] Beta', '[ZH] Gamma', retry(Gamma)]——
+    // 中段之後全部錯位。修後整組 retry 救回正確對應
+    expect(translations).toEqual(['[ZH] Alpha', '[ZH] Beta', '[ZH] Gamma']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('E3: 25 段 SEP 丟失 → hadSepLoss 不套「整頁已是 target」skip,retry 全數救回', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    const match = String(url).match(/[?&]q=([^&]*)/);
+    const q = match ? decodeURIComponent(match[1]) : '';
+    const sourceParts = q.split(SEP);
+    if (sourceParts.length > 1) {
+      // initial：吞掉一個 SEP → 25 段只回 24 parts(前兩段黏住)
+      const parts = sourceParts.map(s => `[ZH] ${s}`);
+      const merged = [parts[0] + parts[1], ...parts.slice(2)].join(SEP);
+      return { ok: true, json: async () => [[[merged, q]]] };
+    }
+    return { ok: true, json: async () => [[[`[ZH] ${q}`, q]]] }; // retry 真翻
+  };
+
+  try {
+    const inputs = Array.from({ length: 25 }, (_, i) => `Sentence number ${i}`);
+    const { translations } = await translateGoogleBatch(inputs);
+
+    // placeholder=原文跟 echo 分不開；沒 hadSepLoss 旗標時會被「>20 段全 echo」skip
+    // 誤殺(fetchCalls 停在 1、translations 全原文)。修後 1 initial + 25 retry
+    expect(fetchCalls.length).toBe(26);
+    expect(translations).toEqual(inputs.map(t => `[ZH] ${t}`));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

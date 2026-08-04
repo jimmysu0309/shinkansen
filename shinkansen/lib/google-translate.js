@@ -113,9 +113,25 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
   // 改 sl=auto → sl=fixed 解不掉(我們不知道每 unit 真實源語言);最穩的補救
   // 是每筆獨立再打一次:單筆送 sl=auto 偵測通常更準,真翻得出來。
   const needsRetry = [];
+  let hadSepLoss = false;  // v2.0.78:SEP 丟失的 retry 不可被「整頁已是 target」skip 誤殺
   for (const group of groups) {
     const joined = group.map(g => g.text).join(SEP);
     const parts = await _fetchTranslate(joined, tl);
+    // v2.0.78：段數不符 = SEP 邊界丟失。原本只擋「尾端缺（parts[j] == null）」——
+    // Google 吞掉「中間」一個 SEP 時 parts 整體前移，合併點之後每段都拿到上一段的
+    // 譯文（非 null 也非 echo，三檢查全 pass）→ 錯位譯文靜默回傳並被呼叫端永久寫進
+    // 快取。逐位對應在長度不符時整體不可信，整組改用原文 placeholder 進逐筆 retry。
+    if (parts.length !== group.length) {
+      await debugLog('warn', 'api', 'google batch SEP boundary lost — whole group to retry', {
+        expected: group.length, got: parts.length,
+      });
+      hadSepLoss = true;
+      for (const g of group) {
+        result[g.idx] = g.text;
+        needsRetry.push(g);
+      }
+      continue;
+    }
     group.forEach((g, j) => {
       const tr = parts[j];
       if (tr == null) {
@@ -138,7 +154,8 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
   // → 全部進 needsRetry → N 段 = N 次 serial 重打非官方端點(請求密度高,IP 被封風險)。
   // 「>20 段且全數 echo」視為「整頁已是 target」直接放棄 retry(echo 值本來就是正解);
   // 其餘 retry 逐筆之間加小 delay 降低請求密度。
-  const allEcho = needsRetry.length === texts.length;
+  // hadSepLoss 時 placeholder 也是原文、跟 echo 分不開——不可套「整頁已是 target」推定
+  const allEcho = !hadSepLoss && needsRetry.length === texts.length;
   if (needsRetry.length > RETRY_SKIP_THRESHOLD && allEcho) {
     await debugLog('info', 'api', 'google batch retry skipped — whole page already in target', {
       echoed: needsRetry.length,

@@ -216,6 +216,21 @@
       // {key, v, t}。診斷「壞譯文寫進快取」類 bug（例 echo 原文進快取）時，
       // GET_CACHE_STATS 只有條數看不到內容，必須能對單條 entry 驗屍。
       // 上限 detail.limit（預設 5）防整池 dump。
+      //
+      // v2.0.78（隱私 gate）：bridge 對所有頁面常開，快取是全域池（內含使用者在
+      // Gmail / 內部文件等其他站翻過的內容全文)——惡意頁 dispatch bridge 事件
+      // 換關鍵字反覆探測即可跨站撈譯文。僅 dev tail 版本(四段版本號 = unpacked
+      // working tree）啟用；商店版（三段）直接回 error。除錯本來就跑 dev tail，
+      // 除錯能力不受影響。
+      let _isDevTail = false;
+      try {
+        const _rt = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
+        _isDevTail = String(_rt?.getManifest?.().version || '').split('.').length >= 4;
+      } catch (_) { /* orphan context 等取不到版本 → 視同商店版拒絕 */ }
+      if (!_isDevTail) {
+        respond({ ok: false, error: 'GET_CACHE_PEEK disabled in release build (dev tail only)' });
+        return;
+      }
       const _contains = String((e.detail && e.detail.contains) || '');
       const _limit = Math.max(1, Math.min(20, (e.detail && e.detail.limit) || 5));
       try {
@@ -1732,35 +1747,68 @@
     }
   };
 
-  // v1.8.14: abort 路徑共用的「還原 originalHTML + clear + translated=false」。
-  // Gemini abort(L840)+ Google abort(L1219）兩處原本各自寫一份。
-  // SPA reset(content-spa.js:resetForSpaNavigation）語意不同（頁面已變不需還原
-  // 舊頁 innerHTML)，不抽進這條 helper。
-  function restoreOriginalHTMLAndReset() {
-    // v1.10.46(批次 2-4):還原時 abort in-flight 的 rescan 批次(同 restorePage)
-    SK.abortRescanRuns();
-    if (STATE.originalHTML.size > 0) {
-      // v1.8.20: SPA framework rerender 後 el 可能已 detached，直接寫 innerHTML 不會報錯
-      // 但對使用者頁面零作用。記下 detached 數量讓 Jimmy 從 Debug 分頁能看出原因。
-      let detached = 0;
-      STATE.originalHTML.forEach((originalHTML, el) => {
-        if (!el.isConnected) { detached++; return; }
-        // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 翻譯前用
-        // el.innerHTML 讀出來自存的原始 DOM 字串），純還原用,無 user input 流入。
-        el.innerHTML = originalHTML;
-        el.removeAttribute('data-shinkansen-translated');
-        SK.restoreLocaleStyling?.(el);
-      });
-      STATE.originalHTML.clear();
-      STATE.translatedHTML?.clear?.();
-      STATE.translatedHTMLByText?.clear?.();
-      if (detached > 0) {
-        SK.sendLog?.('warn', 'system', 'restoreOriginalHTMLAndReset: skipped detached elements', { detached });
-      }
+  // v2.0.78（批次 3 B3）：single / dual / nv-mutate 三軌注入痕跡還原的共用步驟。
+  // restorePage 與 restoreOriginalHTMLAndReset（取消翻譯的立即還原）先前是同一份事實
+  // 雙實作：取消路徑只迭代 originalHTML（single 軌），dual sibling wrapper 與
+  // framework-managed nodeValue 譯文全數殘留——「已取消」toast 跳了但頁面留譯文，
+  // `isPageTranslated()` = true 而 `STATE.translated` = false（v1.10.57 要消滅的殭屍態）；
+  // 殘留 data-shinkansen-dual-source 讓下一輪 injectDual 對這些段落早退。收斂成單一
+  // 函式雙路徑共用。回傳 skip 掉的 detached 數供 caller log。
+  // SPA reset（content-spa.js:resetForSpaNavigation）另有 STATE.cache / badge / toast
+  // 生命週期差異，維持獨立實作不抽進來。
+  function restoreInjectedDom() {
+    // dual wrapper（同時清原段落的 data-shinkansen-dual-source attribute）。
+    // 混合模式（single 全局 + framework-managed 段走 dual）下 translationCache 有項
+    // 即代表有 wrapper 要清（v1.9.27）
+    if (STATE.translatedMode === 'dual' || (STATE.translationCache && STATE.translationCache.size > 0)) {
+      SK.removeDualWrappers?.();
     }
+    // framework-managed nodeValue mutate：對 el 內存的每個 {node, originalValue} 寫回
+    if (STATE.nodeValueMutateBackup && STATE.nodeValueMutateBackup.size > 0) {
+      STATE.nodeValueMutateBackup.forEach((backup, el) => {
+        backup.forEach(({ node, originalValue }) => {
+          if (node && node.isConnected) {
+            try { node.nodeValue = originalValue; } catch (_) {}
+          }
+        });
+        try {
+          el.removeAttribute('data-shinkansen-nodevalue-mutated');
+          SK.restoreLocaleStyling?.(el);
+        } catch (_) {}
+      });
+      STATE.nodeValueMutateBackup.clear();
+    }
+    // single 軌：innerHTML 還原。v1.8.20: SPA framework rerender 後 el 可能已 detached，
+    // 直接寫 innerHTML 不報錯但對頁面零作用——跳過並回報數量
+    let detached = 0;
+    STATE.originalHTML.forEach((originalHTML, el) => {
+      if (!el.isConnected) { detached++; return; }
+      // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 翻譯前用
+      // el.innerHTML 讀出來自存的原始 DOM 字串），純還原用，無 user input 流入。
+      el.innerHTML = originalHTML;
+      el.removeAttribute('data-shinkansen-translated');
+      SK.restoreLocaleStyling?.(el);
+    });
+    STATE.originalHTML.clear();
+    STATE.translatedHTML?.clear?.();
+    STATE.translatedHTMLByText?.clear?.();
     STATE.originalText?.clear?.();
     STATE.originalLang?.clear?.();
     STATE.originalFontFamily?.clear?.();
+    STATE.translationCache?.clear?.();  // v1.5.0
+    SK.restoreDocLang?.();  // v2.0.73：還原 <html lang> 原值
+    return detached;
+  }
+
+  // v1.8.14: abort 路徑共用的「還原 + clear + translated=false」。
+  // Gemini abort(L840)+ Google abort(L1219）兩處原本各自寫一份。
+  function restoreOriginalHTMLAndReset() {
+    // v1.10.46（批次 2-4）：還原時 abort in-flight 的 rescan 批次（同 restorePage）
+    SK.abortRescanRuns();
+    const detached = restoreInjectedDom();
+    if (detached > 0) {
+      SK.sendLog?.('warn', 'system', 'restoreOriginalHTMLAndReset: skipped detached elements', { detached });
+    }
     STATE.translated = false;
     // v1.10.20: 翻譯開始時就會點亮 icon badge（SET_BADGE_TRANSLATED），
     // abort 取消後頁面已還原為原文，badge 必須跟著清，否則紅點殘留
@@ -1833,59 +1881,13 @@
     // 下一輪 translatePage 重新「第一次出現保留對照」
     SK.clearAnnotationDedupeRules?.();
 
-    // v1.5.0: dual 模式還原——只移除 wrapper，原文未動所以不需 innerHTML 還原。
-    // v1.5.3: 改呼叫 SK.removeDualWrappers()——它同時清除 wrapper 與原段落上的
-    // data-shinkansen-dual-source attribute。先前手寫 querySelectorAll 只刪 wrapper、
-    // 沒清 attribute，導致下一輪 translatePage 時 injectDual 入口的
-    // `if (hasAttribute('data-shinkansen-dual-source')) return;` 命中所有段落，
-    // 全部早期 return，使用者「按 Opt+A 翻譯 → 再按還原 → 再按只看到原文」。
-    // single 模式維持原本反向覆寫 originalHTML 邏輯。
-    // v1.8.14: dual 與 single 共用 originalHTML 還原迴圈（原本兩分支字字相同）。
-    // dual 額外多一步：先移除 wrapper（同時清 data-shinkansen-dual-source attribute);
-    // 之後共用 forEach 還原 dual fallback 元素 + single 全部元素。
-    // v1.9.27: dual mode 或混合模式(single 全局 + framework-managed element 走 dual)
-    // 都要清掉所有 sibling wrapper。混合模式下 STATE.translationCache 有項即代表
-    // 有 dual wrapper 要清。
-    if (STATE.translatedMode === 'dual' || (STATE.translationCache && STATE.translationCache.size > 0)) {
-      SK.removeDualWrappers?.();
-    }
-    // v1.9.27 Layer A1: 還原 nodeValue mutate 過的 text node。對 el 內存的每個
-    // {node, originalValue} 寫回 originalValue。
-    if (STATE.nodeValueMutateBackup && STATE.nodeValueMutateBackup.size > 0) {
-      STATE.nodeValueMutateBackup.forEach((backup, el) => {
-        backup.forEach(({ node, originalValue }) => {
-          if (node && node.isConnected) {
-            try { node.nodeValue = originalValue; } catch (_) {}
-          }
-        });
-        try {
-          el.removeAttribute('data-shinkansen-nodevalue-mutated');
-          SK.restoreLocaleStyling?.(el);
-        } catch (_) {}
-      });
-      STATE.nodeValueMutateBackup.clear();
-    }
-    // v1.8.20: 跳過已 detached 的元素（SPA framework 重建 DOM tree 後對舊 ref 寫入無效）,
-    // 並 log 出來讓使用者知道原文未必能完整還原（這在 SPA 上是不可逆的）
-    let restoreDetached = 0;
-    STATE.originalHTML.forEach((originalHTML, el) => {
-      if (!el.isConnected) { restoreDetached++; return; }
-      // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 自存的原文 DOM)，純還原用。
-      el.innerHTML = originalHTML;
-      el.removeAttribute('data-shinkansen-translated');
-      SK.restoreLocaleStyling?.(el);
-    });
+    // v1.5.0 起的 dual wrapper / v1.9.27 nodeValue mutate / single innerHTML 三軌還原
+    // 與 Map 清理收斂到 restoreInjectedDom()（v2.0.78 批次 3 B3，與取消翻譯路徑
+    // restoreOriginalHTMLAndReset 共用，歷史演進註解見該函式）
+    const restoreDetached = restoreInjectedDom();
     if (restoreDetached > 0) {
       SK.sendLog?.('warn', 'system', 'restorePage: skipped detached elements (page may not fully restore)', { detached: restoreDetached });
     }
-    STATE.originalHTML.clear();
-    STATE.translatedHTML.clear();
-    STATE.translatedHTMLByText?.clear?.();
-    STATE.originalText?.clear?.();
-    STATE.originalLang?.clear?.();
-    STATE.originalFontFamily?.clear?.();
-    STATE.translationCache?.clear?.();  // v1.5.0
-    SK.restoreDocLang?.();  // v2.0.73:還原 <html lang> 原值
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0
     STATE.translationContext = null;
@@ -2470,6 +2472,16 @@
     return { ok: true, editing: editModeActive, elements: els.length };
   }
 
+  // v2.0.78（批次 3 B2）：給 content-spa.js resetForSpaNavigation 用的編輯模式收尾。
+  // restorePage 有 `if (editModeActive) toggleEditMode(false)`，SPA 導航 reset 漏掉
+  // （同一份事實雙 path drift）：編輯中點連結後殘存共用元素（header 等）的
+  // contenteditable / shinkansen-editable 沒被清（innerHTML 還原不動元素自身 attribute）、
+  // edit bar 續留、editModeActive 卡 true——後續 sticky 續翻時 collectParagraphs 排除
+  // contenteditable 元素，那些段落永不再翻。idle 時零成本 no-op。
+  SK.exitEditModeIfActive = function exitEditModeIfActive() {
+    if (editModeActive) toggleEditMode(false);
+  };
+
   // ─── 訊息接收 ────────────────────────────────────────
 
   // v1.4.12: 依 preset slot 觸發對應 engine + model 翻譯。
@@ -2531,7 +2543,8 @@
       return;
     }
     if (msg?.type === 'TOGGLE_TRANSLATE') {
-      // v1.4.12: 舊訊息保留（popup 按鈕用），映射為 preset slot 2（Flash，推薦預設）
+      // v1.4.12: 舊訊息保留（popup 按鈕用），映射為 preset slot 2（同 Alt+S 主快速鍵；
+      // 模型依 translatePresets slot 2 設定，v1.10.67 起預設 Flash Lite）
       handleTranslatePreset(2);
       return;
     }
@@ -2759,6 +2772,11 @@
       STATE.translationCache?.clear?.();
       STATE.translated = false;
       STATE.translatedMode = null;
+    },
+    // v2.0.78（批次 3 B3）：暴露取消翻譯的立即還原 helper 給 spec 直接驅動
+    //（快速鍵取消入口在 handleTranslatePreset 內層，spec 構造 in-flight 時序成本高）
+    testAbortRestore() {
+      restoreOriginalHTMLAndReset();
     },
     // v1.5.3: 暴露真正的 restorePage 給 spec 直接測（不走 testRestoreDual 簡化版）。
     // 用途：驗 restorePage 的 dual 分支會清乾淨原段落上的 data-shinkansen-dual-source

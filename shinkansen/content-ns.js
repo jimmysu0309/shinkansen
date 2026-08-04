@@ -157,10 +157,13 @@ if (window.__shinkansen_loaded) {
 
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback
   // （例如從 v1.4.11 升級但使用者還未開過設定頁 / onInstalled 沒觸發）。
-  // 內容必須與 lib/storage.js DEFAULT_SETTINGS.translatePresets 保持一致。
+  // 內容必須與 lib/storage.js DEFAULT_SETTINGS.translatePresets 保持一致
+  // （v2.0.78 批次 4 B4：v1.10.67 storage.js 對調 slot 1/2 後本 fallback 漏跟，
+  //   兩份完全相反——storage 未寫入的窗口按快速鍵，實際模型與 UI 顯示相反。
+  //   一致性由 test/jest-unit/default-presets-mirror.test.cjs 鎖住）。
   SK.DEFAULT_PRESETS = [
-    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'Flash Lite' },
-    { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
+    { slot: 1, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
+    { slot: 2, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'Flash Lite' },
     { slot: 3, engine: 'google', model: null, label: 'Google MT' },
   ];
 

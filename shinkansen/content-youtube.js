@@ -3545,6 +3545,11 @@
     const YT = SK.YT;
     if (YT.pendingQueue.size === 0 || YT.flushing) return;
     if (!YT.active) return; // v1.8.20: 進場 guard,session 已 stop 直接放棄
+    // v2.0.78（批次 3 C1）：世代快照——其他三個 async 寫回點（_runAsrSubBatch /
+    // heuristic _runBatch / _injectBatchResult）都做 active + captionSourceGen 雙守門，
+    // on-the-fly 原本只查 active：SPA 換片 stop（gen bump）→ 500ms auto-restart 把
+    // active 翻回 true → 舊批次 resolve 通過檢查，把舊影片譯文寫進新 session 的 captionMap
+    const _myGen = YT.captionSourceGen || 0;
     YT.flushing = true;
 
     const queue = new Map(YT.pendingQueue);
@@ -3568,7 +3573,8 @@
       if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || SK.t('common.errorUnknown'));
       // v1.8.20: await 後再次檢查 active——stop 在 await 期間發生時放棄寫入，
       // 否則寫進已被 stopYouTubeTranslation 重置的新 captionMap 污染下個 session。
-      if (!SK.YT.active) {
+      // v2.0.78：補 gen 比對（stop 後 auto-restart 會把 active 翻回 true，只查 active 擋不住）
+      if (!SK.YT.active || _myGen !== (SK.YT.captionSourceGen || 0)) {
         YT.flushing = false;
         return;
       }

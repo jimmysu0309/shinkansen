@@ -211,3 +211,51 @@ test('en target 不應 prepend fontFamily', async ({ context, localServer }) => 
 
   await page.close();
 });
+
+// ── code review 2026-08-03 批次 4 A2:rescan / 晚載注入的 pageLang 必須看原始宣告 ──
+//
+// Bug：單語翻譯成功後 applyDocTargetLang 把 <html lang> 蓋成 target → SPA rescan /
+// 晚載注入時 applyTargetLocaleStyling 讀 live documentElement.lang 得到 target →
+// `pageLang === target` 早退不 prepend → 晚載段落字形變體與首輪注入不一致。
+// v2.0.76 已在 detect 端修同型問題(content-detect.js _foreignPage 讀
+// docLangBackup.orig),inject 端漏跟(§8 舊路徑也要跟著更新)。
+//
+// SANITY 紀錄(已驗證，2026-08-04)：暫時把 content-inject.js applyTargetLocaleStyling
+// 的 pageLang 改回只讀 `doc?.documentElement?.lang` → 「applyDocTargetLang 之後的
+// 晚載注入仍 prepend」斷言 fail(fontFamily 空)→ 還原 → pass。
+test('A2: applyDocTargetLang 蓋掉 html lang 後，晚載注入仍 prepend locale 字體', async ({ context, localServer }) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#plain', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+  await evaluate(`window.__SK.STATE.targetLanguage = 'ja'`);
+
+  // 模擬「首輪翻譯成功」:applyDocTargetLang 把 <html lang> 從 zh-TW 蓋成 ja
+  const langAfter = await evaluate(`
+    (() => {
+      window.__SK.applyDocTargetLang();
+      return document.documentElement.lang;
+    })()
+  `);
+  expect(langAfter, '前置：html lang 已被蓋成 target').toBe('ja');
+
+  // 晚載段落注入(模擬 SPA rescan / lazy-load 內容)
+  const late = await evaluate(`
+    (() => {
+      const el = document.createElement('p');
+      el.textContent = 'Late loaded paragraph content here.';
+      document.body.appendChild(el);
+      const unit = { kind: 'element', el };
+      window.__SK.injectTranslation(unit, '遅延読み込み段落の翻訳', []);
+      return { lang: el.getAttribute('lang'), fontFamily: el.style.fontFamily };
+    })()
+  `);
+  expect(late.lang).toBe('ja');
+  // 核心：source 判定看 docLangBackup.orig(zh-TW)≠ ja → 必須 prepend
+  expect(
+    late.fontFamily,
+    'applyDocTargetLang 之後的晚載注入仍應 prepend ja locale 字體(不可讀 live lang 早退)',
+  ).toMatch(/Hiragino/);
+  await page.close();
+});

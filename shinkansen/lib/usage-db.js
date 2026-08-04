@@ -109,7 +109,9 @@ export async function upsertYouTubeUsage(record, mergeWindowMs = 3600000) {
       const cursor = e.target.result;
       if (cursor) {
         const v = cursor.value;
-        if (v.source === 'youtube-subtitle' && v.videoId === videoId && v.model === model) {
+        // v2.0.78：合併鍵含 source——Drive 字幕（source='drive-subtitle'）同走此 upsert，
+        // 與 YouTube 紀錄不互相合併（理論上 videoId 空間也不重疊，雙保險）
+        if (v.source === record.source && v.videoId === videoId && v.model === model) {
           const merged = {
             ...v,
             inputTokens:       (v.inputTokens       || 0) + (record.inputTokens       || 0),
@@ -436,7 +438,8 @@ function csvEscape(str) {
  */
 export function shouldSkipUsageRecord(record) {
   if (!record) return true;
-  if (record.source === 'youtube-subtitle') return false;
+  // drive-subtitle（v2.0.78）同 youtube-subtitle 走 upsert 累計合併路徑，不跳過
+  if (record.source === 'youtube-subtitle' || record.source === 'drive-subtitle') return false;
   const ip = Number(record.inputTokens) || 0;
   const op = Number(record.outputTokens) || 0;
   const ch = Number(record.chars) || 0;

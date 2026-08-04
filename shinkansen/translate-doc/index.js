@@ -154,6 +154,25 @@ function clearResultError() {
   el.hidden = true;
 }
 
+// v2.0.78（批次 5 G9）：PDF 路徑 translateDocument throw 時的失敗原因顯示——
+// 原本 exception 被包成 error summary 後直接 openReader()，fillSummaryDialog 只
+// 顯示計數欄不讀 summary.error → 使用者拿到全未翻譯的 reader 卻看不到失敗原因。
+// EPUB 路徑有 showChaptersError(summary.error) 對等處理，這裡補 PDF 版（同樣顯示
+// raw error 訊息——codedError 協定的訊息本身已是使用者面對字串）
+function showReaderError(msg) {
+  const el = $('reader-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function clearReaderError() {
+  const el = $('reader-error');
+  if (!el) return;
+  el.textContent = '';
+  el.hidden = true;
+}
+
 function setParsingDetail(text) {
   $('parsing-detail').textContent = text;
 }
@@ -1883,7 +1902,9 @@ function openEditor() {
       // 係數);max 30 避免極長段落炸太高;openEditor 末尾還會跑一次 autoFit 用實際
       // scrollHeight 微調(見 fitTextareaHeight)
       textarea.rows = Math.max(3, Math.min(30, Math.ceil((initialMd.length || 1) / 25)));
-      textarea.value = initialMd;
+      // v2.0.78（批次 5 G2）：用 defaultValue 設初始值（同時設定 value），讓 saveEdits
+      // 能以 `value !== defaultValue` 判斷「內容真的有變動」——只對變動 row 改狀態
+      textarea.defaultValue = initialMd;
       if (block.translationStatus === 'failed') {
         textarea.placeholder = t('doc.edit.placeholder.failed');
       }
@@ -1943,7 +1964,14 @@ async function saveEdits() {
   for (const row of rows) {
     const block = blockMap.get(row.dataset.blockId);
     if (!block) continue;
-    const text = row.querySelector('textarea').value;
+    const ta = row.querySelector('textarea');
+    const text = ta.value;
+    // v2.0.78（批次 5 G2）：內容零變動的 row 完全不動——原本無條件把所有 row 標
+    // done + userEdited：失敗段（placeholder 空 textarea）被抹平成 `translation: ''`
+    // + status done → countCurrentFailedBlocks 歸零、summary 重試按鈕永久隱藏、
+    // reader 橘框警示消失（使用者失去 retryAllFailed 入口）；同時全部 block 被打上
+    // userEdited 污染該 flag 的「跳過 re-translate」語意
+    if (text === ta.defaultValue) continue;
     if (!text.trim()) {
       block.translation = '';
       block.translationSegments = [];
@@ -2324,6 +2352,9 @@ async function _startTranslateImpl() {
 
   // 直接進雙頁閱讀器(原本中介的 stage-translated 已砍掉)
   await openReader();
+  // G9：整體失敗（translateDocument throw）時在 reader 顯示原因；成功則清掉上輪殘留
+  if (summary.error) showReaderError(summary.error);
+  else clearReaderError();
 }
 
 // ---------- 文章術語表編輯（v1.8.49）----------
@@ -3509,7 +3540,12 @@ function appendPreviewBlock(content, b, SK, dedupe) {
     el.addEventListener('paste', onPreviewEditablePaste);
     const before = el.innerHTML;
     el.addEventListener('blur', () => {
-      if (el.innerHTML === before && !b.editedHtml) return;
+      // v2.0.78（批次 5 G4）：早退不分 editedHtml 有無——原本 `&& !b.editedHtml` 讓
+      // 「已編輯 block、內容零變動」的 blur 恆不早退：已編輯 block 渲染的是 dedupe
+      // 後處理視圖（3499 行），點進去再點出去就把下載期後處理版本存成手動編輯資料
+      // 永久烙進 editedHtml——之後取消 dedupe 勾選 / 改術語表都回不到未處理狀態，
+      // computeAnnotationDedupe 的「首次出現」判定跟著位移
+      if (el.innerHTML === before) return;
       b.editedHtml = el.innerHTML;
       b.translation = el.textContent;
       el.classList.add('is-edited');

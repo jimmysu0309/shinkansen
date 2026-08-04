@@ -69,8 +69,17 @@
     // 字形變體,prepend 反而會強制覆寫站點 typography(例 zh-TW 站特意用 Noto Serif TC
     // 變成譯文段被換成 sans-serif PingFang TC)。source 未知(<html> 沒設 lang 或
     // 不認識的 code)也跳過 prepend——保守做法,避免在不確定的場景動站點 typography。
+    // v2.0.78（批次 4 A2）：source lang 必須看「原始」宣告（docLangBackup.orig），
+    // 對齊 detect 端 v2.0.76 同型修法（content-detect.js _foreignPage）——翻譯成功後
+    // applyDocTargetLang 把 <html lang> 蓋成 target，讀 live lang 會讓 SPA rescan /
+    // 晚載注入在這裡 pageLang === target 早退不 prepend → 晚載段落字形變體與首輪
+    // 注入不一致（§8 舊路徑也要跟著更新的案例）。orig 為 null（原頁無宣告）時
+    // 維持原本保守跳過。
     const doc = el.ownerDocument;
-    const pageLang = SK.normalizeLangCode?.(doc?.documentElement?.lang);
+    const _langBackup = STATE.docLangBackup;
+    const pageLang = SK.normalizeLangCode?.(
+      _langBackup ? _langBackup.orig : doc?.documentElement?.lang,
+    );
     if (!pageLang || pageLang === target) return;
 
     // base = 「我們動之前的 stack」:
@@ -1685,7 +1694,14 @@
         const t = tgtSpanU[i];
         if (s.type !== t.type) { unwrapOk = false; break; }
         if (s.type === 'text') {
-          unwrapMutations.push({ node: s.node, newValue: t.node.nodeValue });
+          // v2.0.78（批次 4 A3）：三條同型路徑（strict:1663 / 本條 / segment 1-to-1）
+          // 唯獨這裡漏套 preserveWsTextMutate——Google MT 慣性吃掉 leading space 與
+          // trailing \n（v1.9.31 加 helper 的原始動機場景），裸寫 nodeValue 會破壞
+          // pre-wrap 段的視覺換行 / 間距結構
+          unwrapMutations.push({
+            node: s.node,
+            newValue: preserveWsTextMutate(s.node.nodeValue || '', t.node.nodeValue || ''),
+          });
         } else {
           // inline:tag 必符
           if (s.tag !== t.tag) { unwrapOk = false; break; }

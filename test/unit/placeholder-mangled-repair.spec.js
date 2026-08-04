@@ -348,3 +348,30 @@ test.describe('hydrateSessionBlocks 自癒', () => {
     expect(b.translation).toBe('下車時，我注意到雪花正在飄落。');
   });
 });
+
+// ── code review 2026-08-03 批次 5 H3：樣式標記(⟦b⟧/⟦/i⟧/⟦l:N⟧)mangle 修復 ──
+//
+// 原 bug:repairMangledPlaceholders 的 capture 只涵蓋數字型佔位符——同一種
+// mangle 行為(⟦/2» 已實測 57 段)套在 W7 樣式標記上會產出 ⟦/b»,
+// parseMarkedTranslation tagRe 不匹配 → stack 不平衡 → fallback，而 fallback 的
+// MARKER_TAG_RE 只清「完好」tag → 字面殘片印進譯文 PDF。
+// 修法：capture 擴成 `(\*?\/?\d+|\/?[bi]|l:\d+|\/l)`。
+//
+// SANITY 紀錄(已驗證，2026-08-04)：暫時把 capture 改回舊版 `(\*?\/?\d+)` →
+// 「樣式標記 mangle 修復」3 case fail(⟦/b» 未修)→ 還原 → pass。
+test.describe('H3：樣式標記 mangle 修復', () => {
+  test('樣式閉合標記 ⟧ 被寫成 » → 修復(b / i / l 三型)', () => {
+    expect(repairMangledPlaceholders('⟦b⟧粗體段⟦/b»')).toBe('⟦b⟧粗體段⟦/b⟧');
+    expect(repairMangledPlaceholders('⟦i»斜體段⟦/i⟧')).toBe('⟦i⟧斜體段⟦/i⟧');
+    expect(repairMangledPlaceholders('⟦l:2⟧連結文字⟦/l»後續')).toBe('⟦l:2⟧連結文字⟦/l⟧後續');
+  });
+
+  test('段尾樣式標記漏寫閉合 ⟧ → 補回', () => {
+    expect(repairMangledPlaceholders('⟦b⟧Editor 附註：⟦/b')).toBe('⟦b⟧Editor 附註：⟦/b⟧');
+  });
+
+  test('完好樣式標記不動(含 l:N 多位數)', () => {
+    const ok = '⟦b⟧粗⟦/b⟧ ⟦i⟧斜⟦/i⟧ ⟦l:12⟧連結⟦/l⟧';
+    expect(repairMangledPlaceholders(ok)).toBe(ok);
+  });
+});

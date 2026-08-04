@@ -235,6 +235,10 @@
   // v1.8.54:bilingualMode 從本地 let 改放 DRIVE.bilingualMode,讓 _renderActiveCue 同源讀取
   let _autoTranslateEnabled = true;
   let _engine = 'gemini';
+  // v2.0.78:LOG_USAGE 記帳的 model 欄位——沿用 ytSubtitle.model override（跟翻譯
+  // 實際走的 background geminiOverrides.model 同源）；空值時 background LOG_USAGE
+  // handler 自己 fallback geminiConfig.model
+  let _ytModel = '';
 
   // ─── 關掉 YouTube embed player 的原生 CC ──────────────
   // 透過 IFrame Player API postMessage 'command' func='unloadModule' arg='captions'。
@@ -253,6 +257,39 @@
     } catch (e) {
       SK.sendLog('warn', 'drive', 'unloadModule captions failed', { error: e?.message || String(e) });
     }
+  }
+
+  // ─── 用量記帳(v2.0.78)────────────────────────────────
+  // Drive LLM 路徑成功批次比照 content-youtube.js _logWindowUsage 發 LOG_USAGE——
+  // 之前只把 res.usage 丟進 sendLog,usage-db 完全沒這筆(整支影片的 Gemini token
+  // 在用量儀表板 / GET_USAGE_STATS 對帳隱形，系統性低估）。Google 路徑不經此函式
+  // （免費，chars 記帳已由 background handleTranslateGoogle 的 upsertGoogleUsage 落地）。
+  // source='drive-subtitle' + videoId=Drive 檔案 id 走 background 的 upsert 合併路徑
+  // （一支影片多批合成一筆，同 YouTube）。
+  function _logDriveUsage(segCount, usage, engineLabel) {
+    if (!usage || ((usage.inputTokens || 0) === 0 && (usage.cacheHits || 0) === 0)) return;
+    const u = usage;
+    const fileId = (location.pathname.match(/\/file\/([^/]+)/) || [])[1] || '';
+    SK.safeSendMessage({
+      type: 'LOG_USAGE',
+      payload: {
+        url:   location.href,
+        title: document.title,
+        source: 'drive-subtitle',
+        videoId: fileId,                  // upsert 合併 key(缺值時 fallback 逐筆寫入)
+        engine: engineLabel,              // 'openai-compat' 時 background 端改從 customProvider.model 解析
+        model: _ytModel || undefined,
+        inputTokens:      u.inputTokens     || 0,
+        outputTokens:     u.outputTokens    || 0,
+        cachedTokens:     u.cachedTokens    || 0,
+        billedInputTokens: u.billedInputTokens || 0,
+        billedCostUSD:    u.billedCostUSD   || 0,
+        segments:         segCount,
+        cacheHits:        u.cacheHits       || 0,
+        durationMs:       0,
+        timestamp:        Date.now(),
+      },
+    }).catch(() => {});
   }
 
   // ─── 單批翻譯：LLM D' 模式（自由合句 + 時間戳對齊）─────────
@@ -292,6 +329,9 @@
       });
       return;
     }
+
+    // 記帳放在 parse 之前——API 已回應即已付費，parseAsrResponse 失敗丟棄結果錢也花了
+    _logDriveUsage(batch.length, res.usage, engineLabel);
 
     const rawText = res.result?.[0] || '';
     let entries;
@@ -479,6 +519,15 @@
       totalEntries: DRIVE.entries.length,
       elapsedMs: Date.now() - tStart,
     });
+    // v2.0.78（批次 3 C3）：翻譯全失敗（無 API key / 網路斷 / !res.ok 都只 log 就
+    // return）時回滾 fingerprint——fp 在翻譯開始「前」latch，全失敗不回滾的話，
+    // 使用者設好 key 後重按 CC 重觸發同一 payload 會被 fp 判 duplicate skip，
+    // 到 reload 前永遠翻不出來（fp 判重是唯一重試入口）。只在 fp 仍是本輪值時清
+    // （await 期間換軌進來的新 payload 已 re-latch，不可誤清）
+    if (DRIVE.entries.length === 0 && DRIVE._lastCaptionsFp === _fp) {
+      DRIVE._lastCaptionsFp = null;
+      SK.sendLog('warn', 'drive', 'translation yielded no entries — fingerprint cleared for retry', { fp: _fp });
+    }
   }
 
   // 暴露給 spec 用（drive captions pipeline regression：重入 guard / entry 對齊 / engine latch）
@@ -499,6 +548,7 @@
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
       _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
       _engine = _normalizeDriveEngine(ytSubtitle.engine);
+      _ytModel = ytSubtitle.model || '';
       DRIVE.bilingualMode = ytSubtitle.bilingualMode === true;
       SK.sendLog('info', 'drive', 'settings loaded (from ytSubtitle)', {
         autoTranslate: _autoTranslateEnabled,
@@ -520,6 +570,7 @@
       _engine = nextEngine;
       SK.sendLog('info', 'drive', 'engine setting changed', { engine: nextEngine });
     }
+    _ytModel = newVal.model || '';
     const nextBilingual = newVal.bilingualMode === true;
     if (nextBilingual !== DRIVE.bilingualMode) {
       DRIVE.bilingualMode = nextBilingual;

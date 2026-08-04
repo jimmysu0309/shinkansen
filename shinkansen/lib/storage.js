@@ -399,10 +399,31 @@ export function resolveUiLanguage(uiLanguagePref) {
   return 'en';
 }
 
+// v2.0.78（批次 4 F1）：區塊 strip 規則必須錨定「預設字面值」，不可用 [\s\S]*? 吞任意
+// 內容——舊寫法會把使用者「只客製區塊內文」的 prompt 也 strip 掉，saved 與 default
+// normalize 後相等 → 誤判未客製 → runtime 改吃預設 prompt，客製內容靜默失效。
+// 字面值直接從 prompt 常數抽（單一資料源；日後改區塊內文時，舊字面值要照 §7.5 慣例
+// 另加 rule strip，不可回頭改寬這裡）。
+const _escapeForRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const _PROMPT_DEFAULT_BLOCK_STRIP_RES = [
+  // <source_fidelity>（DEFAULT_GLOSSARY_PROMPT 繁中版 + UNIVERSAL 英文版；區塊內
+  // 不含 {targetLanguage} placeholder，字面抽取即可）
+  ...[DEFAULT_GLOSSARY_PROMPT, UNIVERSAL_GLOSSARY_PROMPT]
+    .map((p) => (p.match(/<source_fidelity>[\s\S]*?<\/source_fidelity>\n/) || [])[0])
+    .filter(Boolean),
+  // <document_number_fidelity>（ZH / EN 兩版常數本體，含開頭的空行）
+  DOC_NUMBER_FIDELITY_ZH,
+  DOC_NUMBER_FIDELITY_EN,
+].map((lit) => new RegExp(_escapeForRegExp(lit), 'g'));
+
 // P1: 對歷史 prompt 字面值的小幅修字做 normalize,讓既有使用者升級後 saved 仍能被
 // 視為「未客製」。每次大幅改 DEFAULT_*_PROMPT 內容時(例如 v1.8.59 把「中國大陸」改成
 // 「中國」對齊全域用語規範),在這裡加 rule;不寫 storage migration(零寫入,零風險)。
 function _normalizePromptForComparison(s) {
+  // 區塊 strip（錨定預設字面值，見上方 F1 註解）
+  let out = (s || '');
+  for (const re of _PROMPT_DEFAULT_BLOCK_STRIP_RES) out = out.replace(re, '');
+  s = out;
   return (s || '')
     // v1.8.59:DEFAULT_SYSTEM_PROMPT / SUBTITLE / ASR_SUBTITLE / GLOSSARY 內
     // 「中國大陸用語/譯法/特有用語」改成「中國用語/譯法/特有用語」(全域用語規範)。
@@ -414,7 +435,6 @@ function _normalizePromptForComparison(s) {
     // 以下 rules 把新增段落 strip 掉、舊措辭映射到新措辭,讓舊 saved 字面值
     // normalize 後仍等於當前 DEFAULT / UNIVERSAL(視為未客製,自動吃新 prompt)。
     .replace(/建立符合台灣在地化語境的英中對照術語表/g, '建立「原文 → 台灣繁體中文」的對照術語表，符合台灣在地化語境')
-    .replace(/<source_fidelity>[\s\S]*?<\/source_fidelity>\n/g, '')
     .replace(/日文人名的漢字須轉為台灣慣用字形（例如：相沢→相澤、斉藤→齊藤、渋谷→澀谷），假名人名用台灣通行音譯。/g, '')
     .replace(/\{"source":"相沢","target":"(?:相澤|<translated>)","type":"person"\},/g, '')
     .replace(/無通行譯名的作品名須自行譯成台灣繁體中文（可意譯）再加書名號；source 保持原文是對的，但 target 是給台灣讀者看的譯名，絕不可原文照抄、不可殘留日文假名（例如：『ノルウェイの森』→《挪威的森林》，而不是《ノルウェイの森》）。/g, '')
@@ -435,7 +455,6 @@ function _normalizePromptForComparison(s) {
     // <document_number_fidelity> 區塊(文件金額 / 表格數值逐字保留,修報價單千分位
     // 被散文數字規則移除)。strip 新增內容,舊 saved 字面值視為未客製自動吃新 prompt
     .replace(/沒有可靠通行譯名或不確定時，一律保留原文，嚴禁自創、猜測或音譯譯名（例如不確定某公司的中文名稱時，保留其英文名）。/g, '')
-    .replace(/\n*<document_number_fidelity>[\s\S]*?<\/document_number_fidelity>/g, '')
     .trim();
 }
 

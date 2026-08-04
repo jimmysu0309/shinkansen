@@ -709,7 +709,12 @@ const messageHandlers = {
         inFlightStreams.delete(streamId);
         return { aborted: true };
       }
-      return { aborted: false };
+      // v2.0.78：未知 streamId = abort 可能比 AbortController 註冊早到（ack →
+      // getSettings / cache lookup 窗口）。留 tombstone 讓 handleTranslateStream
+      // 發 fetch 前自行攔截；content 端本來就 fire-and-forget，回傳值僅供除錯
+      _sweepAbortTombstones();
+      abortedStreamTombstones.set(streamId, Date.now() + ABORT_TOMBSTONE_TTL_MS);
+      return { aborted: false, tombstoned: true };
     },
   },
   // v1.2.10: 字幕翻譯專用——prompt / temperature / model 從 ytSubtitle 設定讀取（v1.2.11 改為動態載入）
@@ -1196,7 +1201,9 @@ const messageHandlers = {
       // v1.4.18: YouTube 字幕一支影片會分成多批翻譯，逐批寫入會變幾十筆。
       // 改由 upsertYouTubeUsage 以 (videoId + model, 1 小時視窗） 合併成一筆；
       // 換模型或超過 1 小時才拆新筆。網頁翻譯仍走 logTranslation。
-      if (record.source === 'youtube-subtitle' && record.videoId) {
+      // v2.0.78: Drive 字幕（source='drive-subtitle'，videoId=Drive 檔案 id）同構，
+      // 走同一條 upsert（合併鍵含 source，兩種來源不互相合併）。
+      if ((record.source === 'youtube-subtitle' || record.source === 'drive-subtitle') && record.videoId) {
         await usageDB.upsertYouTubeUsage(record);
       } else {
         await usageDB.logTranslation(record);
@@ -1313,6 +1320,21 @@ browser.runtime.onConnect.addListener((port) => {
 
 // v1.8.0: streamId → AbortController 對映，支援使用者中途取消 streaming
 const inFlightStreams = new Map();
+
+// v2.0.78（批次 3 E6）：abort 早到 tombstone。TRANSLATE_BATCH_STREAM 同步回 ack 後，
+// handleTranslateStream 要先 await getSettings + cache.getBatch（逐段 sha1）才註冊
+// AbortController——abort 落在這個窗口（桌面數十 ms；iOS event page 冷啟更寬）時查
+// map 拿不到，整批照打且 content listener 已移除、之後的 STREAMING_DONE 被忽略 →
+// 已付費 usage 既不走 LOG_USAGE 也不走 discard 記帳。對未知 streamId 留 TTL tombstone，
+// handleTranslateStream 註冊前（發 fetch 前）查一次即攔截。
+const abortedStreamTombstones = new Map(); // streamId → 過期時間 ms
+const ABORT_TOMBSTONE_TTL_MS = 60_000;
+function _sweepAbortTombstones() {
+  const now = Date.now();
+  for (const [id, exp] of abortedStreamTombstones) {
+    if (exp <= now) abortedStreamTombstones.delete(id);
+  }
+}
 
 // v1.8.14: streaming 期間 SW keep-alive。
 // v1.8.20: 改用 chrome.alarms — setInterval 在 SW 真被收回時整個被銷毀，等於 keep-alive 本身死亡；
@@ -1506,6 +1528,20 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
         finishReason: 'STOP',
       },
     }).catch(() => {});
+    return;
+  }
+
+  // v2.0.78：發 fetch 前查 abort tombstone——abort 落在「ack → 這裡」的窗口時在此
+  // 攔截，不打 API（整批照打 = 已付費 usage 無人記帳）。推 STREAMING_ABORTED 讓
+  // 尚未移除 listener 的 content 端也能收尾（已移除則訊息自然丟棄）
+  // v2.0.78：發 fetch 前查 abort tombstone——abort 落在「ack → 這裡」的窗口時在此
+  // 攔截，不打 API（整批照打 = 已付費 usage 無人記帳）。推 STREAMING_ABORTED 讓
+  // 尚未移除 listener 的 content 端也能收尾（已移除則訊息自然丟棄）
+  _sweepAbortTombstones();
+  if (abortedStreamTombstones.has(streamId)) {
+    abortedStreamTombstones.delete(streamId);
+    debugLog('info', 'api', 'stream aborted before start — tombstone hit, no API call', { streamId });
+    browser.tabs.sendMessage(tabId, { type: 'STREAMING_ABORTED', payload: { streamId } }).catch(() => {});
     return;
   }
 

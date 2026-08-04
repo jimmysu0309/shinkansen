@@ -101,3 +101,31 @@ test.describe('W7 parseMarkedTranslation', () => {
     expect(r.plainText).toBe('');
   });
 });
+
+// ── code review 2026-08-03 批次 5 H3(fallback 殘片掃除)──
+//
+// repair 搆不到的 mangle 形態(如 ⟦l:» 缺編號)進 fallback 時，MARKER_TAG_RE 只清
+// 「完好」tag → 殘片印進 PDF。fallback 補一道 token 形狀([*/bil0-9:]{0,4} + 替代
+// 閉合字元)的殘片掃除；字元集收緊到協定 token 本體，不誤吃內文。
+//
+// SANITY 紀錄(已驗證，2026-08-04)：暫時把 fallback 的殘片掃除 replace 拿掉 →
+// 「不可修復殘片不印進 plainText」case fail(plainText 殘留 ⟦l:»)→ 還原 → pass。
+import { test as t2, expect as e2 } from '@playwright/test';
+
+t2.describe('H3:fallback 殘片掃除', () => {
+  t2('不可修復的樣式標記殘片不印進 plainText', () => {
+    // ⟦l:»(缺編號)修不回合法 tag → parse fallback；殘片必須被掃掉
+    const r = parseMarkedTranslation('前文⟦l:»連結字後文⟦/l⟧', ['https://example.com']);
+    e2(r.plainText).toBe('前文連結字後文');
+    e2(r.plainText).not.toContain('⟦');
+  });
+
+  t2('殘片掃除不誤吃內文(⟧ 後的正常文字保留)', () => {
+    const r = parseMarkedTranslation('⟦b粗體字樣⟦/b⟧尾文', []);
+    // repair 已在接收點跑過的情境下不會進這裡；此 case 驗 fallback 對「未經 repair
+    // 的裸輸入」也不殘留 ⟦ 碎片，且內文字元不被誤吃
+    e2(r.plainText).not.toContain('⟦');
+    e2(r.plainText).toContain('尾文');
+    e2(r.plainText).toContain('粗體字樣');
+  });
+});

@@ -27,6 +27,14 @@ import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
 const READER_RENDER_SCALE = 1.5;
 const SCROLL_SYNC_RESET_MS = 250;
 
+// v2.0.78（批次 5 G3）：renderReader 世代計數。初始逐頁 render loop 執行期間 handle
+// 尚未 return，caller 拿不到 destroy 可呼叫（destroyed flag 只保護 handle 建立後的
+// async 路徑）——大 PDF render 可跑 10 秒+，期間 toolbar 已可點：第二次 openReader
+// 的 `innerHTML = ''` 清欄後，舊輪 resume 繼續 append 它的 leftPage/rightPage 進
+// 同一欄 → 新舊譯文頁交錯混排；換檔情境舊輪還對已 close 的 pdfDoc 逐頁空燒。
+// 每次 renderReader 進場 bump，舊輪 loop 每頁開頭比對失配即自我終止。
+let _renderReaderGen = 0;
+
 /**
  * 渲染雙頁並排閱讀器。
  *
@@ -42,6 +50,7 @@ const SCROLL_SYNC_RESET_MS = 250;
  * @returns {Promise<ReaderHandle>}
  */
 export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, originalCol, translatedCol, opts = {}) {
+  const _myRenderGen = ++_renderReaderGen;   // G3：見 _renderReaderGen 註解
   const { modelOverride, engine, glossary, extraPrompt = null, onFailedCountChange = () => {} } = opts;
   let currentZoom = opts.initialZoom || 1.0;
   let syncEnabled = opts.initialSyncEnabled !== false;
@@ -91,6 +100,17 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
   // ---- 2. 為每頁建左/右 canvas + render ----
   const pageCount = Math.min(doc.pages.length, originalPdfDoc.numPages, translatedPdfDoc.numPages);
   for (let i = 0; i < pageCount; i++) {
+    // G3：世代失配 = 第二輪 renderReader 已清欄開跑——本輪自我終止，不再 append
+    // 舊頁進新欄（交錯混排）也不對可能已 close 的 pdfDoc 空燒。自己開的
+    // translatedPdfDoc 順手收掉（handle 不會 return，沒人幫收）
+    if (_myRenderGen !== _renderReaderGen) {
+      destroyed = true;
+      if (translatedPdfDoc) {
+        try { await translatedPdfDoc.destroy(); } catch (_) { /* ignore */ }
+        translatedPdfDoc = null;
+      }
+      return null;
+    }
     const leftPage = document.createElement('div');
     leftPage.className = 'reader-page reader-page-original';
     leftPage.dataset.pageIndex = String(i);

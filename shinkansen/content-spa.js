@@ -47,6 +47,11 @@
       STATE.translating = false;
       STATE.abortController = null;
     }
+    // v2.0.78（批次 3 B2）：編輯中發生 SPA 導航時先結束編輯模式（對照 restorePage
+    // 同款守門）。必須在下方 marker 剝除「之前」呼叫——toggleEditMode(false) 靠
+    // marker 找回要清 contenteditable / shinkansen-editable 的元素；殘存共用元素
+    // （header 等）的這些 attribute 不清，後續 sticky 續翻會被偵測層排除永不再翻
+    SK.exitEditModeIfActive?.();
     SK.cancelRescan();
     // v1.10.46(批次 2-4):SPA 換頁時 abort in-flight 的 rescan 批次——舊頁 rescan 的
     // 晚到回應不得注入新頁(translateUnitsByProvider 統一掛的 rescan signal 在此失效)

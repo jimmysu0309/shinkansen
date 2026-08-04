@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.77
+- 目前 Extension 版本：2.0.78
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.77 為止）
+### 2.1 已實作（v2.0.78 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -807,7 +807,7 @@ manifest `commands` 的預設鍵位（Alt+S／A／D）由瀏覽器層管理，�
 ### 10.2 iOS／iPadOS 四指手勢
 
 - **四指輕點**（壓住 < 600ms 即抬起）= 主要預設完整 toggle——`content-touch.js` 偵測手勢後送 `FOUR_FINGER_TAP` 給 background，轉發 `TRANSLATE_PRESET` slot 2，與快速鍵共用同一條派送路徑
-- **四指長按**（四指同時壓住、不移動且持續達 600ms）= 第一組預設（slot 1，預設 Flash Lite）——計時器在門檻當下送 `FOUR_FINGER_LONGPRESS` 給 background，轉發 `TRANSLATE_PRESET` slot 1；抬起時以 `longPressFired` 旗標擋住，不重複觸發 slot 2。輕點 / 長按以「壓住時長」單一門檻區分，主要動作（輕點）於抬起當下零延遲觸發
+- **四指長按**（四指同時壓住、不移動且持續達 600ms）= 第一組預設（slot 1，預設 Flash）——計時器在門檻當下送 `FOUR_FINGER_LONGPRESS` 給 background，轉發 `TRANSLATE_PRESET` slot 1；抬起時以 `longPressFired` 旗標擋住，不重複觸發 slot 2。輕點 / 長按以「壓住時長」單一門檻區分，主要動作（輕點）於抬起當下零延遲觸發
 - 以 `IS_IOS_BUILD`（`lib/distribution.js`，iOS build script override 為 true）gate，桌面 build 為 no-op。外接硬體鍵盤時三組快速鍵照常可用，也可用上述 recorder 自訂
 
 ### 10.3 iOS background keep-alive
@@ -852,7 +852,7 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 - **「Debug」分頁載入**（v1.8.56 起）：分頁啟動時先呼叫 `GET_PERSISTED_LOGS` 載入持久化那段（SW 重啟前的紀錄），再開始 polling 記憶體 buffer。dedup 用 `timestamp + category + message` 三元 key（SW 重啟後 logSeq 重置會撞號，純 seq 去重會漏）
 - **「清除」按鈕**（v1.8.56 起）：同時送 `CLEAR_LOGS` + `CLEAR_PERSISTED_LOGS`，兩層 buffer 都清。原本只清記憶體，persisted 還在 storage.local，下次 SW 重啟分頁載入時舊 log 又冒出來
 - **DevTools Console**：設定頁可選啟用同步輸出
-- **Debug Bridge**：content.js 透過 CustomEvent 橋接，main world 可用 `shinkansen-debug-request` / `shinkansen-debug-response` 事件讀取 log（支援 `GET_LOGS`、`CLEAR_LOGS`、`GET_PERSISTED_LOGS`、`CLEAR_PERSISTED_LOGS`、`CLEAR_CACHE`、`TRANSLATE`、`RESTORE`、`GET_STATE`（回傳含 manifest `version`）、`GET_YT_DEBUG`、`GET_CACHE_STATS`（唯讀 cache 池快照）、`GET_CACHE_PEEK`（唯讀依子字串掃 tc_ 快取條目內容，回 `{key, v, t}`，診斷壞譯文入快取用）、`SET_GLOSSARY_ENABLED`（撥術語表一致化開關，唯一開放的寫入 action，供自動化測試））。僅限 Chromium：Firefox 的 main world 受 Xray 安全模型限制，讀不到 response 的 object detail，Debug Bridge 回讀不可用（消費者皆為 Chromium-only tooling，刻意不改協定）
+- **Debug Bridge**：content.js 透過 CustomEvent 橋接，main world 可用 `shinkansen-debug-request` / `shinkansen-debug-response` 事件讀取 log（支援 `GET_LOGS`、`CLEAR_LOGS`、`GET_PERSISTED_LOGS`、`CLEAR_PERSISTED_LOGS`、`CLEAR_CACHE`、`TRANSLATE`、`RESTORE`、`GET_STATE`（回傳含 manifest `version`）、`GET_YT_DEBUG`、`GET_CACHE_STATS`（唯讀 cache 池快照）、`GET_CACHE_PEEK`（唯讀依子字串掃 tc_ 快取條目內容，回 `{key, v, t}`，診斷壞譯文入快取用；**僅 dev tail 版本（四段版本號）啟用**，商店版（三段）回 error——快取為全域池含跨站譯文全文，bridge 對任意頁常開，商店版開放等於讓惡意頁探測使用者在其他站翻過的內容）、`SET_GLOSSARY_ENABLED`（撥術語表一致化開關，唯一開放的寫入 action，供自動化測試））。僅限 Chromium：Firefox 的 main world 受 Xray 安全模型限制，讀不到 response 的 object detail，Debug Bridge 回讀不可用（消費者皆為 Chromium-only tooling，刻意不改協定）
 - **YouTube bridge 事件 detail 協定**：isolated→main 方向（`shinkansen-yt-cc-control`、`shinkansen-yt-set-caption-track`）的 detail 一律送 JSON 字串（Firefox 的 isolated→main object detail 在 main world 讀屬性會 throw，primitive 字串跨 compartment 可讀）；main 端雙格式相容讀（字串 parse、物件直收）。main→isolated 方向（`shinkansen-yt-player-response` 等）維持 object detail（content script 有 Xray vision 可讀）
 
 ---
@@ -944,7 +944,7 @@ UI 端（content scripts / translate-doc）統一走 `lib/i18n.js` `bgErrorMessa
 | type | 用途 |
 |------|------|
 | `TRANSLATE_PRESET` | v1.4.12：依 `payload.slot`（1/2/3）觸發對應 preset 翻譯；已翻譯時任一 slot 皆 `restorePage`；翻譯中任一 slot 皆 abort |
-| `TOGGLE_TRANSLATE` | 舊訊息（popup 按鈕用）；v1.4.12 起映射為 preset slot 1 |
+| `TOGGLE_TRANSLATE` | 舊訊息（popup 按鈕用）；v1.4.12 起映射為 preset slot 2（同 Alt+S 主快速鍵） |
 | `GET_STATE` | 查詢翻譯狀態 |
 | `TOGGLE_EDIT_MODE` | 切換編輯譯文模式 |
 | `MODE_CHANGED` | v1.5.0：popup 切換顯示模式時通知 content script。payload `{ mode: 'single' \| 'dual' }`；已翻譯狀態下顯示 toast 提示需重新翻譯，否則僅靜默接收 |
@@ -974,7 +974,7 @@ UI 端（content scripts / translate-doc）統一走 `lib/i18n.js` `bgErrorMessa
 - storage schema：`translatePresets: [{ slot, engine, model, label }]`，三組預設值內建於 `lib/storage.js` `DEFAULT_SETTINGS`。
 - 統一行為：
   - 閒置狀態按任一 preset 鍵 → 依該 slot 的 `engine` + `model` 啟動翻譯
-  - 翻譯中按任一 preset 鍵 → abort（按下當下立即還原原文 + 跳「已取消」toast，不等 in-flight 批次回應；三條注入路徑注入前檢查 `signal.aborted`，晚到的批次回應不再注入）。取消後（controller 已 aborted、舊輪還在收尾）再按 → 直接開新一輪翻譯（toggle 語意）；run state 在入口同步設定 + identity-guarded 釋放，防快速連按 spawn 並行 zombie run
+  - 翻譯中按任一 preset 鍵 → abort（按下當下立即還原原文 + 跳「已取消」toast，不等 in-flight 批次回應；三條注入路徑注入前檢查 `signal.aborted`，晚到的批次回應不再注入）。立即還原與「還原原文」共用同一條 `restoreInjectedDom()`，single innerHTML / dual sibling wrapper / framework-managed nodeValue 三軌注入痕跡與 Map 狀態一併清乾淨（不留 `isPageTranslated()` 與 `STATE.translated` 不一致的殭屍態）。取消後（controller 已 aborted、舊輪還在收尾）再按 → 直接開新一輪翻譯（toggle 語意）；run state 在入口同步設定 + identity-guarded 釋放，防快速連按 spawn 並行 zombie run
   - 已翻譯完成按任一 preset 鍵 → `restorePage`（不分 slot）
 - `modelOverride` 傳輸：content.js `SK.translateUnits` 把 slot 對應的 model 放進 `TRANSLATE_BATCH` payload.modelOverride → background `handleTranslate` 透過 `geminiOverrides.model` 覆蓋 `geminiConfig.model`（與 YouTube 字幕用的同一條機制，用 `cacheTag` 參數區分快取分區避免污染）。
 - 未來 Options UI（v1.4.13 規劃）提供 engine/model/label 編輯；v1.4.12 使用者要改 preset 可暫時直接寫 `chrome.storage.sync.translatePresets`。
@@ -1012,6 +1012,7 @@ window.__shinkansen = {
 - 設定頁「用量」分頁：彙總卡片（總費用/token/筆數/最常用模型）、折線圖（日/週/月粒度）、明細表格
 - 支援日期範圍篩選、CSV 匯出、清除
 - 費用計算套用 cache 命中折扣後的實付值（折扣比例由 pricing config 的 `cachedDiscount` 決定，見 §11.2）
+- 字幕翻譯逐批合併：YouTube（`source='youtube-subtitle'`）與 Drive（`source='drive-subtitle'`，videoId 為 Drive 檔案 id）字幕的逐批 `LOG_USAGE` 走 `upsertYouTubeUsage` 以（source + videoId + model，1 小時視窗）合併成單筆，兩種來源不互相合併；Drive 的 Google 引擎路徑免費、chars 記帳由 background `handleTranslateGoogle` 直接落地，content 端不發 `LOG_USAGE`
 
 ---
 
@@ -1320,6 +1321,8 @@ UI 進度條讀此事件刷新。
 
 - **單段落失敗**：該段落 `translation = null`,UI 右欄顯示原文 + 紅色虛線下劃線標記，hover 顯示錯誤訊息，點擊段落右上角 ↻ 按鈕可單獨 retry
 - **整批失敗**：該批內所有段落標記 failed,UI 工具列顯示「N 個段落翻譯失敗，點此一鍵重試所有失敗段落」按鈕
+- **整體失敗**（`translateDocument` 本身 throw，非逐批失敗）：reader 工具列下方顯示 `#reader-error` 錯誤 banner（鏡像 EPUB 的 chapters-error，顯示 raw 錯誤訊息），下一輪翻譯成功時自動清除
+- **編輯頁儲存語意**：只有「內容有變動」的段落會被標記為手動編輯（`userEdited`）並轉 done；未動過的段落（含留空的失敗段）狀態原封不動，失敗段的重試入口不因儲存別段修改而消失
 - **不做整份 retry**：翻譯成本高、使用者已等候很久，自動整份 retry 等於浪費已成功的段落 token——讓使用者自己選 retry 範圍
 - **下載譯文 PDF 時**：failed 段落以原文輸出（不留空、不留錯誤標記）
 

@@ -553,10 +553,16 @@ export async function translateSingleBlock(block, options = {}) {
 // ⟦ 是協定專用字元，這個前綴必然是壞標記；» 等常見替代閉合字元順帶吃掉,
 // 其他字元不消耗只補 ⟧。內文合法的 «» 引號沒有 ⟦N 前綴,不受影響。
 // 與 content-serialize.js SK.normalizeLlmPlaceholders 尾段是同一份事實的雙實作
-//（module 系統隔離:content script IIFE vs ES module），改這裡必同步那邊
+//（module 系統隔離：content script IIFE vs ES module），改這裡必同步那邊。
+// v2.0.78（批次 5 H3）：capture 擴成也涵蓋 W7 樣式標記（⟦b⟧/⟦/i⟧/⟦l:N⟧/⟦/l⟧）——
+// 同一種 mangle 行為（⟦/2» 已實測 57 段）套在樣式標記上會產出 ⟦/b»，
+// parseMarkedTranslation 的 tagRe 不匹配 → stack 不平衡 → fallback，而 fallback
+// 的 MARKER_TAG_RE 只清「完好」tag → 字面殘片印進譯文 PDF。樣式標記是 DOC 專用
+// 協定，content-serialize.js 那邊的網頁佔位符路徑不存在樣式標記，此擴充刻意不同步
+//（雙實作範圍仍只到數字型佔位符）。
 export function repairMangledPlaceholders(s) {
   if (typeof s !== 'string' || s.length === 0) return s;
-  return s.replace(/⟦(\*?\/?\d+)(?:[»›❱》〉≫]|(?=[^⟧0-9])|$)/g, '⟦$1⟧');
+  return s.replace(/⟦(\*?\/?\d+|\/?[bi]|l:\d+|\/l)(?:[»›❱》〉≫]|(?=[^⟧0-9])|$)/g, '⟦$1⟧');
 }
 
 // 批次分隔符殘片清理（v2.0.53）：模型偶發在段尾寫出殘缺的批次分隔符幻覺
@@ -774,7 +780,13 @@ export function buildMarkedText(block) {
  */
 export function parseMarkedTranslation(text, linkUrls) {
   const fallback = () => {
-    const cleaned = (text || '').replace(MARKER_TAG_RE, '');
+    // v2.0.78（批次 5 H3）：MARKER_TAG_RE 只清「完好」tag——repair 搆不到的殘片
+    //（如 ⟦l:» 缺編號）補一道 token 形狀的殘片掃除。字元集收緊到協定 token 本體
+    //（[*/bil0-9:]）+ 常見替代閉合字元，不會誤吃內文（⟦ 是協定保留字元，但保守
+    // 起見不用寬鬆的「任意 N 字」掃法）
+    const cleaned = (text || '')
+      .replace(MARKER_TAG_RE, '')
+      .replace(/⟦\/?[*bil0-9:]{0,4}[»›❱》〉≫]?/g, '');
     return {
       segments: [{ text: cleaned, isBold: false, isItalic: false, linkUrl: null }],
       plainText: cleaned,
