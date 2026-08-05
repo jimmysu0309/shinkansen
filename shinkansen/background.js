@@ -858,7 +858,9 @@ const messageHandlers = {
       // v1.8.49: 文件翻譯路徑「是否套用固定術語表」由設定控制（預設 true，沿用之前隱含行為)。
       // fixedGlossary entries 仍從 settings.fixedGlossary.global 讀（跟主功能共用)。
       const applyFixedGlossary = td.applyFixedGlossary !== false;
-      return handleTranslate(payload, sender, overrides, null, '_doc', applyFixedGlossary);
+      // 批次 8 E7:長 fetch 期間掛 keepalive alarm 續命(見 _withDocBatchKeepAlive 註解)
+      return _withDocBatchKeepAlive(() =>
+        handleTranslate(payload, sender, overrides, null, '_doc', applyFixedGlossary));
     },
   },
   TRANSLATE_DOC_BATCH_CUSTOM: {
@@ -884,7 +886,9 @@ const messageHandlers = {
         overrides.temperature = td.temperature;
       }
       const applyFixedGlossary = td.applyFixedGlossary !== false;
-      return handleTranslateCustom(payload, sender, '_oc_doc', overrides, applyFixedGlossary);
+      // 批次 8 E7:同 TRANSLATE_DOC_BATCH 的 keepalive 續命
+      return _withDocBatchKeepAlive(() =>
+        handleTranslateCustom(payload, sender, '_oc_doc', overrides, applyFixedGlossary));
     },
   },
   // commit 5b:Drive 影片字幕走 Google Translate 路徑（獨立 cache key '_gt_drive' 避免跟
@@ -1285,18 +1289,32 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const entry = messageHandlers[type];
   if (!entry) return; // 不認識的訊息類型，不處理
 
+  // 批次 8 E9（code review 2026-08-03）:sync handler 一 throw 即 uncaught,content 端
+  // 只收到「message port closed」而非結構化 error——與 async 分支的 errorFields 協定
+  // 不對稱。統一包 try/catch(async handler 同步段 throw 也走同一條)。
+  const onError = (err) => {
+    debugLog('error', 'system', `${type} failed`, { error: err?.message || String(err) });
+    sendResponse({ ok: false, ...errorFields(err) });
+  };
   if (entry.async) {
-    entry.handler(message.payload, sender)
-      .then((result) => sendResponse({ ok: true, ...(result && typeof result === 'object' ? result : {}) }))
-      .catch((err) => {
-        debugLog('error', 'system', `${type} failed`, { error: err?.message || String(err) });
-        sendResponse({ ok: false, ...errorFields(err) });
-      });
+    let p;
+    try {
+      p = Promise.resolve(entry.handler(message.payload, sender));
+    } catch (err) {
+      onError(err);
+      return false;
+    }
+    p.then((result) => sendResponse({ ok: true, ...(result && typeof result === 'object' ? result : {}) }))
+      .catch(onError);
     return true; // 保留 sendResponse 通道
   } else {
     // 同步 handler
-    const result = entry.handler(message.payload, sender);
-    sendResponse({ ok: true, ...(result && typeof result === 'object' ? result : {}) });
+    try {
+      const result = entry.handler(message.payload, sender);
+      sendResponse({ ok: true, ...(result && typeof result === 'object' ? result : {}) });
+    } catch (err) {
+      onError(err);
+    }
     return false;
   }
 });
@@ -1352,17 +1370,34 @@ function _startStreamKeepAlive() {
   } catch (_) { /* alarms 權限缺失或測試環境 */ }
 }
 function _stopStreamKeepAliveIfIdle() {
-  if (inFlightStreams.size === 0) {
+  if (inFlightStreams.size === 0 && _inFlightDocBatches === 0) {
     try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
   }
 }
 // alarm 觸發即「SW 被喚醒到」這個事實本身就是 keep-alive。handler body 不必做事；
-// 但 alarm 觸發時若 inFlightStreams 已空（stream 完成同時 alarm fire 的 race)，順手清理。
+// 但 alarm 觸發時若 in-flight 全空（完成同時 alarm fire 的 race)，順手清理。
 _registerAlarm(_STREAM_KEEPALIVE_ALARM, () => {
-  if (inFlightStreams.size === 0) {
+  if (inFlightStreams.size === 0 && _inFlightDocBatches === 0) {
     try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
   }
 });
+
+// 批次 8 E7（code review 2026-08-03）:文件翻譯批次（TRANSLATE_DOC_BATCH*）fetch 逾時
+// 放寬到 120s（timeout retry 後最長 240s+），遠超 MV3 SW 30s idle 上限——streaming 有
+// keepalive alarm 續命,doc 批次原本沒有,SW 可能中途被回收（批次中斷且被 abort 的請求
+// Google 端照樣計費;429 Retry-After 最長 30s 的 sleep 同屬此暴露面）。
+// 共用同一顆 stream keepalive alarm:in-flight doc 批次計數 > 0 也視為「未 idle」。
+let _inFlightDocBatches = 0;
+async function _withDocBatchKeepAlive(fn) {
+  _inFlightDocBatches++;
+  _startStreamKeepAlive();
+  try {
+    return await fn();
+  } finally {
+    _inFlightDocBatches--;
+    _stopStreamKeepAliveIfIdle();
+  }
+}
 
 // v1.8.0: Streaming 翻譯 handler。
 // v1.8.9: 加 opts 參數，支援字幕路徑（TRANSLATE_SUBTITLE_BATCH_STREAM）復用同一條 streaming pipeline,

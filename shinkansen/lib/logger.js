@@ -107,7 +107,7 @@ function persistLog(entry) {
   }
 }
 
-/** 取得持久化 log 並清除 storage。 */
+/** 取得持久化 log（唯讀，不清除 storage；清除走 Debug Bridge CLEAR_PERSISTED_LOGS）。 */
 export async function getPersistedLogs() {
   // 先 flush pending(300ms debounce 中的批次)，讀取端才不會少最後幾筆
   if (_persistFlushTimer) { clearTimeout(_persistFlushTimer); }

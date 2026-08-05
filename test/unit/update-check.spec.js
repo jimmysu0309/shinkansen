@@ -186,6 +186,24 @@ test.describe('checkForUpdate', () => {
     expect(store.updateAvailable).toBeUndefined();
   });
 
+  // 批次 8 F4（code review 2026-08-03）:200 + 合法 JSON 但缺 tag_name（GitHub API 異常回應）
+  // 舊行為:latestVersion='' 解析成 [0,0,0] → 誤走 up-to-date 分支清掉有效 updateAvailable。
+  // SANITY 紀錄(已驗證):暫時拿掉 update-check.js 的 `if (!latestVersion)` 早退 →
+  // 本 case fail(updateAvailable 被清掉 + checked=true)→ 還原後 pass。
+  test('F4:200 + 缺 tag_name → 不動 storage（保留先前偵測到的有效通知）', async () => {
+    store.updateAvailable = { version: '1.7.0', releaseUrl: 'http://example' };
+    nextFetchResponse = {
+      ok: true,
+      status: 200,
+      json: async () => ({ html_url: 'https://github.com/x' }), // 無 tag_name
+    };
+    const result = await checkForUpdate();
+    expect(result.checked).toBe(false);
+    expect(result.error).toBe('missing tag_name');
+    expect(store.updateAvailable).toBeDefined(); // 不被清
+    expect(store.updateAvailable.version).toBe('1.7.0');
+  });
+
   test('GitHub API 失敗（network error）→ 不清 storage（保留之前偵測結果）', async () => {
     store.updateAvailable = { version: '1.6.1', releaseUrl: 'http://example' };
     nextFetchResponse = { error: new Error('network error') };

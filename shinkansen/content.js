@@ -931,9 +931,6 @@
           // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段）時 reject,
           // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming（整批 resolve 後一次 split)。
           // segment 0 可能已被 streaming 注入合併譯文（A 已 sanitize),retry 會用乾淨版本覆蓋。
-          // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段）時 reject,
-          // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming（整批 resolve 後一次 split)。
-          // segment 0 可能已被 streaming 注入合併譯文（A 已 sanitize),retry 會用乾淨版本覆蓋。
           if (message.payload.hadMismatch) {
             // _anomaly：進低流量異常 ring（lib/logger.js），供「翻好的字被另一版
             // 中文覆蓋」類回報事後排查（2026-07-27 scotto.me 排查缺口——一般
@@ -1435,8 +1432,13 @@
     // LLM 側,否則簡體內容會虛增 batchCount 觸發術語表、且術語表 API 輸入含大量
     // 根本不會送 LLM 的文字(浪費 token)。convertOnly 時全部段落可轉換 →
     // llmPreTexts 為空 → batchCount=0 → 術語表自然跳過。
+    // 批次 8 B6:判準統一用 isConvertibleVariant——實際分流(translateUnits 的
+    // partition)走放寬版(含中英混排品牌標題),這裡若用 detectTextLang 嚴格版,
+    // 放寬命中的段落會被算進 batchCount(虛增可能誤觸發 blocking 門檻)與術語表
+    // 輸入(API 輸入含不送 LLM 的文字,浪費 token)。同一份「哪些段落走本地轉換」
+    // 事實必須單一判準(工作流原則 §5)。
     const _isConvertible = convertDirection
-      ? preTexts.map(t => SK.detectTextLang(t) === (convertDirection === 'cn2twp' ? 'zh-Hans' : 'zh-Hant'))
+      ? preTexts.map(t => SK.isConvertibleVariant(t, convertDirection))
       : null;
     const llmPreTexts = _isConvertible ? preTexts.filter((_, i) => !_isConvertible[i]) : preTexts;
 
@@ -1596,6 +1598,16 @@
       // 頁面反覆重送 API;badge 紅點也不該亮著。
       if (done === 0 && failures.length > 0) {
         SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+        return;
+      }
+
+      // 批次 8 B7:convertOnly 全段被協定層跳過(done=0 且無失敗)也不可標 translated——
+      // pre-filter(innerText 判可轉換)與 partition(序列化文字判)兩層分歧時全部進
+      // llmPickIdx 被 skip → done=0 落入成功路徑:translated=true 會讓 autoConvert
+      // 不再重試、快速鍵要先按一次「還原」才能重翻,實際頁面一段都沒轉。
+      if (convertOnly && done === 0) {
+        SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+        SK.sendLog('info', 'translate', 'convertOnly: done=0 (all skipped) — not marking translated');
         return;
       }
 

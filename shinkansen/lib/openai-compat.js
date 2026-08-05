@@ -282,13 +282,16 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     : DEFAULT_FETCH_TIMEOUT_MS;
   const resp = await fetchWithRetry(url, headers, body, { maxRetries, timeoutMs });
 
+  // 批次 8 E4:先 text() 再 JSON.parse(同 gemini.js——resp.json() 失敗後 body 已
+  // disturbed,resp.clone().text() 必 throw → rawPreview 恆空)
   let json;
+  let rawBody = '';
   try {
-    json = await resp.json();
+    rawBody = await resp.text();
+    json = JSON.parse(rawBody);
   } catch (parseErr) {
     const ms = Date.now() - t0;
-    let rawPreview = '';
-    try { rawPreview = await resp.clone().text().then(t => t.slice(0, 200)); } catch { /* noop */ }
+    const rawPreview = rawBody.slice(0, 200);
     await debugLog('error', 'api', 'openai-compat response not JSON', {
       status: resp.status, elapsed: ms, parseError: parseErr.message, rawPreview,
     });
@@ -299,8 +302,37 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   if (!resp.ok) {
     const errMsg = json?.error?.message || `HTTP ${resp.status}`;
-    await debugLog('error', 'api', 'openai-compat error', { status: resp.status, elapsed: ms, error: errMsg });
-    throw new Error(errMsg);
+    // 批次 8 E8（code review 2026-08-03）:reasoning 模型（OpenAI o 系列等）只吃自家預設
+    // temperature,帶值直接 400。v2.0.79 已提供「留空=不送」的設定逃生口;這裡補自動層:
+    // 400 且錯誤訊息點名 temperature、body 有送該欄位時,拿掉後原樣重打一次（僅一次,
+    // 非遞迴）。gemini.js 有 modelDropsSamplingParams gating,custom 路徑靠這條對齊。
+    if (resp.status === 400 && ('temperature' in body) && /temperature/i.test(errMsg)) {
+      await debugLog('warn', 'api', 'openai-compat 400 mentions temperature — retry once without it', {
+        model, error: errMsg,
+      });
+      delete body.temperature;
+      const retryResp = await fetchWithRetry(url, headers, body, { maxRetries, timeoutMs });
+      let retryRaw = '';
+      try {
+        retryRaw = await retryResp.text();
+        json = JSON.parse(retryRaw);
+      } catch (retryParseErr) {
+        throw codedError('customBadResponse',
+          { status: retryResp.status, preview: retryRaw.slice(0, 200) || 'N/A' },
+          `自訂 Provider 回應格式異常（非 JSON）：HTTP ${retryResp.status}。`);
+      }
+      if (!retryResp.ok) {
+        const retryErrMsg = json?.error?.message || `HTTP ${retryResp.status}`;
+        await debugLog('error', 'api', 'openai-compat error (after temperature retry)', {
+          status: retryResp.status, error: retryErrMsg,
+        });
+        throw new Error(retryErrMsg);
+      }
+      // 重試成功:後續流程只讀 json,直接落下去走正常解析
+    } else {
+      await debugLog('error', 'api', 'openai-compat error', { status: resp.status, elapsed: ms, error: errMsg });
+      throw new Error(errMsg);
+    }
   }
 
   const choice = json?.choices?.[0];
@@ -364,7 +396,10 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   let aligned = parts;
   if (parts.length !== texts.length) {
     if (texts.length === 1) {
-      return { parts: [text.trim()], usage: chunkUsage, hadMismatch: false };
+      // 批次 8 E5:同 gemini.js——單段 chunk 輸出含 SEP 字面時 strip 後 join,
+      // 不讓協定 token 進 DOM / 快取
+      const joinedSingle = parts.filter(Boolean).join('\n') || text.trim();
+      return { parts: [joinedSingle], usage: chunkUsage, hadMismatch: false };
     }
     const realigned = realignByMarkers(text, texts.length, marker);
     if (!realigned) {

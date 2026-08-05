@@ -154,6 +154,13 @@ export async function checkForUpdate() {
   }
   const latestTag = json?.tag_name || '';
   const latestVersion = String(latestTag).replace(/^v/, '');
+  // 200 + 合法 JSON 但缺 tag_name（GitHub API 異常回應）：latestVersion 空字串會被解析成
+  // [0,0,0] → 誤走 up-to-date 分支清掉先前偵測到的有效 updateAvailable。
+  // 比照 fetch 失敗分支：不動 storage，直接回報異常。
+  if (!latestVersion) {
+    debugLog('warn', 'update-check', 'response missing tag_name', {});
+    return { checked: false, hasUpdate: false, error: 'missing tag_name' };
+  }
   const releaseUrl = json?.html_url || `https://github.com/jimmysu0309/shinkansen/releases/tag/${latestTag}`;
 
   // v1.6.4: 只對 major / minor 升級提示——patch 級小修不打擾使用者。

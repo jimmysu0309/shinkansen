@@ -187,6 +187,7 @@
   // IS_IOS_BUILD gate，這裡再 gate 一層省掉桌面的無謂訊息）。distribution-cs.js 在本檔
   // 之前載入，IS_IOS_BUILD 此時已就緒。
   if (SK.IS_IOS_BUILD === true) {
-    SK.safeSendMessage({ type: 'PULL_HOST_SETTINGS' });
+    // 批次 8 D8:補 .catch 與同檔其他 safeSendMessage 呼叫點對齊(orphan context 靜默)
+    SK.safeSendMessage({ type: 'PULL_HOST_SETTINGS' }).catch(() => {});
   }
 })(window.__SK);

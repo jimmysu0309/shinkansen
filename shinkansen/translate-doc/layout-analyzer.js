@@ -236,13 +236,10 @@ function analyzePage(rawPage) {
   out.columnCount = columnAssignments.columnCount;
 
   // 4) 同 column 內切 block(canvas 座標，top 升序 = 視覺由上往下)
-  const initialBlocks = [];
-  for (let colIdx = 0; colIdx < columnAssignments.columnCount; colIdx++) {
-    const colLines = lines.filter((_, i) => columnAssignments.assignment[i] === colIdx);
-    colLines.sort((a, b) => a.bbox[1] - b.bbox[1]);
-    const colBlocks = splitColumnIntoBlocks(colLines, medianLineHeight, colIdx);
-    initialBlocks.push(...colBlocks);
-  }
+  //    批次 8 H5:迴圈抽成可注入 assignment 的純函式(spec 手工 assignment 繞過
+  //    K-means,直接驅動 splitColumnIntoBlocks 縱向切分規則)
+  const initialBlocks = splitIntoBlocksByAssignment(
+    lines, columnAssignments.assignment, columnAssignments.columnCount, medianLineHeight);
 
   // 4.5a) heading sub-split：掃 block 內每行，找「heading-shaped」line 切成獨立 block。
   //       條件：lines[i].dominantFontName 與 block majority 不同 + 字數短 + 前面有比正常
@@ -897,6 +894,21 @@ function markSiblingsInRow(lines, medianLineHeight) {
     }
     groupStart = groupEnd + 1;
   }
+}
+
+// 批次 8 H5:步驟 4 的 per-column 切 block 迴圈——抽出並 export 讓 spec 可注入手工
+// column assignment,完全繞過 detectColumns(K-means)直接測 splitColumnIntoBlocks 的
+// 縱向切分規則(splitOnSameRow / splitOnLeftShift 正向案例,PENDING 2.0.74.1 條目)。
+// 不改行為,純搬移 + export。
+export function splitIntoBlocksByAssignment(lines, assignment, columnCount, medianLineHeight) {
+  const initialBlocks = [];
+  for (let colIdx = 0; colIdx < columnCount; colIdx++) {
+    const colLines = lines.filter((_, i) => assignment[i] === colIdx);
+    colLines.sort((a, b) => a.bbox[1] - b.bbox[1]);
+    const colBlocks = splitColumnIntoBlocks(colLines, medianLineHeight, colIdx);
+    initialBlocks.push(...colBlocks);
+  }
+  return initialBlocks;
 }
 
 function splitColumnIntoBlocks(colLines, medianLineHeight, columnIdx) {

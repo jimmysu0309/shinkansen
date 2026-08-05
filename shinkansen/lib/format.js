@@ -11,7 +11,10 @@
  */
 export function formatBytes(b) {
   if (b < 1024) return b + ' B';
-  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  // 閾值判斷用「捨入後值」：1048570 bytes 直接用原值判斷會落在 KB 檔位，
+  // 顯示成 '1024.0 KB'（應為 '1.00 MB'）——進位縫隙。
+  const kb = (b / 1024).toFixed(1);
+  if (Number(kb) < 1024) return kb + ' KB';
   return (b / 1024 / 1024).toFixed(2) + ' MB';
 }
 
@@ -19,9 +22,11 @@ export function formatBytes(b) {
  * 格式化 token 數為 K / M 字串。
  */
 export function formatTokens(n) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return String(n);
+  if (n < 1_000) return String(n);
+  // 同 formatBytes：999999 用原值判斷會顯示 '1000.0K'（應為 '1.00M'）。
+  const k = (n / 1_000).toFixed(1);
+  if (Number(k) < 1_000) return k + 'K';
+  return (n / 1_000_000).toFixed(2) + 'M';
 }
 
 /**

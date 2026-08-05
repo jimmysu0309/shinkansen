@@ -350,7 +350,6 @@
       hasNewContentTrueCount: _dbgHasNewContentTrueCount,
       debounceArmedCount: _dbgDebounceArmedCount,
       earlyReturnNotTranslated: _dbgEarlyReturnNotTranslated,
-      earlyReturnMaxRescans: _dbgEarlyReturnMaxRescans,
     };
   };
 
@@ -1050,7 +1049,21 @@
   let _dbgHasNewContentTrueCount = 0;
   let _dbgDebounceArmedCount = 0;
   let _dbgEarlyReturnNotTranslated = 0;
-  let _dbgEarlyReturnMaxRescans = 0;
+  // 批次 8 A7:「已翻譯容器」內晚載內容的 scoped rescan 佇列。
+  // 問題(2026-08-05 重現):容器經注入後帶 data-shinkansen-translated,SPA 之後
+  // append 進同容器的新段落被兩層吃掉——hasNewContent 過濾把 translated 容器內
+  // mutation 整批排除(rescan 不 arm),collectParagraphs walker 又在容器層 REJECT
+  // 整棵;容器若在 STATE.translatedHTML 內,guard 還會把 append 沖回 savedHTML。
+  // 修法(結構性通則,§8——描述「純 append 進已譯容器」的 mutation 形狀,不綁站點):
+  // 對「無 removedNodes 的純 append、added element 位於標記容器內、自身未帶標記、
+  // 有實質文字」的節點:
+  //   a. 立即 refreshAncestorSavedHTML(n) 讓 guard baseline 吸收 append(注入自身
+  //      的 mutation 帶 removedNodes 不會進來;framework 覆寫譯文也帶 removal /
+  //      characterData,guard 保護不受影響)
+  //   b. 節點進本佇列,rescan 以它為 root + includeRoot 跑 collectParagraphs 補收
+  //      (容器內既有已譯內容不在 root 子樹 → 零重翻 / 零 echo 風險)
+  const _scopedRescanRoots = new Set();
+  const SCOPED_RESCAN_MAX_ROOTS = 300; // 防暴長;超限的晚載內容等下輪 mutation 再收
   function onSpaObserverMutations(mutations) {
     _dbgMutationBatchesSeen++;
     // v1.10.65: JRead 閱讀模式期間讓位（同 runContentGuard）——不 stopSpaObserver、
@@ -1058,7 +1071,6 @@
     // 進閱讀模式重排 articleEl 觸發的這批 mutation 被當成「譯文被覆蓋」回寫。
     if (contentGuardExternallyPaused) return;
     if (!STATE.translated) { _dbgEarlyReturnNotTranslated++; stopSpaObserver(); return; }
-    if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) { _dbgEarlyReturnMaxRescans++; return; }
 
     // mutation-driven 譯文守護(高頻路徑):
     // 框架(典型 YouTube yt-attributed-string)在 hover 觸發 re-render 時會在
@@ -1104,6 +1116,30 @@
     // 對 single inject 的 element 不適用。
     const hadDualExpandedUnmark = detectAndUnmarkExpandedDual(mutations);
     const hadNvMutateExpandedUnmark = detectAndUnmarkExpandedNodeValueMutate(mutations);
+
+    // 批次 8 A7:純 append 進「已翻譯容器」→ scoped 佇列(詳見佇列宣告處註解)
+    let _scopedQueued = false;
+    for (const m of mutations) {
+      if (m.type !== 'childList' || m.addedNodes.length === 0) continue;
+      if (m.removedNodes.length > 0) continue; // 非純 append(注入 / re-render 都帶 removal)
+      const t = m.target;
+      if (!t || t.nodeType !== Node.ELEMENT_NODE) continue;
+      if (t.closest?.('.ytp-caption-window-container, .ytp-caption-segment')) continue;
+      if (!t.closest?.('[data-shinkansen-translated]')) continue; // 只補「標記容器內」缺口
+      for (const n of m.addedNodes) {
+        if (n.nodeType !== Node.ELEMENT_NODE) continue;
+        if ((n.textContent || '').trim().length <= 10) continue;
+        if (n.hasAttribute('data-shinkansen-translated')) continue; // 框架重掛已譯節點交給 guard
+        if (_scopedRescanRoots.size >= SCOPED_RESCAN_MAX_ROOTS) break;
+        SK.refreshAncestorSavedHTML?.(n); // guard baseline 吸收 append,rAF restore 不沖掉
+        _scopedRescanRoots.add(n);
+        _scopedQueued = true;
+      }
+    }
+    if (_scopedQueued) {
+      _dbgDebounceArmedCount++;
+      armSpaObserverRescan();
+    }
 
     const hasNewContent = hadDualExpandedUnmark || hadNvMutateExpandedUnmark || mutations.some(m =>
       m.type === 'childList' && m.addedNodes.length > 0 &&
@@ -1650,15 +1686,37 @@
       SK.sendLog('info', 'spa', 'partialMode: skip SPA observer rescan');
       return;
     }
-    if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) {
-      SK.sendLog('info', 'spa', 'SPA observer: reached max rescans, stopping NEW translations only', { maxRescans: SK.SPA_OBSERVER_MAX_RESCANS });
-      return;
-    }
     spaObserverRescanCount++;
     // review B8:每輪 rescan 順掃 seenTexts 過期 entry,長 session Map 不無上限成長
     sweepExpiredSeenTexts(Date.now());
 
     let newUnits = SK.collectParagraphs();
+    // 批次 8 A7:scoped 補收——以佇列節點為 root + includeRoot 跑 collectParagraphs,
+    // 繞過「已翻譯容器」層 REJECT(佇列見 onSpaObserverMutations)
+    if (_scopedRescanRoots.size > 0) {
+      const roots = [..._scopedRescanRoots];
+      _scopedRescanRoots.clear();
+      const seenEls = new Set(newUnits.map((u) => u.el));
+      let scopedAdded = 0;
+      for (const root of roots) {
+        if (!root.isConnected) continue;
+        if (root.hasAttribute('data-shinkansen-translated')) continue; // 已被前輪處理
+        // 標記已被清(restore / SPA reset / reconcile)→ 一般 collect 抓得到,避免重複
+        if (!root.parentElement?.closest?.('[data-shinkansen-translated]')) continue;
+        if (roots.some((r) => r !== root && r.contains && r.contains(root))) continue; // 巢狀 root 只走外層
+        let scoped = [];
+        try { scoped = SK.collectParagraphs(root, null, { includeRoot: true }) || []; } catch (_) { /* scoped root 異常不擋主 rescan */ }
+        for (const u of scoped) {
+          if (u.el && seenEls.has(u.el)) continue;
+          if (u.el) seenEls.add(u.el);
+          newUnits.push(u);
+          scopedAdded++;
+        }
+      }
+      if (scopedAdded > 0) {
+        SK.sendLog('info', 'spa', 'A7 scoped rescan: 已翻譯容器內晚載內容補收', { roots: roots.length, units: scopedAdded });
+      }
+    }
     if (STATE.translatedMode === 'dual' && SK.consolidateDualInlineUnits) {
       newUnits = SK.consolidateDualInlineUnits(newUnits);
     }
@@ -1733,7 +1791,6 @@
     // 完全不彈 toast → silent timeout 8s 後悄悄收場,user 體感無干擾。
     let loadingShown = false;
     let watchdogTimer = null;
-    const loadingTimer = null; // 不再用 800ms 預先彈 toast,改 lazy
     const tryShowLoadingToast = (d, t) => {
       if (loadingShown || isTinyRescan) return;
       loadingShown = true;
@@ -1780,7 +1837,6 @@
         new Promise((_, rej) => setTimeout(() => rej(new Error('SK_RESCAN_TIMEOUT')), _RESCAN_TIMEOUT_MS)),
       ]);
       _progressClosed = true;
-      clearTimeout(loadingTimer);
       if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
       if (!STATE.translated) return;
       if (done > 0) {
@@ -1798,12 +1854,15 @@
       }
     } catch (err) {
       _progressClosed = true;
-      clearTimeout(loadingTimer);
       if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
       if (err.message === 'SK_RESCAN_TIMEOUT') {
         // SW sleep / stream hang 兜底:silent hide,不彈 error toast(假錯誤體感差)。
         // 下一次 SPA mutation 觸發 rescan + by-text reuse 命中可補上。
-        SK.sendLog('warn', 'spa', 'SPA rescan 30s timeout, silent hide', { units: newUnits.length });
+        // 注意(批次 8 B9):這裡只收 toast、不 abort 底層 translateUnitsByProvider——
+        // race 輸掉的那條 run 仍在跑,之後 settle 時 _progressClosed 已 true 不會再動
+        // toast;結果若成功仍會注入(晚到的譯文照上,無害)。診斷 log 時別把「timeout」
+        // 誤讀成「該輪翻譯已被取消」。
+        SK.sendLog('warn', 'spa', `SPA rescan ${_RESCAN_TIMEOUT_MS / 1000}s timeout, silent hide`, { units: newUnits.length });
         if (loadingShown) SK.hideToast();
       } else {
         SK.sendLog('warn', 'spa', 'SPA observer rescan failed', { error: err.message });

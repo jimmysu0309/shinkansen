@@ -177,3 +177,37 @@ test('youtube-batch-size-12 (case 3): playbackRate=2 + 影片 lead=12s → wallL
 
   await page.close();
 });
+
+// ── 批次 8 C6(code review 2026-08-03)──
+// lead-time → batch 0 ladder 原本 heuristic / 非 ASR 兩處逐字鏡像,且 videoNowMs
+// fallback 已 drift(heuristic fallback windowStartMs=緊急、非 ASR fallback 0=從容)。
+// 修法:抽 _calcAdaptiveBatch0 單一資料源,fallback 統一 windowStartMs(videoEl 不在
+// 時無從得知播放位置,保守當緊急處理)。上方 case 1-3 走真實 translateWindowFrom 路徑
+// 已覆蓋 ladder 本體;這裡鎖 fallback 統一 + seam 存在。
+//
+// SANITY 紀錄(已驗證,2026-08-05):把 _calcAdaptiveBatch0 的 fallback 改回
+// `: 0`(非 ASR 舊 drift 行為)→ 「無 videoEl fallback 緊急」case fail
+// (windowStartMs=30000 → leadMs=30000 → firstBatchSize=16)→ 還原後 pass。
+test('C6: videoEl 不存在 → fallback windowStartMs(緊急,batch0=1),兩路徑不再 drift', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const r = await evaluate(`
+    (() => {
+      const saved = window.__SK.YT.videoEl;
+      window.__SK.YT.videoEl = null;
+      const out = window.__SK._calcAdaptiveBatch0(30000);
+      window.__SK.YT.videoEl = saved;
+      return out;
+    })()
+  `);
+  expect(r.videoNowMs, 'fallback 應取 windowStartMs').toBe(30000);
+  expect(r.leadMs, 'leadMs 應為 0(緊急)').toBe(0);
+  expect(r.firstBatchSize, '無 videoEl 一律當緊急 → batch0 = 1').toBe(1);
+
+  await page.close();
+});

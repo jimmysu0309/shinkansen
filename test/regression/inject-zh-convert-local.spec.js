@@ -558,3 +558,56 @@ test('zh-convert case 3: autoConvertZh 開啟 → 頁面載入自動本地轉換
 
   await page.close();
 });
+
+// ── 批次 8 B7(code review 2026-08-03)──
+// convertOnly 全段被協定層(translateUnits partition)跳過時,done=0 且 failures=0
+// 會落入成功路徑標 STATE.translated=true——autoConvert 不再重試、快速鍵要先按一次
+// 「還原」才能重翻,實際頁面一段都沒轉。修法:convertOnly 對 done===0 一律不標。
+//
+// 觸發場景:pre-filter(innerText 判可轉換)與 partition(佔位符序列化文字判)兩層
+// 分歧(review 標「推測」——真實分歧樣本未實測到)。spec 用 stub 機械重現分歧:
+// isConvertibleVariant 對「不含 ⟦ 的輸入」(= pre-filter 的 innerText)回 true、
+// 對「含 ⟦N⟧ 佔位符的輸入」(= partition 的序列化文字)回 false,精準驅動
+// 「unit 通過 pre-filter、在協定層全數被跳」→ done=0 落入 translatePage 收尾路徑。
+//
+// SANITY 紀錄(已驗證,2026-08-05):把 content.js translatePage 收尾的
+// `if (convertOnly && done === 0)` guard 暫改 `if (false && …)` → 「不得標
+// translated」斷言 fail(translated=true)→ 還原後 pass。
+test('zh-convert case 9(B7): convertOnly 全段被協定層跳過 → 不標 translated', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#content-main', { timeout: 10_000 });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const r = await evaluate(`
+    (async () => {
+      // 段內含 inline <a> → 序列化文字帶 ⟦N⟧ 佔位符,與 innerText 形態分歧
+      document.body.innerHTML = '<div id="root"><p id="p-mix">软件内存头发这是一段简体文字 <a href="#x">视频链接</a> 后面还有更多简体内容需要转换处理</p></div>';
+      const orig = window.__SK.isConvertibleVariant;
+      // stub:模擬兩層分歧——innerText(無佔位符)判可轉換,序列化文字(含 ⟦)判不可
+      window.__SK.isConvertibleVariant = (text, dir) => !String(text).includes('\u27E6');
+      let toastShown = null;
+      const origShowToast = window.__SK.showToast;
+      window.__SK.showToast = (kind, msg, opts) => { toastShown = { kind, msg }; return origShowToast.call(window.__SK, kind, msg, opts); };
+      try {
+        await window.__SK.translatePage({ convertOnly: true }).catch(() => {});
+      } finally {
+        window.__SK.isConvertibleVariant = orig;
+        window.__SK.showToast = origShowToast;
+      }
+      return {
+        translated: window.__SK.STATE.translated,
+        translating: window.__SK.STATE.translating,
+        toastShown,
+      };
+    })()
+  `);
+
+  expect(r.translated, 'done=0 不得標 translated(否則 autoConvert 不重試、快速鍵誤走還原)').toBe(false);
+  expect(r.translating, 'run state 應正確釋放').toBe(false);
+
+  await page.close();
+});

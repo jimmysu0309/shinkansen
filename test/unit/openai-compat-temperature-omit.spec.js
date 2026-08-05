@@ -88,3 +88,67 @@ test('glossary:customProvider.temperature 有值 → 術語表照送自己的 te
   }));
   expect(lastBody.temperature).toBe(0.1);
 });
+
+// ── 批次 8 E8（code review 2026-08-03）:400 點名 temperature → 自動拿掉重試一次 ──
+// 「留空=不送」是設定層逃生口;使用者不知道模型是 reasoning 系（或用預設 0.7 fallback）
+// 時仍會 400。translateChunk 對「400 + 錯誤訊息含 temperature + body 有送該欄位」自動
+// 拿掉 temperature 原樣重打一次(僅一次,不遞迴)。
+//
+// SANITY 紀錄(已驗證,2026-08-05):把 lib/openai-compat.js 的
+//   `if (resp.status === 400 && ('temperature' in body) && /temperature/i.test(errMsg))`
+//   改成 `if (false && ...)` → 「自動重試」case fail(throw 400 錯誤)→ 還原後 pass。
+
+test('E8:400 且錯誤訊息點名 temperature → 拿掉 temperature 自動重試一次成功', async () => {
+  const bodies = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    if (bodies.length === 1) {
+      return new Response(JSON.stringify({
+        error: { message: "Unsupported value: 'temperature' does not support 0.7 with this model." },
+      }), { status: 400, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '譯文' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const r = await translateBatch(['Hello'], settingsWith(0.7), null, null, null);
+    expect(r.translations[0]).toBe('譯文');
+    expect(bodies.length).toBe(2);
+    expect('temperature' in bodies[0]).toBe(true);
+    expect('temperature' in bodies[1]).toBe(false);
+  } finally { globalThis.fetch = origFetch; }
+});
+
+test('E8 對照組:400 但錯誤與 temperature 無關 → 不重試,照拋原錯誤', async () => {
+  const bodies = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({ error: { message: 'model not found' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const err = await translateBatch(['Hello'], settingsWith(0.7), null, null, null).catch(e => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toContain('model not found');
+    expect(bodies.length).toBe(1);
+  } finally { globalThis.fetch = origFetch; }
+});
+
+test('E8 對照組:body 本來就沒送 temperature(null 設定)→ 400 不觸發重試', async () => {
+  const bodies = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({ error: { message: 'temperature not supported' } }),
+      { status: 400, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const err = await translateBatch(['Hello'], settingsWith(null), null, null, null).catch(e => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(bodies.length).toBe(1);
+  } finally { globalThis.fetch = origFetch; }
+});

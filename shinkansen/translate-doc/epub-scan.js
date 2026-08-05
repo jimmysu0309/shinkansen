@@ -394,6 +394,9 @@ export function buildScanBatches(candidates, blockById, {
 }
 
 function spreadPick(arr, k) {
+  // 批次 8 H7:k<=1 時分母 (k-1)=0 → NaN → arr[NaN]=undefined → 下游 .blockId throw。
+  // 預設 samplePerTerm=6 走不到,防呆顯式傳 1 的呼叫端
+  if (k <= 1) return arr.length ? [arr[0]] : [];
   if (arr.length <= k) return arr.slice();
   const out = [];
   for (let i = 0; i < k; i++) {

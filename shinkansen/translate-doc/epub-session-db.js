@@ -200,6 +200,32 @@ function editedHtmlToText(html, fallbackPlain) {
   return fallbackPlain ?? null;
 }
 
+// 批次 8 G8:hydrate 端消毒——匯入 session JSON 的 editedHtml 是外部可控字串,
+// 原本原樣寫回,預覽 / 掃描端 `el.innerHTML = b.editedHtml` 直插。MV3 CSP 擋
+// script 與 inline handler,實害限縮為外部資源載入(追蹤 beacon)與版面注入,但與
+// 輸出端(epub-writer editedHtmlToFrag)宣稱的「寫回消毒」不一致——同一套 strip
+// (剝 script / style / template 元素與 on* 屬性)搬到 hydrate 端,入庫前就乾淨。
+// node 測試環境無 document 時走 regex fallback(真實頁面永遠走 DOM 分支)。
+function sanitizeEditedHtml(html) {
+  if (typeof html !== 'string' || !html) return html;
+  try {
+    if (typeof document !== 'undefined' && document.createElement) {
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      for (const bad of div.querySelectorAll('script, style, template')) bad.remove();
+      for (const el of div.querySelectorAll('*')) {
+        for (const attr of [...el.attributes]) {
+          if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
+        }
+      }
+      return div.innerHTML;
+    }
+  } catch (_) { /* fall through */ }
+  return html
+    .replace(/<(script|style|template)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+}
+
 /** 把 session 的 blocks 灌回 epubDoc（blockId 由內容指紋派生，同書必對齊） */
 export function hydrateSessionBlocks(epubDoc, blocks) {
   if (!blocks) return 0;
@@ -218,7 +244,7 @@ export function hydrateSessionBlocks(epubDoc, blocks) {
         ? alignTrailingPeriodWithSource(b.plainText, repairDocLlmArtifacts(saved.raw))
         : (saved.raw ?? null);
       b.translationRaw = raw;
-      b.editedHtml = saved.edited ?? null;
+      b.editedHtml = typeof saved.edited === 'string' ? sanitizeEditedHtml(saved.edited) : (saved.edited ?? null);
       // 手動編輯優先(渲染 / 譯本 / 掃描都以 editedHtml 為準):translation 必須
       // 從 edited 導出,不可從 raw 重算——否則已修正過的段落被 raw 舊值蓋回,
       // 掃描看到舊譯文再列違規、搜尋替換卻搜 edited DOM 找不到舊詞(2026-07-11

@@ -60,6 +60,9 @@ test('pdf-rotated-text-drop: 旋轉 90° 的 run 丟棄不送翻 + 產出 warnin
     waitUntil: 'domcontentloaded',
   });
   await page.waitForSelector('#dropzone', { state: 'visible' });
+  // 批次 8 G6:_rawPages 改 opt-in(production 不再無條件掛數 MB raw runs),
+  // 本 spec 要讀 textRuns → parse 前先設旗標
+  await page.evaluate(() => { window.__skKeepRawPages = true; });
   await page.setInputFiles('#file-input', {
     name: 'rotated-text-fixture.pdf', mimeType: 'application/pdf', buffer: pdfBuffer,
   });

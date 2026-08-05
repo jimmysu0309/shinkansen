@@ -374,26 +374,27 @@ async function init() {
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     const url = tab?.url || '';
-    if (url.includes('youtube.com/watch')) {
-      $('yt-subtitle-row').hidden = false;
+    const isYtWatch = url.includes('youtube.com/watch');
+    const isDriveFile = /^https:\/\/drive\.google\.com\/file\//.test(url);
+    if (isYtWatch || isDriveFile) {
+      // 批次 8 D10:三個 toggle 共用同一筆 ytSubtitle,合併成一次 sync.get(原本連讀 2-3 次)
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
-      // 沒設定過視為 true（與 DEFAULT_SETTINGS.ytSubtitle.autoTranslate 對齊）
-      $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
-      // 字幕大小 scale（全平台統一,只在 YouTube 影片頁顯示）。預設 100。
-      $('yt-caption-size-row').hidden = false;
-      $('yt-caption-size').value = String(ytSubtitle.captionScale ?? 100);
-    }
-    // commit 5a':Drive 影片 viewer toggle 共用 ytSubtitle.autoTranslate
-    // （user 不需要為 Drive 多做設定，跟 YouTube 字幕用同一個開關）
-    if (/^https:\/\/drive\.google\.com\/file\//.test(url)) {
-      $('drive-subtitle-row').hidden = false;
-      const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
-      $('drive-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
-    }
-    // commit 5c：雙語對照 toggle(YouTube + Drive 影片頁都顯示，共用 ytSubtitle.bilingualMode)
-    if (url.includes('youtube.com/watch') || /^https:\/\/drive\.google\.com\/file\//.test(url)) {
+      if (isYtWatch) {
+        $('yt-subtitle-row').hidden = false;
+        // 沒設定過視為 true（與 DEFAULT_SETTINGS.ytSubtitle.autoTranslate 對齊）
+        $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
+        // 字幕大小 scale（全平台統一,只在 YouTube 影片頁顯示）。預設 100。
+        $('yt-caption-size-row').hidden = false;
+        $('yt-caption-size').value = String(ytSubtitle.captionScale ?? 100);
+      }
+      // commit 5a':Drive 影片 viewer toggle 共用 ytSubtitle.autoTranslate
+      // （user 不需要為 Drive 多做設定，跟 YouTube 字幕用同一個開關）
+      if (isDriveFile) {
+        $('drive-subtitle-row').hidden = false;
+        $('drive-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
+      }
+      // commit 5c：雙語對照 toggle(YouTube + Drive 影片頁都顯示，共用 ytSubtitle.bilingualMode)
       $('bilingual-row').hidden = false;
-      const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
       $('bilingual-toggle').checked = ytSubtitle.bilingualMode === true;
     }
   } catch { /* 非影片頁面，保持 hidden */ }
@@ -416,11 +417,13 @@ $('translate-btn').addEventListener('click', async () => {
   const btn = $('translate-btn');
   if (btn.disabled) return;
   btn.disabled = true;
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) { btn.disabled = false; return; }
-  const mode = btn.dataset.mode;
-  statusEl.textContent = mode === 'restore' ? t('popup.status.restoring') : t('popup.status.translating');
+  // 批次 8 D9:tabs.query 移進 try——query reject(權限 / 內部頁異常)時原本落在
+  // try 區塊外,btn.disabled 永遠不會復原,按鈕永久鎖死
   try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) { btn.disabled = false; return; }
+    const mode = btn.dataset.mode;
+    statusEl.textContent = mode === 'restore' ? t('popup.status.restoring') : t('popup.status.translating');
     // v1.6.6: 讀 settings.popupButtonSlot 決定按鈕對應的 preset slot（預設 2 = Flash）
     // content.js handleTranslatePreset 自帶 toggle 行為（已翻譯 → 還原 / 翻譯中 → abort / 閒置 → 翻譯）
     const { popupButtonSlot } = await browser.storage.sync.get('popupButtonSlot');

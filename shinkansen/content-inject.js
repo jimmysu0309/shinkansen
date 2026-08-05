@@ -1932,7 +1932,7 @@
     }
 
     // Case 3: multi source text nodes — 譯文按 \n+ 切 chunks,N == chunks 1:1 配對
-    const chunks = translation.split(/\n+/).map(s => s).filter(s => s.length > 0);
+    const chunks = translation.split(/\n+/).filter(s => s.length > 0);
     if (chunks.length !== textNodes.length) {
       // Case 3b: chunks < textNodes — React site 把同段落文字拆多個 inline SPAN
       // (X tweetText / Threads / Reddit),inline 分隔不產 \n,翻譯結果自然

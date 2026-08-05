@@ -204,13 +204,20 @@
     if (!el || el.nodeType !== Node.ELEMENT_NODE) return null;
     let cur = el;
     while (cur && cur !== document.body && cur !== document.documentElement) {
-      // 只在 .lang 為字串時採用:HTMLFormElement 帶 [LegacyOverrideBuiltIns],
-      // 若表單內有 name="lang" 的控制項,form.lang 會被該控制項(element)遮蓋而非回傳字串
-      // (WordPress email-subscriptions form 實例),直接 .toLowerCase() 會 throw。
-      // 非字串時 fall through 到 getAttribute('lang')(永遠回字串或 null)。
-      if (typeof cur.lang === 'string' && cur.lang) return cur.lang.toLowerCase();
-      const attr = cur.getAttribute && cur.getAttribute('lang');
-      if (attr) return attr.toLowerCase();
+      // 批次 8 A7:跳過「自家注入蓋的 lang」——applyTargetLocaleStyling 對已翻譯元素
+      // 蓋 lang=target(同元素必帶 data-shinkansen-translated)。晚載進已譯容器的新
+      // 內容會繼承這個 lang,把我們自己的標記當站點語言訊號會誤判「已是 target」skip
+      // (scoped rescan 收不到)。帶 translated 標記的祖先其 lang 非站點訊號,繼續往上爬。
+      const _skStamped = cur.hasAttribute && cur.hasAttribute('data-shinkansen-translated');
+      if (!_skStamped) {
+        // 只在 .lang 為字串時採用:HTMLFormElement 帶 [LegacyOverrideBuiltIns],
+        // 若表單內有 name="lang" 的控制項,form.lang 會被該控制項(element)遮蓋而非回傳字串
+        // (WordPress email-subscriptions form 實例),直接 .toLowerCase() 會 throw。
+        // 非字串時 fall through 到 getAttribute('lang')(永遠回字串或 null)。
+        if (typeof cur.lang === 'string' && cur.lang) return cur.lang.toLowerCase();
+        const attr = cur.getAttribute && cur.getAttribute('lang');
+        if (attr) return attr.toLowerCase();
+      }
       cur = cur.parentElement;
     }
     return null;
@@ -770,9 +777,13 @@
 
   // ─── collectParagraphs ────────────────────────────────
 
-  SK.collectParagraphs = function collectParagraphs(root, stats) {
+  SK.collectParagraphs = function collectParagraphs(root, stats, opts) {
     root = root || document.body;
     stats = stats || null;
+    // 批次 8 A7:opts.includeRoot——scoped rescan(SPA 對「已翻譯容器內晚載節點」
+    // 以該節點為 root 補收)需要 root 自身也進候選:TreeWalker 依 spec 不對 root 跑
+    // filter,晚載節點本身就是段落(如 <p>)時 scoped collect 會收 0。
+    const includeRoot = !!(opts && opts.includeRoot);
 
     // ─── 殭屍轉換 marker reconcile ────────────────────────
     // target 為中文變體時,已標記元素的內容若仍偵測為「相反變體」,marker 必為
@@ -909,8 +920,8 @@
     // 各跑一次。closed shadow root 受 web spec 限制無法 traverse,直接跳過。
     // 共用 seen / excludedMemo / fragmentExtracted / blockAncestorMemo,避免 host
     // 與 shadow 重複計算或 inject 衝突。
-    function processScope(scopeRoot) {
-    const walker = document.createTreeWalker(scopeRoot, NodeFilter.SHOW_ELEMENT, {
+    function processScope(scopeRoot, _includeRootCandidate) {
+    const _walkerFilter = {
       acceptNode(el) {
         // BUTTON 放行:CJK >= 3 字 / non-CJK >= 8 字視為有意義的文字內容,
         // SKIP 讓 walker 進子節點,由後段補抓 leaf。
@@ -1464,9 +1475,15 @@
         if (stats) stats.acceptedByWalker = (stats.acceptedByWalker || 0) + 1;
         return NodeFilter.FILTER_ACCEPT;
       },
-    });
+    };
+    const walker = document.createTreeWalker(scopeRoot, NodeFilter.SHOW_ELEMENT, _walkerFilter);
     let node;
-    while ((node = walker.nextNode())) {
+    // 批次 8 A7:includeRoot 時先手動對 scopeRoot 跑同一個 acceptNode(含 stats /
+    // memo 副作用,與 walker 走到等價),ACCEPT 就先於 walker 迭代餵進同一條迴圈
+    let _pendingRootNode = (_includeRootCandidate && scopeRoot.nodeType === Node.ELEMENT_NODE
+      && _walkerFilter.acceptNode(scopeRoot) === NodeFilter.FILTER_ACCEPT) ? scopeRoot : null;
+    while ((node = _pendingRootNode || walker.nextNode())) {
+      _pendingRootNode = null;
       // v1.10.56: 被接受的 block 段落若超長且內部由 <br><br> 分段(可能再包一層 <font>/<span>
       // inline wrapper),切成多個 fragment——對齊 Case B(splitBrBlock)路徑,避免單一
       // ~2 萬字 unit 讓 thinking 模型 streaming『最後一段無法結束』。paulgraham.com/boss.html
@@ -1836,7 +1853,7 @@
     }  // end processScope
 
     // 主 scope:document.body(或 caller 指定的 root)
-    processScope(root);
+    processScope(root, includeRoot);
 
     // v1.9.13: open Shadow DOM descent。對 root subtree 內所有 open shadow root 各跑
     // 一次 processScope。host 端 ancestor exclude(footer / role=contentinfo 等)在

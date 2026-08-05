@@ -250,7 +250,10 @@
                   out += ac.nodeValue;
                 } else if (ac.nodeType === Node.ELEMENT_NODE) {
                   if (SK.HARD_EXCLUDE_TAGS.has(ac.tagName)) continue;
-                  if (ac.tagName === 'BR') { out += ''; continue; }
+                  // BR 輸出 \u0001 sentinel(與主路徑 / LLM 路徑一致)。批次 8 A10 審視:原字面
+                  // 用裸控制字元(不可見)肉眼像空字串,實際 sentinel 一直都在——
+                  // 誤報;僅正規化為 escape 寫法防再次誤讀。
+                  if (ac.tagName === 'BR') { out += '\u0001'; continue; }
                   if (hasElementChild(ac) || !(ac.textContent || '').trim()) {
                     const aidx = slots.length;
                     slots.push({ atomic: true, node: ac.cloneNode(true) });

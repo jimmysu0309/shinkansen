@@ -386,26 +386,10 @@ async function load() {
     // 只訂閱一次(load() 多次呼叫,見 _uiLangChangeSubscribed 宣告處註解)
     if (!_uiLangChangeSubscribed) {
     _uiLangChangeSubscribed = true;
+    // 批次 8 D7:refresh 統一走 applyUiLanguageRefresh(單一資料源;change handler
+    // 已同步套用過時,dedupe 讓這趟 no-op)
     I18N.subscribeUiLanguageChange((newUi /* , newPref */) => {
-      I18N.applyI18n(document, newUi);
-      { const _vEl = $('options-version');
-        if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
-      // 動態 dropdown(refreshSlotDropdownLabels)用 _t() 取 prefix,UI 語系切換要重組
-      refreshSlotDropdownLabels();
-      // 自訂快速鍵 recorder:「（預設）」後綴 / 「未設定」文案要跟上新語言
-      renderShortcutRecorders();
-      // v1.8.61:#currency-rate-display 不掛 data-i18n,applyI18n 不會碰它,
-      // UI 語系切換要主動重 render 才會看到新語言的「目前匯率: ...」字串
-      refreshExchangeRateDisplay();
-      // v1.8.61:幣值 section 隨 UI 語言切換顯示 / 隱藏
-      _updateCurrencySectionVisibility();
-      // v1.8.61:Toast opacity label 跟著 UI 語系重 render
-      _renderToastOpacityLabel($('toastOpacity')?.value || 70);
-      // 懸浮按鈕 opacity label 跟著 UI 語系重 render
-      _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
-      // v1.8.61:字幕 prompt token 開銷 hint 是純動態 _t() 計算,applyI18n 不碰,
-      // 主動 reapply 才會看到新語言的 dict 字串
-      updateYtPromptCostHint();
+      applyUiLanguageRefresh(newUi);
     });
     }
   }
@@ -1293,6 +1277,35 @@ browser.storage.onChanged.addListener((changes, area) => {
   }
 });
 
+// 批次 8 D7:UI 語系 refresh 收斂單一函式——原本 change handler 同步跑一套、
+// storage.onChanged(發起頁自身也 fire,i18n.js subscribeUiLanguageChange)再跑一套:
+// 每次切語言 applyI18n 全頁重 render 兩次、EXCHANGE_RATE_GET 發兩次,且新增動態字串
+// renderer 要記得改兩處。change handler 保留「立即套用」體感(subscribe 有時延遲),
+// onChanged 那趟靠 _lastAppliedUiDictLang dedupe 變 no-op(applyUiLanguageRefresh 冪等,
+// 同語言重跑無意義)。
+let _lastAppliedUiDictLang = null;
+function applyUiLanguageRefresh(dictLang) {
+  if (dictLang === _lastAppliedUiDictLang) return;
+  _lastAppliedUiDictLang = dictLang;
+  const I18N = window.__SK?.i18n;
+  if (!I18N) return;
+  I18N.applyI18n(document, dictLang);
+  { const _vEl = $('options-version');
+    if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
+  // 動態 dropdown(refreshSlotDropdownLabels)用 _t() 取 prefix,UI 語系切換要重組
+  refreshSlotDropdownLabels();
+  // 自訂快速鍵 recorder:「（預設）」後綴 / 「未設定」文案要跟上新語言
+  renderShortcutRecorders();
+  // #currency-rate-display 不掛 data-i18n,主動重 render 拿新語言匯率字串
+  refreshExchangeRateDisplay();
+  // 幣值 section 隨 UI 語言切換顯示 / 隱藏
+  _updateCurrencySectionVisibility();
+  // opacity label / 字幕 prompt hint 是純動態 _t() 計算,applyI18n 不碰
+  _renderToastOpacityLabel($('toastOpacity')?.value || 70);
+  _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
+  updateYtPromptCostHint();
+}
+
 // P2 (v1.8.60):#uiLanguage picker change handler — 立刻寫 storage(UI 跟著切),
 // 不需等「儲存設定」。subscribe callback 會 reapply applyI18n + refreshSlotDropdownLabels。
 $('uiLanguage')?.addEventListener('change', async () => {
@@ -1304,22 +1317,9 @@ $('uiLanguage')?.addEventListener('change', async () => {
     console.error('[shinkansen] uiLanguage set failed', err);
   }
   // 立刻 reapply:subscribe 機制有時延遲,使用者體感「按了但沒變」很糟,直接同步觸發。
+  // (批次 8 D7:與 subscribe callback 共用 applyUiLanguageRefresh,dedupe 防雙重執行)
   if (window.__SK?.i18n) {
-    const dictLang = window.__SK.i18n.getUiLanguage(ul);
-    window.__SK.i18n.applyI18n(document, dictLang);
-    refreshSlotDropdownLabels();
-    // 自訂快速鍵 recorder:「（預設）」後綴 / 「未設定」文案要跟上新語言
-    renderShortcutRecorders();
-    // v1.8.61:#currency-rate-display 不掛 data-i18n,主動重 render 拿新語言匯率字串
-    refreshExchangeRateDisplay();
-    // v1.8.61:幣值 section 隨 UI 語言切換顯示 / 隱藏
-    _updateCurrencySectionVisibility();
-    // v1.8.61:Toast opacity label 跟著 UI 語系重 render
-    _renderToastOpacityLabel($('toastOpacity')?.value || 70);
-    // 懸浮按鈕 opacity label 跟著 UI 語系重 render
-    _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
-    // v1.8.61:字幕 prompt token 開銷 hint 是純動態 _t() 計算,主動 reapply
-    updateYtPromptCostHint();
+    applyUiLanguageRefresh(window.__SK.i18n.getUiLanguage(ul));
   }
 });
 
@@ -2150,6 +2150,10 @@ $('import-input').addEventListener('change', async (e) => {
     alert(msg + _t('options.io.importFooter'));
   } catch (err) {
     alert(_t('options.io.importFailed', { error: err.message }));
+  } finally {
+    // 批次 8 D4:清 input value——不清的話選同一個檔案第二次不會 fire change 事件
+    // (修壞的備份檔改好後重選同檔名 = 無反應)
+    e.target.value = '';
   }
 });
 
@@ -2573,11 +2577,24 @@ async function loadUsageData() {
   const reqId = ++_loadUsageDataReqId;
 
   // 同時載入彙總、圖表、明細
-  const [statsRes, chartRes, recordsRes] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'QUERY_USAGE_STATS', payload: { from, to } }),
-    browser.runtime.sendMessage({ type: 'QUERY_USAGE_CHART', payload: { from, to, groupBy: currentGranularity } }),
-    browser.runtime.sendMessage({ type: 'QUERY_USAGE', payload: { from, to } }),
-  ]);
+  // 批次 8 D5:補 try/catch——SW 未醒 / context 失效時 sendMessage reject,原本
+  // unhandled rejection,用量分頁停在舊資料無提示(同檔 fetchLogs 有包,這條漏)
+  let statsRes, chartRes, recordsRes;
+  try {
+    [statsRes, chartRes, recordsRes] = await Promise.all([
+      browser.runtime.sendMessage({ type: 'QUERY_USAGE_STATS', payload: { from, to } }),
+      browser.runtime.sendMessage({ type: 'QUERY_USAGE_CHART', payload: { from, to, groupBy: currentGranularity } }),
+      browser.runtime.sendMessage({ type: 'QUERY_USAGE', payload: { from, to } }),
+    ]);
+  } catch (err) {
+    if (reqId === _loadUsageDataReqId) {
+      $('usage-total-cost').textContent = '—';
+      $('usage-total-tokens').textContent = '—';
+      $('usage-total-count').textContent = '—';
+      $('usage-top-model').textContent = _t('options.usage.loadFailed', { error: err?.message || String(err) });
+    }
+    return;
+  }
 
   // v1.8.20: 期間有更新的 request 已發出 → 放棄這次 stale 結果
   if (reqId !== _loadUsageDataReqId) return;
@@ -3084,6 +3101,10 @@ async function fetchLogs() {
 }
 
 // ─── 篩選 ───────────────────────────────────────────────
+// 批次 8 D6:「只在 data 命中」的 UI 暫態(render 自動展開用)。WeakSet 以 entry
+// 物件為 key,entry 被 log ring 淘汰後自動釋放。
+const _searchHitInDataSet = new WeakSet();
+
 // 回傳同時帶「命中位置」資訊：_searchHitInData = true 代表 search 字串只在 data 內命中
 // （不在 message / category），render 端會自動展開該行 data detail，免得使用者
 // 搜尋了還要逐筆點 {…} 開來看 inputPreview / outputPreview。
@@ -3102,10 +3123,13 @@ function getFilteredLogs() {
       const hitMsg = msg.includes(search) || cat.includes(search);
       const hitData = dataStr.includes(search);
       if (!hitMsg && !hitData) return false;
-      // 標記「只在 data 命中」讓 render 自動展開該行 data
-      entry._searchHitInData = !hitMsg && hitData;
+      // 標記「只在 data 命中」讓 render 自動展開該行 data。
+      // 批次 8 D6:UI 暫態存 WeakSet,不 mutate entry 本體——否則「匯出 JSON」
+      // stringify 會把內部欄位一併帶出去
+      if (!hitMsg && hitData) _searchHitInDataSet.add(entry);
+      else _searchHitInDataSet.delete(entry);
     } else {
-      entry._searchHitInData = false;
+      _searchHitInDataSet.delete(entry);
     }
     return true;
   });
@@ -3195,9 +3219,9 @@ function renderLogTable() {
       // logKey 相同的穩定三元組 encode 成 id-safe 字串。
       const dataId = `log-data-${encodeURIComponent(logKey(entry)).replace(/%/g, '_')}`;
       // v1.5.7: 「使用者手動展開過」或「搜尋只在 data 命中」兩種情況都展開
-      const isOpen = openSet.has(dataId) || entry._searchHitInData;
+      const isOpen = openSet.has(dataId) || _searchHitInDataSet.has(entry);
       const dataInner = highlightSearch(dataJson, searchLower);
-      dataHtml = `<button class="log-data-toggle" data-target="${dataId}">${escapeHtml(isOpen ? _t('options.log.detailExpand') : _t('options.log.detailCollapse'))}</button>` +
+      dataHtml = `<button class="log-data-toggle" data-target="${dataId}">${escapeHtml(isOpen ? _t('options.log.detailCollapse') : _t('options.log.detailExpand'))}</button>` +
         `<div class="log-data-detail${isOpen ? ' open' : ''}" id="${dataId}">${dataInner}</div>`;
     }
 
@@ -3287,7 +3311,9 @@ $('log-tbody').addEventListener('click', (e) => {
   const detail = document.getElementById(targetId);
   if (detail) {
     detail.classList.toggle('open');
-    toggle.textContent = detail.classList.contains('open') ? _t('options.log.detailExpand') : _t('options.log.detailCollapse');
+    // 批次 8 D11:key rename——展開狀態顯示「收合」按鈕(detailCollapse),收合狀態顯示 {…} 入口(detailExpand);
+    // 舊命名與語意顛倒(值放反,使用端也反著用剛好正確),rename 後語意對齊
+    toggle.textContent = detail.classList.contains('open') ? _t('options.log.detailCollapse') : _t('options.log.detailExpand');
   }
 });
 

@@ -45,11 +45,18 @@
     const url = this.__shinkansenUrl || '';
     if (TIMEDTEXT_RE.test(url)) {
       this.addEventListener('readystatechange', function () {
-        if (this.readyState === 4 && this.status === 200 && this.responseText) {
-          window.dispatchEvent(new CustomEvent(CAPTION_EVENT, {
-            detail: { url, responseText: this.responseText },
-          }));
-        }
+        // 批次 8 C7:整段包 try/catch + responseType 檢查。若 YouTube 對 timedtext
+        // 改用 responseType='json'/'arraybuffer',讀 responseText 會 throw
+        // InvalidStateError——monkey-patch 對宿主頁的防禦原則是「絕不往頁面丟例外」,
+        // 攔截失效要靜默(字幕功能退化),不能讓頁面收到 unhandled error。
+        try {
+          if (this.responseType && this.responseType !== 'text') return;
+          if (this.readyState === 4 && this.status === 200 && this.responseText) {
+            window.dispatchEvent(new CustomEvent(CAPTION_EVENT, {
+              detail: { url, responseText: this.responseText },
+            }));
+          }
+        } catch (_) { /* 靜默:攔截為 best-effort,不干擾宿主頁 */ }
       });
     }
     return _send.apply(this, args);

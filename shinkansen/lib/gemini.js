@@ -837,14 +837,17 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   // v0.84: resp.json() 加 try-catch。API 回傳非 JSON 時（HTML 錯誤頁、空回應、
   // CDN 擋下的 502 HTML 頁面等）原本會直接 crash，現在包成可讀的錯誤訊息。
+  // 批次 8 E4:先 text() 再 JSON.parse——原寫法 resp.json() 失敗後 body 已 disturbed,
+  // resp.clone().text() 依 spec 必 throw 被 catch 吞 → rawPreview 恆空,診斷 preview
+  // 實質 dead code(CDN 回 HTML 錯誤頁時看不到前 200 字線索)
   let json;
+  let rawBody = '';
   try {
-    json = await resp.json();
+    rawBody = await resp.text();
+    json = JSON.parse(rawBody);
   } catch (parseErr) {
     const ms = Date.now() - t0;
-    // 嘗試讀 raw text 取前 200 字元作為診斷線索
-    let rawPreview = '';
-    try { rawPreview = await resp.clone().text().then(t => t.slice(0, 200)); } catch { /* noop */ }
+    const rawPreview = rawBody.slice(0, 200);
     await debugLog('error', 'api', 'gemini response body is not JSON', {
       status: resp.status, elapsed: ms, parseError: parseErr.message, rawPreview,
     });
@@ -949,8 +952,11 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   let aligned = parts;
   if (parts.length !== texts.length) {
     if (texts.length === 1) {
-      // 單段模式：直接回傳整個 text(LLM 可能多吐了分隔符）
-      return { parts: [text.trim()], usage: chunkUsage };
+      // 單段模式:LLM 多吐了 SEP 字面。不可原樣回傳 text.trim()——協定 token 會注入
+      // DOM 並寫進快取(批次 8 E5;逐段 fallback 取 r.parts[0] 正是走這條)。
+      // parts 已是 split SEP + strip 序號標記後的段,取非空段以換行 join。
+      const joinedSingle = parts.filter(Boolean).join('\n') || text.trim();
+      return { parts: [joinedSingle], usage: chunkUsage };
     }
     const realigned = realignByMarkers(text, texts.length, MARKER_COMPACT);
     if (!realigned) {

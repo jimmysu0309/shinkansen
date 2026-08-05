@@ -158,17 +158,27 @@
 
   // v1.8.16: 螢幕上若已有中文字幕(ASR overlay 命中當前 cue / 非 ASR DOM segment
   // 已替換成中文),不顯示「翻譯中…」避免覆蓋實質內容打擾使用者。
-  function _hasVisibleChineseCaption() {
+  // 批次 8 C5:改依 target 判斷——原 CJK regex 是 P1 多語擴充前的 zh 假設殘留:
+  // target=en 時永遠 false(status 蓋掉已顯示的英文譯文)、ja 源語含漢字時誤判 true
+  // (該顯示 status 卻被擋)。target 來源沿用 _shouldSkipBecauseAlreadyInTarget 的
+  // pattern(STATE.targetLanguage,YT 頁未跑過整頁翻譯時 fallback zh-TW)。
+  function _hasVisibleTargetCaption() {
     const YT = SK.YT;
+    const target = SK.STATE?.targetLanguage || 'zh-TW';
+    const inTarget = (text) => !!text && (
+      typeof SK.isAlreadyInTarget === 'function'
+        ? SK.isAlreadyInTarget(text, target)
+        : /[一-鿿]/.test(text)
+    );
     if (YT.isAsr) {
       const video = document.querySelector('video');
       const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
       const cue = _findActiveCue(currentMs);
-      return !!(cue && cue.text && /[一-鿿]/.test(cue.text));
+      return !!(cue && inTarget(cue.text));
     }
     const segs = document.querySelectorAll('.ytp-caption-segment');
     for (const s of segs) {
-      if (/[一-鿿]/.test(s.textContent || '')) return true;
+      if (inTarget(s.textContent || '')) return true;
     }
     return false;
   }
@@ -467,7 +477,7 @@
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
       const windowStartMs = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
       _debugUpdate(`XHR 攔截 ${segments.length} 條字幕（至 ${Math.round(lastMs / 1000)}s），開始翻譯`);
-      if (_shouldShowTranslatingStatus()) showCaptionStatus('翻譯中…');
+      if (_shouldShowTranslatingStatus()) showCaptionStatus(SK.t('yt.status.translating'));
       translateWindowFrom(windowStartMs);
     }
   });
@@ -913,8 +923,11 @@
     // ─── Ile: 合併(上群結尾命中 endWords 或下群開頭命中 startWords + 時間近)──
     function Ile(groups) {
       if (groups.length <= 1) return groups;
-      const startRe = new RegExp(`^\\s*(${_ASR_START_WORDS.join('|')})$`, 'i');
-      const endRe = new RegExp(`\\b(${_ASR_END_WORDS.join('|')})\\s*$`, 'i');
+      // 批次 8 C11:escape regex 特殊字元——'p.m'/'a.m' 的 '.' 未 escape 時 match
+      // 「p 任意字 m」,"ppm"/"pam" 都誤命中 end-word 觸發合併
+      const _reEsc = (w) => w.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&');
+      const startRe = new RegExp(`^\\s*(${_ASR_START_WORDS.map(_reEsc).join('|')})$`, 'i');
+      const endRe = new RegExp(`\\b(${_ASR_END_WORDS.map(_reEsc).join('|')})\\s*$`, 'i');
       const result = [groups[0]];
       for (let u = 0; u < groups.length - 1; u++) {
         const cur = result[result.length - 1];
@@ -2133,7 +2146,15 @@
     if (!_isIOSSafari()) return;
     if (_iosFsRefreshPending) return;
     _iosFsRefreshPending = true;
-    setTimeout(() => { _iosFsRefreshPending = false; _refreshIosFsTrack(); }, 300);
+    // 批次 8 C8:callback 加 session 守門——stop 跑完 _teardownIosFsTrack 後 300ms
+    // debounce timer 才 fire 的話,_refreshIosFsTrack 會重新 addEventListener +
+    // 把 track mode 從 disabled 拉回 hidden(teardown 語義破壞、handler 殘留到下個
+    // session)。stop 後 YT.active=false,timer 直接放棄。
+    setTimeout(() => {
+      _iosFsRefreshPending = false;
+      if (!SK.YT.active) return;
+      _refreshIosFsTrack();
+    }, 300);
   }
 
   // 停止時清掉我們的字幕軌 cue + 解綁全螢幕事件(TextTrack 本身無法移除,清空 cue
@@ -2165,6 +2186,28 @@
   //       gap 是 ASR 的自然停頓(換氣 / 句末),切在這裡幾乎不破壞合句。
   //       找不到 gap → 用 maxSpanMs 強制切(罕見:長獨白)。
   //
+  // 批次 8 C6:lead-time → batch 0 大小的單一資料源。
+  // 原本 heuristic(_runHeuristicWindow)與非 ASR(translateWindowFrom)兩處逐字鏡像同一
+  // 條 ladder,且 videoNowMs fallback 已 drift(heuristic fallback windowStartMs=緊急、
+  // 非 ASR fallback 0=從容)。統一 fallback windowStartMs:videoEl 不在時無從得知播放
+  // 位置,保守當緊急處理(批最小、最快出第一條字幕),不賭大 lead。
+  // _splitAsrSubBatches 的 sub0Max 門檻是「子批涵蓋秒數」(span 語意,非批條數),
+  // 刻意不併入本 ladder;其 leadMs/wallLead 計算為純函式參數注入,亦不讀 YT state。
+  function _calcAdaptiveBatch0(windowStartMs) {
+    const YT = SK.YT;
+    const videoNowMs = YT.videoEl ? YT.videoEl.currentTime * 1000 : windowStartMs;
+    const leadMs = windowStartMs - videoNowMs;
+    const playbackRate = YT.videoEl?.playbackRate || 1;
+    const wallLeadMs = leadMs / playbackRate;
+    const firstBatchSize = leadMs <= 0        ? 1
+                         : wallLeadMs < 5000   ? 2
+                         : wallLeadMs < 10000  ? 4
+                         : wallLeadMs < 15000  ? 12
+                         : 16;
+    return { videoNowMs, leadMs, playbackRate, wallLeadMs, firstBatchSize };
+  }
+  SK._calcAdaptiveBatch0 = _calcAdaptiveBatch0; // 測試 seam(youtube-adaptive-batch0.spec)
+
   // **lead-time aware**(D'-adaptive):leadMs = windowStartMs - videoNowMs
   //   - leadMs ≤ 0(緊急,使用者按 Alt+S 時當前位置已在視窗中段)→
   //       子批 0 從 videoNowMs 開始(skip 已過去的 segments,使用者已聽過),
@@ -2480,15 +2523,8 @@
     //          上像 freeze。縮到 4 讓「第 5-N 條」中文也快點冒,代價是 token 攤提變差
     //          (143 t/seg → 194 t/seg,+35%),但 isUrgent 場景 token 不是優先考量。
     const BATCH = options?.isUrgent ? 4 : 12;
-    const videoNowMs = YT.videoEl ? YT.videoEl.currentTime * 1000 : windowStartMs;
-    const leadMs = windowStartMs - videoNowMs;
-    const playbackRate = YT.videoEl?.playbackRate || 1;
-    const wallLeadMs = leadMs / playbackRate;
-    const firstBatchSize = leadMs <= 0        ? 1
-                         : wallLeadMs < 5000   ? 2
-                         : wallLeadMs < 10000  ? 4
-                         : wallLeadMs < 15000  ? 12
-                         : 16;
+    // 批次 8 C6:ladder 抽單一資料源 _calcAdaptiveBatch0
+    const { wallLeadMs, firstBatchSize } = _calcAdaptiveBatch0(windowStartMs);
     YT.firstBatchSize = firstBatchSize;
     YT.lastLeadMs = wallLeadMs;
 
@@ -2655,7 +2691,7 @@
   // 「翻譯中…」status 永遠殘留。在 show 觸發點預先擋掉。
   function _shouldShowTranslatingStatus() {
     if (_shouldSkipBecauseAlreadyTraditionalChinese()) return false;
-    if (_hasVisibleChineseCaption()) return false;
+    if (_hasVisibleTargetCaption()) return false;
     return true;
   }
 
@@ -2834,15 +2870,8 @@
         // 首批條數愈少，input/output tokens 愈少，API 回傳愈快，
         // 第一條字幕出現的延遲從 ~10s（batch=8）有望降至 ~5s（batch=1）。
         // 其餘批次用 BATCH=12 並行送出。
-        const videoNowMs = YT.videoEl ? YT.videoEl.currentTime * 1000 : 0;
-        const leadMs = windowStartMs - videoNowMs;
-        const playbackRate = YT.videoEl?.playbackRate || 1;
-        const wallLeadMs = leadMs / playbackRate;
-        const firstBatchSize = leadMs <= 0        ? 1
-                             : wallLeadMs < 5000   ? 2
-                             : wallLeadMs < 10000  ? 4
-                             : wallLeadMs < 15000  ? 12
-                             : 16;
+        // 批次 8 C6:ladder 抽單一資料源 _calcAdaptiveBatch0(原 fallback 0 的 drift 一併修正)
+        const { leadMs, playbackRate, wallLeadMs, firstBatchSize } = _calcAdaptiveBatch0(windowStartMs);
         YT.firstBatchSize = firstBatchSize;
         YT.lastLeadMs     = wallLeadMs;
         SK.sendLog('info', 'youtube', 'adaptive batch0', {
@@ -3300,7 +3329,7 @@
     // v1.8.16: 若當前畫面已有中文字幕,跳過提示避免打擾
     // v1.8.53: 字幕原文已是繁中(skip translate 路徑)也跳過,避免 status 永遠殘留
     if (!YT.translatedWindows.has(newWindowStart) && _shouldShowTranslatingStatus()) {
-      showCaptionStatus('翻譯中…');
+      showCaptionStatus(SK.t('yt.status.translating'));
     }
     // v1.2.54: translateWindowFrom 內部用 translatingWindows Set 防重入，無需外部 guard
     translateWindowFrom(newWindowStart);
@@ -3548,7 +3577,7 @@
       const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
       const windowStartMs = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
       YT.translatedUpToMs = windowStartMs;
-      if (_shouldShowTranslatingStatus()) showCaptionStatus('翻譯中…');
+      if (_shouldShowTranslatingStatus()) showCaptionStatus(SK.t('yt.status.translating'));
       // 不 await—讓 reset call site 立刻回返;翻譯流程在背景跑
       translateWindowFrom(windowStartMs);
     }
@@ -3904,7 +3933,7 @@
           stopYouTubeTranslation();
         } else if (action === 'switch-to-native' && typeof SK.showToast === 'function') {
           // 一次性 hint:讓使用者知道為什麼 bilingual 沒立刻啟動
-          SK.showToast('info', '已自動切到原生繁中字幕。如需雙語對照,請從 YT CC 選單手動切到要對照的源語(如英文或日文)', {
+          SK.showToast('info', SK.t('toast.ytSwitchedNativeTarget'), {
             autoHideMs: 7000,
           });
         }
@@ -3924,7 +3953,7 @@
     if (YT.rawSegments.length > 0) {
       // 已有快取（interceptor 在 activate 之前就攔截到了）→ 直接開始翻譯
       _debugUpdate(`已有 ${YT.rawSegments.length} 條字幕，開始翻譯`);
-      if (_shouldShowTranslatingStatus()) showCaptionStatus('翻譯中…');
+      if (_shouldShowTranslatingStatus()) showCaptionStatus(SK.t('yt.status.translating'));
       const video = document.querySelector('video');
       const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
@@ -3963,7 +3992,7 @@
         // 只有「已確認沒字幕」才該禁止 show;「有字幕」決定要 show 等待是預期行為
         if (noCaptionsConfirmed || !SK.YT.active) return;
         if (SK.YT.rawSegments.length > 0) return; // captions 已到達(skip/translate)
-        showCaptionStatus('等待字幕資料…');
+        showCaptionStatus(SK.t('yt.status.waitingCaption'));
       };
 
       const queryAndDecide = () => {
@@ -3973,6 +4002,16 @@
           return;
         }
         bridgeAttempts++;
+        // 批次 8 C10:本次 attempt 的 retry 只能排一次——原本 handler 收到 stale
+        // response 排一次 queryAndDecide,200ms safety-net timer 又排一次,雙鏈並行
+        // 共享 bridgeAttempts → 有效重試次數砍半,SPA lag 久的影片更容易落到「給上」
+        // fallback。handler 先 flag,safety net 看到 flag 不重排。
+        let retryScheduled = false;
+        const scheduleRetry = () => {
+          if (retryScheduled) return;
+          retryScheduled = true;
+          setTimeout(queryAndDecide, BRIDGE_RETRY_MS);
+        };
         const handler = (e) => {
           window.removeEventListener('shinkansen-yt-player-response', handler);
           if (bridgeFinalDecision || !SK.YT.active) return;
@@ -3984,7 +4023,7 @@
             && detail.videoId === currentVideoId
             && currentVideoId === activateVideoId; // activate 後若 URL 又變過,放棄這次決定
           if (!videoIdMatch || !detail.playerResponseAvailable) {
-            setTimeout(queryAndDecide, BRIDGE_RETRY_MS);
+            scheduleRetry();
             return;
           }
           // videoId 對上 + playerResponse 可讀 = trust 此 response
@@ -4016,7 +4055,7 @@
             showWaitingStatus();
             return;
           }
-          setTimeout(queryAndDecide, BRIDGE_RETRY_MS);
+          scheduleRetry();
         }, BRIDGE_RETRY_MS);
       };
       queryAndDecide();
@@ -4144,7 +4183,11 @@
     if (area !== 'sync' || !changes.ytSubtitle) return;
     const newVal = changes.ytSubtitle.newValue || {};
     const newBilingual = newVal.bilingualMode === true;
-    if (SK.YT.config) SK.YT.config.bilingualMode = newBilingual;
+    // 批次 8 C12:全量更新 config 快取(與 getYtConfig 同一構造式)——原本只回寫
+    // bilingualMode / captionScale,播放中改 engine / asrMode / onTheFly /
+    // windowSizeS 都要 stop-restart 才生效且 UI 無提示。config 欄位多為讀時取值,
+    // 全量合併風險低;in-flight 批次沿用舊值屬可接受(下一視窗起生效)。
+    if (SK.YT.config) SK.YT.config = { ...DEFAULT_YT_CONFIG, ...newVal };
     if (SK.YT.active) {
       _applyBilingualMode(newBilingual);
       SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual, isAsr: SK.YT.isAsr });

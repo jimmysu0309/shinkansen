@@ -148,7 +148,8 @@ async function main() {
       result.doc = docMeta;
       console.log(`  pages=${docMeta.pageCount} blocks=${docMeta.totalBlocks} runs=${docMeta.totalRuns} chars=${docMeta.totalChars}`);
 
-      // 2) 結構診斷
+      // 2) 結構診斷(批次 8 G6:verify harness 改 lazy install,先載 dev-verify.js)
+      await page.evaluate(() => window.__skInstallVerify());
       const struct = await page.evaluate(() => window.__skVerify.computeStructureDiagnostics());
       result.structure = struct;
       console.log(`  structure issues: ${struct.issueCount}`);

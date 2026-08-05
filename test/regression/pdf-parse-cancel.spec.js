@@ -109,6 +109,8 @@ test('pdf-parse-cancel: 解析中取消 → 舊輪不得蓋回 result,重新上�
     const el = document.getElementById('stage-result');
     return el && !el.hidden;
   }, null, { timeout: 30_000 });
+  // 批次 8 G6:verify harness 改 lazy install
+  await page.evaluate(() => window.__skInstallVerify());
   const hasDoc = await page.evaluate(() => window.__skVerify && window.__skVerify.hasDoc());
   expect(hasDoc).toBe(true);
 

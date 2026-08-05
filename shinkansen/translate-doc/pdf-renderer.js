@@ -85,9 +85,18 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
   // load + embed CJK 字型 Regular + Bold(兩把都 subset: true,最終 PDF 只含
   // 譯文實際用到的字。Regular 11.4MB / Bold 6.8MB,subset 後通常各 100-300KB)
   onProgress({ stage: 'font' });
-  const [regularBytes, boldBytes] = await Promise.all([loadCJKRegularBytes(), loadCJKBoldBytes()]);
+  // 批次 8 H9:Bold 載入/嵌入失敗降級用 Regular 頂替(warn 不炸)——Regular 是硬依賴
+  // (沒有就真的畫不出字),Bold 只影響粗體視覺,不該讓整份 PDF 生成失敗
+  const regularBytes = await loadCJKRegularBytes();
   const cjkFontRegular = await newDoc.embedFont(regularBytes, { subset: true });
-  const cjkFontBold = await newDoc.embedFont(boldBytes, { subset: true });
+  let cjkFontBold;
+  try {
+    const boldBytes = await loadCJKBoldBytes();
+    cjkFontBold = await newDoc.embedFont(boldBytes, { subset: true });
+  } catch (boldErr) {
+    console.warn('[shinkansen] CJK Bold font unavailable — falling back to Regular', boldErr);
+    cjkFontBold = cjkFontRegular;
+  }
 
   onProgress({ stage: 'parsing' });
   // password: '' 是 cantoo 解密路徑的 trigger;對非加密 PDF 無副作用
@@ -570,11 +579,20 @@ function fitSegmentsToBox(segments, fontRegular, fontBold, originalFontSize, cur
   return { fontSize, lineHeight, lines, finalBox: box };
 }
 
+// 批次 8 H10:CJK code point 判定單一資料源——原本 hasCJK(行距判定)與
+// wrapSegmentsToWidth 的 isCJK(換行)字元範圍不一致(hasCJK 缺全形標點/全形英數
+// 0xFF00-FFEF 與相容表意 0xF900-FAFF),純全形標點 + 拉丁混排短 block 誤用拉丁行距
+function isCJKCodePoint(cp) {
+  return (cp >= 0x3000 && cp <= 0x9FFF)
+    || (cp >= 0x3400 && cp <= 0x4DBF)
+    || (cp >= 0xF900 && cp <= 0xFAFF)
+    || (cp >= 0xFF00 && cp <= 0xFFEF);
+}
+
 // 判字串是否含 CJK(影響 line_skip)
 function hasCJK(text) {
   for (const ch of text) {
-    const cp = ch.codePointAt(0);
-    if ((cp >= 0x3000 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF)) return true;
+    if (isCJKCodePoint(ch.codePointAt(0))) return true;
   }
   return false;
 }
@@ -774,10 +792,7 @@ export function wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, m
     };
     for (const ch of seg.text) {
       const cp = ch.codePointAt(0);
-      const isCJK =
-        (cp >= 0x3000 && cp <= 0x9FFF) ||
-        (cp >= 0x3400 && cp <= 0x4DBF) ||
-        (cp >= 0xFF00 && cp <= 0xFFEF);
+      const isCJK = isCJKCodePoint(cp); // 批次 8 H10:與 hasCJK 共用單一判定
       const isWS = /\s/.test(ch);
       if (isCJK || isWS) {
         flushBuf();

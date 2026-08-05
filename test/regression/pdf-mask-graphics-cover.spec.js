@@ -73,6 +73,7 @@ test('pdf-mask-graphics-cover: 擴 box 後 mask 不可蓋掉 block 間的向量�
 
   // 注入譯文:全部 block 先用 plainText 墊底,再把最上方 block(top < 100)換成
   // 48 字 CJK 長譯文 → 原 bbox(1 行)塞不下、擴右(2 行)也塞不下 → 向下擴 box
+  await page.evaluate(() => window.__skInstallVerify()); // 批次 8 G6:lazy install
   const injected = await page.evaluate(() => {
     const r = window.__skVerify.injectPlainTextAsTranslation();
     const blocks = window.__skLayoutDoc.pages[0].blocks;

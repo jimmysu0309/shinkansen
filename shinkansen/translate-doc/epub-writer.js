@@ -164,6 +164,9 @@ const ANNOTATED_RE = /^(.+)（(.+)）\s*$/;
 const CJK_EDGE_RE = /[㐀-鿿豈-﫿]/;
 const LATIN_EDGE_RE = /[A-Za-z0-9]/;
 
+// 批次 8 H6:回傳 { text, nextFrom }(與 epub-scan.js spliceCjkAware 同做法——
+// 兩檔是同一份事實雙實作)。原本 caller 用 `idx + keep.length + 2` 猜前進步長,
+// 「X（Y）X（Y）」背靠背對照時下一個出現的開頭被跳過而漏替換
 function spliceWithCjkSpacing(text, start, end, keep) {
   const before = text.slice(0, start);
   const after = text.slice(end);
@@ -174,7 +177,7 @@ function spliceWithCjkSpacing(text, start, end, keep) {
   if (after && LATIN_EDGE_RE.test(mid[mid.length - 1] || '') && CJK_EDGE_RE.test(after[0])) {
     mid = mid + ' ';
   }
-  return before + mid + after;
+  return { text: before + mid + after, nextFrom: before.length + mid.length };
 }
 
 // text 內 full 的所有出現替換成 keep（含邊界補空格）；skipFirst 時第一個出現保留
@@ -192,9 +195,10 @@ function replaceOccurrences(text, full, keep, skipFirst) {
       from = idx + full.length;
       continue;
     }
-    out = spliceWithCjkSpacing(out, idx, idx + full.length, keep);
+    const spliced = spliceWithCjkSpacing(out, idx, idx + full.length, keep);
+    out = spliced.text;
     changed = true;
-    from = idx + keep.length + 2; // +2 = 最多補兩個空格的餘裕（保守前進即可）
+    from = spliced.nextFrom; // 批次 8 H6:實際前進位置,背靠背對照不漏替換
   }
   return { text: out, changed, sawAny: true };
 }

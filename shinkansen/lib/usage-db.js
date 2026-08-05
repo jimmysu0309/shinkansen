@@ -380,8 +380,21 @@ function fmtWeekStart(d) {
 /** 填補空白期間，讓折線圖不跳空 */
 function fillGaps(buckets, fromTs, toTs, groupBy) {
   const result = [];
-  const from = new Date(fromTs || Date.now() - 30 * 86400000);
-  const to = new Date(toTs || Date.now());
+  // from 不可用 ||：0（epoch，語意「全部」）是合法值，被當 falsy 會默默縮成 30 天視窗，
+  // 更早的 bucket 建了卻掉出輸出。完全沒帶 from 時取最早 bucket 起算，沒資料才退 30 天預設。
+  let fromMs = fromTs ?? null;
+  if (fromMs === null) {
+    let minKey = null;
+    for (const key of buckets.keys()) { if (minKey === null || key < minKey) minKey = key; }
+    if (minKey !== null) {
+      const [y, m, d] = minKey.split('-').map(Number);
+      fromMs = new Date(y, (m || 1) - 1, d || 1).getTime();
+    } else {
+      fromMs = Date.now() - 30 * 86400000;
+    }
+  }
+  const from = new Date(fromMs);
+  const to = new Date(toTs ?? Date.now());
 
   if (groupBy === 'day') {
     const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());

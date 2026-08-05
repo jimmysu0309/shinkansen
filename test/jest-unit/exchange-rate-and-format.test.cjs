@@ -80,6 +80,33 @@ describe('v1.8.41 formatTWD', () => {
   });
 });
 
+// 批次 8 F10（code review 2026-08-03）:formatTokens / formatBytes 的進位縫隙——
+// 閾值判斷用原值、顯示用四捨五入值,999999 顯示成 '1000.0K'(應 '1.00M')。
+// 修法:先算捨入後的 K(KB)字串,捨入後值 >= 1000(1024)才升級到 M(MB)檔位。
+// SANITY 紀錄(已驗證):把 format.js formatTokens 改回舊版「if (n >= 1_000_000)」原值
+// 判斷 → 999999 case fail(收到 '1000.0K')→ 還原後 pass。
+describe('批次 8 F10 formatTokens / formatBytes 進位縫隙', () => {
+  const fmt = loadFormat();
+
+  test('formatTokens(999999) → 1.00M（舊版顯示 1000.0K）', () => {
+    expect(fmt.formatTokens(999999)).toBe('1.00M');
+  });
+  test('formatTokens 檔位邊界不受影響（999 / 1000 / 999949 / 1000000）', () => {
+    expect(fmt.formatTokens(999)).toBe('999');
+    expect(fmt.formatTokens(1000)).toBe('1.0K');
+    expect(fmt.formatTokens(999949)).toBe('999.9K');
+    expect(fmt.formatTokens(1_000_000)).toBe('1.00M');
+  });
+  test('formatBytes(1048570) → 1.00 MB（舊版顯示 1024.0 KB）', () => {
+    expect(fmt.formatBytes(1048570)).toBe('1.00 MB');
+  });
+  test('formatBytes 檔位邊界不受影響（1023 / 1024 / 1048576）', () => {
+    expect(fmt.formatBytes(1023)).toBe('1023 B');
+    expect(fmt.formatBytes(1024)).toBe('1.0 KB');
+    expect(fmt.formatBytes(1048576)).toBe('1.00 MB');
+  });
+});
+
 describe('v1.8.41 formatMoney dispatcher', () => {
   let format;
   beforeAll(() => { format = loadFormat(); });

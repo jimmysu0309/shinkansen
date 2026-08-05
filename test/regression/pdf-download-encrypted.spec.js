@@ -60,6 +60,7 @@ test('W6 譯文 PDF 下載對 owner-password 弱加密 PDF 可成功生成', asy
   expect(docMeta.totalBlocks).toBeGreaterThan(0);
 
   // 注入 fake translation = plainText(英文當譯文,只驗 pipeline 不真的翻譯)
+  await page.evaluate(() => window.__skInstallVerify()); // 批次 8 G6:lazy install
   const inject = await page.evaluate(() => window.__skVerify.injectPlainTextAsTranslation());
   expect(inject.translatableCount).toBeGreaterThan(0);
 

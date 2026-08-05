@@ -535,7 +535,9 @@ if (window.__shinkansen_loaded) {
       ? { debounce: SK.SPA_OBSERVER_FAST_DEBOUNCE_MS, maxWait: SK.SPA_OBSERVER_FAST_MAX_WAIT_MS, host, profile: 'fast' }
       : { debounce: SK.SPA_OBSERVER_DEBOUNCE_MS, maxWait: SK.SPA_OBSERVER_MAX_WAIT_MS, host, profile: 'default' };
   };
-  SK.SPA_OBSERVER_MAX_RESCANS = Infinity;
+  // 批次 8 B10:SPA_OBSERVER_MAX_RESCANS 已移除——設 Infinity 後兩處 guard 永不生效
+  // (dead code)。rescan 上限機制不存在是刻意行為(單輪 cap 由 SPA_OBSERVER_MAX_UNITS
+  // + seenTexts 節流負責),不留假開關。
   SK.SPA_OBSERVER_MAX_UNITS = 50;
   SK.SPA_NAV_SETTLE_MS = 800;
 

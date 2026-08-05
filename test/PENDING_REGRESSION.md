@@ -17,7 +17,8 @@
 
 ## 條目
 
-### splitOnSameRow / splitOnLeftShift 縱向切分規則的正向案例——synthetic fixture 咬不住（dev tail 2.0.74.1 修）
+### ~~splitOnSameRow / splitOnLeftShift 縱向切分規則的正向案例——synthetic fixture 咬不住（dev tail 2.0.74.1 修）~~
+- ★ **已清（2026-08-05，批次 8 H5 走路徑 A）**：layout-analyzer 把 analyzePage 步驟 4 的 per-column 迴圈抽成可注入 column assignment 的純函式 `splitIntoBlocksByAssignment` 並 export（純搬移不改行為）→ `test/unit/layout-split-by-assignment.spec.js` 4 case 手工指定「全部 line 同一 column」完全繞過 K-means，splitOnSameRow / splitOnLeftShift 正向案例各自隔離覆蓋（Case 1 座標刻意壓 leftShift 閾值以下，讓兩條規則的 SANITY 各自只 fail 自己的 case——不再假覆蓋）。SANITY 兩輪已驗（①拔 splitOnLeftShift → Case 2 fail;②拔 splitOnSameRow → Case 1 fail；還原皆 pass）。Plano 真翻譯 Read 譯文 PDF 驗收無回歸。本條即原「建議方向」第一項的落地。
 - **症狀**:spec sheet 的 label 欄行（x=40）被吸進 value 欄（x=166）的 list 區塊（Trimble p1-b39）;同 visual row 的 cell line 因垂直 gap 為負被縱向串成 franken block（Quotation TDC6 表頭「QTY|Unit Cost」與金額 rows 黏成 ln=3 一塊）。
 - **修在**:`shinkansen/translate-doc/layout-analyzer.js` `splitColumnIntoBlocks` 新增 `splitOnLeftShift`（左緣位移 > 6× mlh,置中 / 靠右對齊豁免）與 `splitOnSameRow`（top 幾乎相同即切）。
 - **已有覆蓋**:`test/unit/layout-cell-granularity.spec.js` Case 4 驗「同 row cell 不 collapse」整合結果、Case 5 驗置中豁免（負向）;SANITY 過。真 PDF 驗證走本機 `npm run pdf-snapshot`（Quotation TDC6 表格區 per-cell / Trimble p1-b39 label 獨立,baseline 已含新行為）。
