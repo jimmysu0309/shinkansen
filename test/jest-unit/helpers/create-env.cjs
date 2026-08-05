@@ -27,6 +27,8 @@ const path = require('path');
 // v1.9.26: 新增 lib/i18n.js(content.js translatePage 用 SK.t,從 i18n.js 來)。
 //   原本 v1.1.6 sampling test 早退到 SK.t 之前所以沒事;移除整頁 skip 後翻譯 pipeline
 //   會走到 SK.t,helper 必須提供 i18n.js 否則 SK.t is not a function。
+// v2.0.84: 新增 lib/edit-link-repair.js(content.js 編輯模式模組層
+//   window.__SKEditLinkRepair.createEditLinkRepair,缺檔直接 throw)。
 const SHINKANSEN_DIR = path.resolve(__dirname, '../../../shinkansen');
 const CONTENT_SCRIPT_FILES = [
   'content-ns.js',
@@ -34,6 +36,7 @@ const CONTENT_SCRIPT_FILES = [
   'lib/i18n.js',
   'lib/format-currency.js',
   'lib/domain-utils.js',
+  'lib/edit-link-repair.js',
   'content-toast.js',
   'content-detect.js',
   'content-serialize.js',

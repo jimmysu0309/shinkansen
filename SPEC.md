@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.83
+- 目前 Extension 版本：2.0.84
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.83 為止）
+### 2.1 已實作（v2.0.84 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -454,7 +454,7 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 
 **Content Guard 外部暫停（JRead 閱讀模式握手）**：姊妹擴充功能 JRead 進入閱讀模式時，會把被 Shinkansen 翻譯過的 `articleEl` 重排成閱讀卡片；此時 Content Guard 每秒 sweep 會把重排後的 `articleEl` 誤判成「譯文被 SPA 覆蓋」而重建子節點 → 使用者畫面每秒閃動（僅在 translate-first 後進閱讀模式才發生；閱讀卡片即 `articleEl` 本身、在 guard 管轄區內，JRead 端無法閃避）。修法採跨擴充功能握手：JRead 進 / 出閱讀模式時對頁面 dispatch `jread-reader-mode` CustomEvent（`detail.active` 布林，跨 extension content script、同 `shinkansen-debug-request` 的 CustomEvent 機制）；`content.js` 監聽後呼叫 `SK.setContentGuardPaused(active)` 切換 `content-spa.js` 的 `contentGuardExternallyPaused` 旗標。讓位範圍：`onSpaObserverMutations` 整段早退；`runContentGuard` 只停會重建子樹的 innerHTML / dual 軌，**nodeValue-mutate 軌（`runContentGuardNvMutate`）保留 sweep**（reapplyOnly 模式：只做零 API 的原地重套、不 unmark + rescan）——nv 軌純改 text node `nodeValue`、不動結構不會閃，保留它讓閱讀模式期間 framework 把譯文打回原文（NYT React figcaption 間歇 re-render 實測）能在 1s 內原地修復。恢復（`active:false`）當下立即跑一次全量 `runContentGuardNvMutate(ignoreViewport=true)` 補課，接住暫停期間漏掉或 reapplyOnly 跳過（內容已變、需 unmark 重翻）的 entry。暫停期間不停 interval、不 `stopSpaObserver`，退出閱讀模式恢復後立即接續。`_spaDebug()` 多回 `contentGuardExternallyPaused` 供查。
 
-**nv-mutate 軌介入判準與停損**：sweep 介入條件為三判準取或——backup node 全 detach（`allDetached`）／畫面含任一 backup 原文值（`nvMutateRevertedToOriginal`，部分重繪）／**`el.textContent` 空白正規化後等於 `STATE.originalText`（`nvRevertedToOrigText`，不依賴 backup refs 與值）**。第三判準是必要的：backup 的 `originalValue` 在多輪 guard 重建後可能 stale（重建當下畫面是混合態），framework 用 reuse-node 把全段打回原文時前兩判準都不成立，會永久跳過。**健康譯文守門（判準之前先擋）**：backup 完好（所有 backup text node 仍 connected 且 `nodeValue === translatedValue`，`nvBackupIntact`）或 `el.textContent` 去空白後等於純文字譯文（`nvTextEqualsPlain`）→ 畫面已是譯文，sweep 直接跳過——譯文逐字保留原文專有名詞（人名／品牌名）時 `nvMutateRevertedToOriginal` 的 includes 判準會對健康譯文誤報，沒有守門會把好譯文重套成 flatten（見下）。每元素介入停損為**滾動視窗**：60 秒視窗內最多 8 次（`nvGuardTryIntervene`，距上次介入超過 60s 歸零重計）——高頻 ping-pong（站方持續對抗）照樣 8 次就停，但長閱讀 session 的偶發重繪不會耗盡額度造成「標 translated、畫面永遠原文」終態，停損打滿 60s 後也會重新放行自癒。nv 軌 sweep 對 `contenteditable="true"` 元素豁免（對齊 innerHTML 軌的編輯模式豁免）。
+**nv-mutate 軌介入判準與停損**：sweep 介入條件為三判準取或——backup node 全 detach（`allDetached`）／畫面含任一 backup 原文值（`nvMutateRevertedToOriginal`，部分重繪）／**`el.textContent` 空白正規化後等於 `STATE.originalText`（`nvRevertedToOrigText`，不依賴 backup refs 與值）**。第三判準是必要的：backup 的 `originalValue` 在多輪 guard 重建後可能 stale（重建當下畫面是混合態），framework 用 reuse-node 把全段打回原文時前兩判準都不成立，會永久跳過。**健康譯文守門（判準之前先擋）**：backup 完好（所有 backup text node 仍 connected 且 `nodeValue === translatedValue`，`nvBackupIntact`）或 `el.textContent` 去空白後等於純文字譯文（`nvTextEqualsPlain`）→ 畫面已是譯文，sweep 直接跳過——譯文逐字保留原文專有名詞（人名／品牌名）時 `nvMutateRevertedToOriginal` 的 includes 判準會對健康譯文誤報，沒有守門會把好譯文重套成 flatten（見下）。每元素介入停損為**滾動視窗**：60 秒視窗內最多 8 次（`nvGuardTryIntervene`，距上次介入超過 60s 歸零重計）——高頻 ping-pong（站方持續對抗）照樣 8 次就停，但長閱讀 session 的偶發重繪不會耗盡額度造成「標 translated、畫面永遠原文」終態，停損打滿 60s 後也會重新放行自癒。nv 軌 sweep 對 `contenteditable="true"` 元素豁免（對齊 innerHTML 軌的編輯模式豁免）。**編輯模式豁免全覆蓋**：除三條 sweep 軌外，pre-click restore（`addPreClickRestore` 的 mousedown 還原）、A4 observer（`detectAndUnmarkExpandedNodeValueMutate`）與 dual A4（`detectAndUnmarkExpandedDual`）也對編輯中元素豁免——編輯模式的點擊是「放游標」而非觸發 framework click handler，使用者打字造成的 `nodeValue ≠ translatedValue` 也不是 framework partial-reset；漏豁免時「點擊／打字讓譯文被打回原文 + unmark，編輯模式下 rescan 又排除 contenteditable → 永遠卡原文」（New Yorker 實頁實測）。離開編輯模式後偵測恢復。
 
 **nv-mutate 軌重套保留 inline 結構**：`STATE.nvMutateTranslation` 記錄形式為 `{ plain, raw, slots }`——`plain` 是剝掉佔位符的純文字譯文，`raw` ＋ `slots` 在 Layer A1/A3（帶 slots 同構配對）注入成功時一併記錄（A3.5 純文字 fallback 只記 `plain`）。guard sweep 與 Layer A4 的重套統一走 `nvReapplySaved`：先以 `raw` ＋ `slots` 重走 A3 同構配對（framework 打回原文後段落結構與首翻相同，配對成功則各 text node 原地換譯文、`<a>` 等 inline 元素結構保留），配對不成才 fallback 純文字重套（slots=[] 的整段塞第一個 text node、其餘清空——含連結的段落會退化成純文字，內容不遺失但失去可點性）。修復場景：prose 段落內嵌多個 inline `<a>`，站方重繪打回原文後 guard 補課，舊行為只有純文字可用、一律 flatten 成空殼連結。
 
@@ -607,6 +607,7 @@ shinkansen/
 │   ├── release-highlights.js # 近期重大更新文字單一來源
 │   ├── shortcut-utils.js     # 自訂快速鍵 helper（UMD，content/options/spec 共用，§10.1）
 │   ├── domain-utils.js       # 自動翻譯網站名單的網域正規化 + 比對（UMD，content/spec 共用）
+│   ├── edit-link-repair.js   # contenteditable 連結邊界補位（UMD，content 編輯模式／translate-doc EPUB 預覽共用）
 │   ├── zh-convert.js         # 簡繁本地互轉（OpenCC 字典 lazy fetch + converter cache，§3.12）
 │   └── vendor/               # 第三方程式庫（pdfjs／pdf-lib + fontkit／chart.min.js／fflate／Noto Sans TC 字型／opencc 簡繁字典）
 ├── translate-doc/            # 文件翻譯：PDF + EPUB（§17，web_accessible_resources）
@@ -868,7 +869,7 @@ iOS build 在「有開著的分頁且分頁可見」時，由 `content-touch.js`
 
 - Header：emoji 🚄 + 名稱「Shinkansen」+ 版本號（動態讀取）
 - 主按鈕：「翻譯本頁」/「顯示原文」（依 `GET_STATE` 切換）
-- 編輯譯文按鈕（預設 `hidden`，翻譯完成後才顯示；切換 `TOGGLE_EDIT_MODE`）。進入編輯模式後頁面下方置中顯示浮動工具列（closed Shadow DOM＋Constructable Stylesheet）：提示文字＋「復原」（逐段 LIFO 撤銷，`beforeinput` 首次改動前快照 innerHTML）＋「完成」（等同「結束編輯」，寫回 guard 快取）；i18n key `editbar.*`。編輯中貼上一律降為純文字（`onEditPaste` capture 攔截，取 `text/plain` 走 `execCommand('insertText')`）——貼上格式跟目標段落走、不帶來源 inline style；Chromium 對 execCommand 不發 `beforeinput`，貼上前手動補快照讓「復原」涵蓋純貼上編輯。與 translate-doc EPUB 預覽 `onPreviewEditablePaste` 為同一份事實的雙實作
+- 編輯譯文按鈕（預設 `hidden`，翻譯完成後才顯示；切換 `TOGGLE_EDIT_MODE`）。進入編輯模式後頁面下方置中顯示浮動工具列（closed Shadow DOM＋Constructable Stylesheet）：提示文字＋「復原」（逐段 LIFO 撤銷，`beforeinput` 首次改動前快照 innerHTML）＋「完成」（等同「結束編輯」，寫回 guard 快取）；i18n key `editbar.*`。編輯中貼上一律降為純文字（`onEditPaste` capture 攔截，取 `text/plain` 走 `execCommand('insertText')`）——貼上格式跟目標段落走、不帶來源 inline style；Chromium 對 execCommand 不發 `beforeinput`，貼上前手動補快照讓「復原」涵蓋純貼上編輯。與 translate-doc EPUB 預覽 `onPreviewEditablePaste` 為同一份事實的雙實作。**連結邊界補位**（`lib/edit-link-repair.js`，與 EPUB 預覽編輯共用單一實作）：Chromium contenteditable 在 `<a>` 邊界打字一律插在連結外（刻意設計），「刪掉連結內的字、緊接著打替換字」會讓新字掉出連結——修法為 `beforeinput` 刪除事件以 `getTargetRanges()` 記下動到內文的 anchor，之後 `insertText`／IME `compositionend` 落地的插入段若貼在該 anchor 外緊鄰邊界即搬回 anchor 內對應側、游標跟移；使用者明確移動游標（pointerdown／導航鍵）即清除補位意圖。沒先刪連結內文字的邊界打字維持 Chromium 原生行為（不收進連結）
 - 白名單自動翻譯 toggle
 - 簡繁自動互轉 toggle（只在 target 為 zh-TW / zh-CN 時顯示，與「翻譯成」picker 連動；§3.12）
 - 術語表一致化 toggle
@@ -1421,7 +1422,7 @@ File → fflate.unzipSync（lib/vendor/fflate/，MIT）
 
 - 翻譯只跑勾選章節（`translateDocument` 的 `blockFilter` option），批次不跨章節語意（`filterGlossary` 過濾以批為單位）
 - 完成後回章節清單：整章完成的自動取消勾選（續翻節奏：下一輪預設剩未翻章節）；已翻章節可逐章預覽（`#stage-epub-preview`）
-- **預覽可直接編輯**：已翻段落渲染反序列化後的富文本（含斜體 / 連結）且 `contenteditable`，blur 時存 `block.editedHtml`（同步更新 `block.translation` 純文字），下載譯本時優先於機器譯文；重新翻譯該章會清掉 `editedHtml`（UI 有提示）。編輯內容寫回前消毒（剝 `script` / `style` / `template` 與 `on*` 屬性）。**貼上一律降為純文字**（paste 攔截取 `text/plain` 走 `insertText` 插入，繼承游標處樣式）——rich paste 會把來源 inline style（`font-family` 等 span）帶進 `editedHtml` 造成譯本字體不一致，且寫回消毒不能剝 `style` 屬性（原書合法標記也可能帶 style，分不出來源）；代價是複製既有斜體再貼會失去 inline 標記
+- **預覽可直接編輯**：已翻段落渲染反序列化後的富文本（含斜體 / 連結）且 `contenteditable`，blur 時存 `block.editedHtml`（同步更新 `block.translation` 純文字），下載譯本時優先於機器譯文；重新翻譯該章會清掉 `editedHtml`（UI 有提示）。編輯內容寫回前消毒（剝 `script` / `style` / `template` 與 `on*` 屬性）。**貼上一律降為純文字**（paste 攔截取 `text/plain` 走 `insertText` 插入，繼承游標處樣式）——rich paste 會把來源 inline style（`font-family` 等 span）帶進 `editedHtml` 造成譯本字體不一致，且寫回消毒不能剝 `style` 屬性（原書合法標記也可能帶 style，分不出來源）；代價是複製既有斜體再貼會失去 inline 標記。**連結邊界補位**：刪掉段內 `<a>` 裡的字後緊接著打字，新字會被 Chromium 插在連結外——`lib/edit-link-repair.js`（與網頁編輯譯文模式共用單一實作，機制詳見 §13.1 編輯譯文按鈕段）事後把插入段搬回連結內
 - **預覽強化**（2026-07-10）：「顯示原文對照」toggle（每個已翻段落下方附原文，降淡、不進編輯與取代）；「全書預覽」按鈕（全部章節連續渲染，章節標題分隔）；**搜尋取代**列（只動已翻段落譯文的文字節點、inline 標記保留，跨標記邊界的字串搜不到屬已知取捨；改動走 `editedHtml` 語意，下載與 session 存檔都吃得到）
 - **譯文空格自動校正**（開啟章節 / 全書預覽與下載譯本 EPUB 時自動執行，僅 target 為中文時；翻譯設定 modal 有「譯文空格自動校正」toggle，`translateDoc.epubAutoFixSpacing`，預設開啟＝缺值視為開）：規則在 `epub-scan.js` `addCjkLatinSpacing`（與掃描替換共用同組 CJK / 拉丁邊界字元集合），皆冪等：1) **補**——CJK↔拉丁直接相鄰缺漏的空格（LLM 輸出偶發漏掉，如「批評F1是無謂」→「批評 F1 是無謂」）；2) **移**——全形標點符號與中英文之間的多餘 `[ \t]`（「F1 ，」→「F1，」；標點集合取 U+3001-303F ＋全形 ASCII 標點，刻意不含 U+3000 全形空格與 `…` `—`——後兩者在內嵌英文句也合法使用）。跨 text node 相鄰靠 prevChar context 在後節點前緣補 / 移；空格落在前節點尾端的移除案例搆不到（不跨節點改字）。CJK↔全形標點側與譯文接收鏈 `collapseCjkAsciiSpaces` 部分重疊——接收鏈只治新譯文，本規則是預覽 / 下載時機對全書（含舊 session / editedHtml）補掃。作用範圍 = 全書已翻段落（`index.js` `autoFixCjkSpacing` 逐 block 離屏渲染），改動走 `editedHtml` 語意（同搜尋取代，下載 / session 存檔都吃得到）；預覽開啟時有修正在搜尋取代狀態列顯示「已補 N 處空格（M 段）」
 - 重勾已翻章節 → confirm 警告「以目前術語表與設定重翻並重新計費」，確認後**清掉該批段落的翻譯快取**（`clearEpubBlocksCache`，以 `epubSerializedText` 的 sha1 為 prefix 掃 suffix 變體）——重勾語意 = 真重翻，不吃 cache；正常續翻 / 中斷恢復不走這條，快取仍有效

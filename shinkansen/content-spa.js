@@ -388,6 +388,11 @@
       if (!target || target.nodeType !== Node.ELEMENT_NODE) return;
       const nvEl = target.closest?.('[data-shinkansen-nodevalue-mutated]');
       if (!nvEl) return;
+      // 編輯模式豁免(對齊三條 sweep 軌):編輯中的點擊是「放游標準備編輯」,
+      // 不是觸發 framework click handler(contenteditable 內連結/按鈕不作用,
+      // React diff 錯亂的前提不存在)。沒這條的話點一下譯文段就被還原成原文
+      // + unmark,編輯模式下 rescan 又排除 contenteditable → 永遠卡原文
+      if (nvEl.getAttribute('contenteditable') === 'true') return;
       const backup = STATE.nodeValueMutateBackup.get(nvEl);
       if (!backup) return;
       for (const entry of backup) {
@@ -1192,6 +1197,9 @@
     let unmarked = 0;
     for (const el of candidates) {
       if (!el.isConnected) continue;
+      // 編輯模式豁免(對齊 nv 軌 A4 與三條 sweep 軌):編輯中的元素不 unmark,
+      // 使用者編輯造成的內容變動不是 framework 展開
+      if (el.getAttribute?.('contenteditable') === 'true') continue;
       const origText = STATE.originalText.get(el);
       if (!origText) continue;
       const currentText = (el.textContent || '').trim();
@@ -1270,6 +1278,11 @@
     let unmarked = 0;
     for (const el of candidates) {
       if (!el.isConnected) continue;
+      // 編輯模式豁免(對齊三條 sweep 軌):使用者在 contenteditable 內打字會讓
+      // backup node 的 nodeValue ≠ translatedValue,被 Path B 誤判 partial-reset
+      // → 「還原為原文」迴圈把整段打回原文 + unmark(2026-08-05 編輯模式實測)。
+      // 編輯中的元素一律不 unmark / 不還原,離開編輯模式後恢復偵測
+      if (el.getAttribute?.('contenteditable') === 'true') continue;
       const origText = STATE.originalText.get(el);
       if (!origText) continue;
 

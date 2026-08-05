@@ -2947,6 +2947,12 @@ function onPreviewEditablePaste(e) {
   document.execCommand('insertText', false, text);
 }
 
+// 連結邊界補位（lib/edit-link-repair.js 共用模組）：刪掉 <a> 內的字後緊接著
+// 打字，Chromium 會把新字插在連結外（邊界刻意設計）——事後把插入段搬回連結內。
+// 與 content.js 網頁編輯譯文模式共用同一份實作。單一 instance 跨段落共用：
+// pointerdown / 導航鍵會清 pending，跨段落誤搬不會發生
+const previewLinkRepair = window.__SKEditLinkRepair.createEditLinkRepair({});
+
 // 捲動錨點 = 視窗內第一個（部分）可見的預覽段落（sticky 工具列以下）。
 // offset 記該段落頂相對 viewport 頂的距離，重繪後還原同視覺位置——
 // 「大致回到原位」以段落為粒度，不追字元級精度
@@ -2992,6 +2998,12 @@ function appendPreviewBlock(content, b, SK, dedupe) {
     el.spellcheck = false;
     el.__skBlock = b;
     el.addEventListener('paste', onPreviewEditablePaste);
+    // 連結邊界補位：刪連結內文字後打字，把插入段補回連結內
+    el.addEventListener('beforeinput', previewLinkRepair.onBeforeInput);
+    el.addEventListener('input', previewLinkRepair.onInput);
+    el.addEventListener('compositionend', previewLinkRepair.onCompositionEnd);
+    el.addEventListener('pointerdown', previewLinkRepair.onPointerDown);
+    el.addEventListener('keydown', previewLinkRepair.onKeyDown);
     const before = el.innerHTML;
     el.addEventListener('blur', () => {
       // v2.0.78（批次 5 G4）：早退不分 editedHtml 有無——原本 `&& !b.editedHtml` 讓

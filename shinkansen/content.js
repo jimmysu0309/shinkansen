@@ -78,6 +78,23 @@
       } else {
         respond({ ok: false, error: 'not translated' });
       }
+    } else if (action === 'TOGGLE_EDIT_MODE') {
+      // Debug Bridge:切換編輯譯文模式(等同 popup 按鈕)。cage / harness 進不了
+      // extension 的 popup 頁,沒這條就無法自動化驗編輯模式相關 bug(例 Content
+      // Guard 編輯豁免與 framework revert 的互動)。僅 dev tail(四段版本)啟用,
+      // 與 GET_CACHE_PEEK 同款 gate——bridge 對任意網頁常開,行為開關不對商店版
+      // 開放。detail.force = true/false 指定開關,省略 = toggle
+      let _editDevTail = false;
+      try {
+        const _rt = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
+        _editDevTail = String(_rt?.getManifest?.().version || '').split('.').length >= 4;
+      } catch (_) { /* orphan context 取不到版本 → 視同商店版拒絕 */ }
+      if (!_editDevTail) {
+        respond({ ok: false, error: 'TOGGLE_EDIT_MODE disabled in release build (dev tail only)' });
+      } else {
+        const _force = (e.detail && typeof e.detail.force === 'boolean') ? e.detail.force : undefined;
+        respond(toggleEditMode(_force));
+      }
     } else if (action === 'GET_PERSISTED_LOGS') {
       // v1.2.52: 讀取跨 service worker 重啟仍保留的持久化 log
       forwardToBackground('GET_PERSISTED_LOGS');
@@ -2424,6 +2441,13 @@
     document.execCommand('insertText', false, text);
   }
 
+  // 連結邊界補位(lib/edit-link-repair.js 共用模組):刪掉 <a> 內的字後緊接著
+  // 打字,Chromium 會把新字插在連結外(邊界刻意設計)——事後把插入段搬回連結內。
+  // 與 translate-doc/index.js EPUB 預覽編輯共用同一份實作。
+  const editLinkRepair = window.__SKEditLinkRepair.createEditLinkRepair({
+    isEditableHost: (el) => el.hasAttribute('data-shinkansen-translated'),
+  });
+
   // 首次改動時快照該段落的原始譯文(beforeinput 路徑與 paste 路徑共用)
   function snapshotEditEl(el) {
     if (!el || editPreEditHTML.has(el)) return;
@@ -2439,6 +2463,7 @@
     const el = t.closest?.('[data-shinkansen-translated][contenteditable="true"]');
     if (!el) return;
     snapshotEditEl(el);
+    editLinkRepair.onBeforeInput(e);
   }
 
   function editBarUndo() {
@@ -2447,12 +2472,15 @@
       if (el.isConnected) el.innerHTML = editPreEditHTML.get(el);
       editPreEditHTML.delete(el);
     }
+    // innerHTML 整段還原後 pending anchor 已 detach,順手清補位狀態
+    editLinkRepair.reset();
     updateEditBarUndoState();
   }
 
   function resetEditUndoStack() {
     editPreEditHTML.clear();
     editUndoOrder.length = 0;
+    editLinkRepair.reset();
   }
 
   function toggleEditMode(forceState) {
@@ -2486,10 +2514,20 @@
     if (enable) {
       document.addEventListener('beforeinput', onEditBeforeInput, true);
       document.addEventListener('paste', onEditPaste, true);
+      // 連結邊界補位:插入落地後(input / IME compositionend)修,游標明確移動
+      //(pointerdown / 導航鍵)清意圖
+      document.addEventListener('input', editLinkRepair.onInput, true);
+      document.addEventListener('compositionend', editLinkRepair.onCompositionEnd, true);
+      document.addEventListener('pointerdown', editLinkRepair.onPointerDown, true);
+      document.addEventListener('keydown', editLinkRepair.onKeyDown, true);
       showEditBar();
     } else {
       document.removeEventListener('beforeinput', onEditBeforeInput, true);
       document.removeEventListener('paste', onEditPaste, true);
+      document.removeEventListener('input', editLinkRepair.onInput, true);
+      document.removeEventListener('compositionend', editLinkRepair.onCompositionEnd, true);
+      document.removeEventListener('pointerdown', editLinkRepair.onPointerDown, true);
+      document.removeEventListener('keydown', editLinkRepair.onKeyDown, true);
       hideEditBar();
     }
     editModeActive = enable;
@@ -2856,6 +2894,11 @@
     testEditBarDone() {
       // 等同按下工具列「完成」
       return toggleEditMode(false);
+    },
+    // 連結邊界補位 test hook——spec 用 _setPending / _repair 模擬 IME 提交路徑
+    //(Playwright 無法產生真實 composition 事件)
+    testEditLinkRepair() {
+      return editLinkRepair;
     },
     testGoogleDocsUrl(urlString) {
       try {
