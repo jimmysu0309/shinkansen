@@ -10,10 +10,12 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
-- Document translation **now accepts TXT / Markdown / HTML files** — translate plain-text or Markdown novels and saved web pages in one go; the translated file keeps the same format as the original. Glossary import also **accepts CSV** (two columns: source,translation), so externally curated term lists can be imported directly.
-- Added **EPUB book translation** (beta) — drop a whole ebook into the "Translate document" page; a book-wide glossary keeps name translations consistent across chapters, and the translated book can be downloaded in monolingual or bilingual format.
-- Added **free Chinese variant conversion** — Simplified (or Traditional) Chinese content is converted locally with built-in dictionaries: no API key, no API calls, works offline.
+- Added **EPUB book translation** (beta) — drop a whole ebook into the "Translate document" page; a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters, you can translate a chapter or two first to check quality, and the translated book can be downloaded in monolingual or bilingual format.
+- Added **TXT / Markdown / HTML file** translation — translate plain-text or Markdown novels and saved web pages in one go; the translated file keeps the same format as the original. Glossary import also **accepts CSV** (two columns: source,translation), so externally curated term lists can be imported directly.
+- Added **Simplified ↔ Traditional Chinese page conversion (free)** — Simplified (or Traditional) Chinese content is converted locally with built-in dictionaries: no API key, no API calls, works offline.
+- **Several YouTube subtitle fixes** — youtube.com/live/ live-stream links now get subtitle translation, English words are no longer split in half, Taiwanese videos are no longer thrown off by the auto-translated English track, and overall reliability is improved.
 - **Greatly improved PDF translation quality** — layout detection and rendering for tables and spec sheets have been thoroughly reworked; translated PDFs stay much closer to the original layout.
+- **A large batch of translation-quality and stability fixes** — site-specific glossaries now apply correctly, translation editing is improved, and translations are better protected against front-end frameworks reverting them.
 - **iOS / iPadOS version** is coming soon to the App Store — stay tuned.
 
 ## Why Shinkansen
@@ -304,7 +306,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.0.87 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.3.0 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

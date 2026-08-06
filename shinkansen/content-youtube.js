@@ -1839,6 +1839,14 @@
       return;
     }
     if (!YT.videoEl) return;
+    // v2.3.0:播畢狀態為準——'ended' 事件清空後,若仍有晚到的 timeupdate(YouTube
+    // endscreen 等會再 fire),不擋住會被 _findActiveCue 重新寫回(最後一句 endMs
+    // 經閱讀補償常超過影片長度,currentTime=duration 仍命中)。與 onVideoEnded
+    // 互補:事件負責「立即清」,這裡負責「ended 期間不重寫」。
+    if (YT.videoEl.ended) {
+      _setOverlayContent('');
+      return;
+    }
     // 動態同步 native caption font-size / font-family 到 overlay
     // (fullscreen / theatre / 字幕大小設定 / 使用者字型選擇變更時自動跟上)
     const host = _ensureOverlay();
@@ -1945,6 +1953,8 @@
   const _IOS_FS_TRACK_MARKER = 'shinkansen-yt-fs';
   let _iosFsBeginHandler = null;
   let _iosFsEndHandler   = null;
+  let _iosFsModeHandler  = null;   // webkitpresentationmodechanged(iPadOS)
+  let _iosFsDocFsHandler = null;   // document fullscreenchange(iPad element fullscreen)
   let _iosFsRefreshPending = false;
 
   // iOS Safari 偵測:iPhone/iPad UA,或 iPadOS 13+ 偽裝成 Mac(用 maxTouchPoints 判)。
@@ -1968,12 +1978,29 @@
     // DOM。所以 displayCues 為空時改用 rawSegments(時間軸)+ captionMap(譯文)組裝,
     // 否則 iOS 原生全螢幕只剩 ASR 有字幕、原生字幕翻譯整個消失。
     // 用「displayCues 是否有資料」分流而非 isAsr 旗標:資料導向,且讓既有 ASR cue 組裝測試不動。
-    if (YT.displayCues && YT.displayCues.length) {
-      return _buildIosFsCuesFromDisplayCues(isBilingual);
-    }
-    return _buildIosFsCuesFromRawSegments(isBilingual);
+    const cues = (YT.displayCues && YT.displayCues.length)
+      ? _buildIosFsCuesFromDisplayCues(isBilingual)
+      : _buildIosFsCuesFromRawSegments(isBilingual);
+    // v2.3.0(症狀:iPadOS 全螢幕影片播完,最後一句字幕留在黑畫面):閱讀補償 /
+    // 最後一句 +4s 會把 endSec 推超過影片長度;播畢時 currentTime 停在 duration,
+    // 仍落在 cue 區間 → 原生渲染器持續顯示。把所有 cue 的 endSec clamp 到
+    // duration,cue 區間 [start, end) 在 t=duration 時自然失效。
+    return _clampCuesToDuration(cues, YT.videoEl ? YT.videoEl.duration : NaN);
   }
   SK._buildIosFsTrackCues = _buildIosFsTrackCues;   // regression spec 用
+
+  // 純函式:cue endSec clamp 到影片長度。duration 非有限值(NaN / Infinity,
+  // metadata 未載入或直播)不動;clamp 後區間退化(end <= start)的 cue 移除。
+  function _clampCuesToDuration(cues, durationSec) {
+    if (!Number.isFinite(durationSec) || durationSec <= 0) return cues;
+    const out = [];
+    for (const c of cues) {
+      const endSec = Math.min(c.endSec, durationSec);
+      if (endSec > c.startSec) out.push({ ...c, endSec });
+    }
+    return out;
+  }
+  SK._clampCuesToDuration = _clampCuesToDuration;   // regression spec 用
 
   // ASR(及任何已寫 displayCues 的路徑)：直接從顯示單位組 cue。
   function _buildIosFsCuesFromDisplayCues(isBilingual) {
@@ -2179,6 +2206,50 @@
   }
   SK._applyYtCaptionScale = _applyYtCaptionScale;   // regression spec 用
 
+  // ─── 字幕顯示通道的單一決策(v2.3.0,修 iPad 全螢幕雙字幕)────────
+  //
+  // 症狀:iPadOS 按網頁播放器全螢幕鈕(element fullscreen,DOM overlay 仍可見)時,
+  //       webkitbeginfullscreen 也會 fire,舊 handler 無條件把 native track 切
+  //       'showing' → overlay + native cue 兩組字幕並排;要等下一批翻譯觸發
+  //       _refreshIosFsTrack 以 presentationMode 重算才收回(「跑一段時間才恢復」)。
+  //
+  // 修法:track 該不該 showing 不再由 begin/end 事件各自無條件切,統一由
+  //       「當下狀態」推導(單一資料源):
+  //         - element fullscreen(document.fullscreenElement 有值,iPad 網頁播放器
+  //           全螢幕)→ DOM overlay 可見 → track 必 hidden
+  //         - video 進原生播放器(webkitPresentationMode === 'fullscreen' 且非
+  //           element fullscreen,iPhone / iPad 原生全螢幕)→ overlay 被系統層蓋住
+  //           → track showing
+  //       事件(begin / end / presentationmodechanged / fullscreenchange)只負責
+  //       「觸發重算」,不各自帶結論——時序亂序也不會留下錯態。
+  //       同步時一併重壓 foreign track(YouTube 進出全螢幕會把自家 native track
+  //       拉回 showing,也是「第二組字幕」的另一可能來源)。
+
+  // 純決策函式(regression 鎖真值表用):
+  //   presentationMode: video.webkitPresentationMode(桌面 Chromium 為 undefined)
+  //   hasElementFullscreen: document.fullscreenElement 是否有值
+  function _iosFsTrackShouldShow(presentationMode, hasElementFullscreen) {
+    return presentationMode === 'fullscreen' && !hasElementFullscreen;
+  }
+  SK._iosFsTrackShouldShow = _iosFsTrackShouldShow;   // regression spec 用
+
+  // 以當下真實狀態同步 track mode(冪等;teardown 後 track=disabled 不動)。
+  function _syncIosFsTrackMode() {
+    const video = SK.YT.videoEl || document.querySelector('video');
+    if (!video) return;
+    const list = video.textTracks;
+    let track = null;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] && list[i].__skCreateBy === _IOS_FS_TRACK_MARKER) { track = list[i]; break; }
+    }
+    if (!track || track.mode === 'disabled') return;
+    const elementFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    const show = _iosFsTrackShouldShow(video.webkitPresentationMode, elementFs);
+    try { track.mode = show ? 'showing' : 'hidden'; } catch (e) {}
+    _hideForeignTextTracks(video);
+  }
+  SK._syncIosFsTrackMode = _syncIosFsTrackMode;   // regression spec 用
+
   // 主入口:重建 iOS 全螢幕字幕軌 + 綁定全螢幕進出事件。只在 iOS Safari 跑,其他平台直接 return。
 
   function _refreshIosFsTrack() {
@@ -2188,15 +2259,25 @@
     try {
       _ensureIosFsCueStyle();
       _hideForeignTextTracks(video);
-      const inFs = video.webkitPresentationMode === 'fullscreen';
-      const track = _ensureIosFsTrack(video, _buildIosFsTrackCues(), inFs);
+      const elementFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      const inFs = _iosFsTrackShouldShow(video.webkitPresentationMode, elementFs);
+      _ensureIosFsTrack(video, _buildIosFsTrackCues(), inFs);
       // 重綁前先移除舊 handler(video 元素可能跨 session 沿用)
       if (_iosFsBeginHandler) video.removeEventListener('webkitbeginfullscreen', _iosFsBeginHandler);
       if (_iosFsEndHandler)   video.removeEventListener('webkitendfullscreen',   _iosFsEndHandler);
-      _iosFsBeginHandler = () => { try { track.mode = 'showing'; } catch (e) {} };
-      _iosFsEndHandler   = () => { try { track.mode = 'hidden';  } catch (e) {} };
+      if (_iosFsModeHandler)  video.removeEventListener('webkitpresentationmodechanged', _iosFsModeHandler);
+      // 四種訊號都只觸發同一個「以當下狀態重算」,不各自帶結論
+      _iosFsBeginHandler = () => _syncIosFsTrackMode();
+      _iosFsEndHandler   = () => _syncIosFsTrackMode();
+      _iosFsModeHandler  = () => _syncIosFsTrackMode();
       video.addEventListener('webkitbeginfullscreen', _iosFsBeginHandler);
       video.addEventListener('webkitendfullscreen',   _iosFsEndHandler);
+      video.addEventListener('webkitpresentationmodechanged', _iosFsModeHandler);
+      if (!_iosFsDocFsHandler) {
+        _iosFsDocFsHandler = () => _syncIosFsTrackMode();
+        document.addEventListener('fullscreenchange', _iosFsDocFsHandler);
+        document.addEventListener('webkitfullscreenchange', _iosFsDocFsHandler);
+      }
     } catch (e) {
       SK.sendLog?.('warn', 'youtube', 'ios fs track refresh failed: ' + e.message);
     }
@@ -2226,8 +2307,15 @@
     try {
       if (_iosFsBeginHandler) video.removeEventListener('webkitbeginfullscreen', _iosFsBeginHandler);
       if (_iosFsEndHandler)   video.removeEventListener('webkitendfullscreen',   _iosFsEndHandler);
+      if (_iosFsModeHandler)  video.removeEventListener('webkitpresentationmodechanged', _iosFsModeHandler);
+      if (_iosFsDocFsHandler) {
+        document.removeEventListener('fullscreenchange', _iosFsDocFsHandler);
+        document.removeEventListener('webkitfullscreenchange', _iosFsDocFsHandler);
+      }
       _iosFsBeginHandler = null;
       _iosFsEndHandler   = null;
+      _iosFsModeHandler  = null;
+      _iosFsDocFsHandler = null;
       const list = video.textTracks;
       for (let i = 0; i < list.length; i++) {
         const t = list[i];
@@ -3396,6 +3484,17 @@
     translateWindowFrom(newWindowStart);
   }
 
+  // v2.3.0(症狀:影片播完畫面全黑,最後一句字幕持續顯示):
+  // _upsertDisplayCue 的中文閱讀時間補償會把最後一句 endMs 延長到超過影片結尾,
+  // 而 timeupdate 在 ended 後不再 fire → overlay 沒有任何清除時機,cue 卡在黑畫面。
+  // 修法:ended 當下直接清空 overlay(冪等;重播 / replay 後 timeupdate 恢復驅動,
+  // 自然重新寫入)。非 ASR 路徑譯文住在 YouTube 自家 caption segment,YouTube 播畢
+  // 自己清,不受影響;此處清的是我們的 overlay(ASR 與 non-ASR 雙語共用)。
+  function onVideoEnded() {
+    _setOverlayContent('');
+  }
+  SK._onVideoEnded = onVideoEnded;   // regression spec 用
+
   function attachVideoListener() {
     const YT = SK.YT;
     const video = document.querySelector('video');
@@ -3404,11 +3503,13 @@
       YT.videoEl.removeEventListener('timeupdate', onVideoTimeUpdate);
       YT.videoEl.removeEventListener('seeked',     onVideoSeeked);
       YT.videoEl.removeEventListener('ratechange', onVideoRateChange);
+      YT.videoEl.removeEventListener('ended',      onVideoEnded);
     }
     YT.videoEl = video;
     video.addEventListener('timeupdate', onVideoTimeUpdate);
     video.addEventListener('seeked',     onVideoSeeked);
     video.addEventListener('ratechange', onVideoRateChange);
+    video.addEventListener('ended',      onVideoEnded);
     _observeCcButton();
   }
 
@@ -3855,6 +3956,7 @@
       YT.videoEl.removeEventListener('timeupdate',  onVideoTimeUpdate);
       YT.videoEl.removeEventListener('seeked',      onVideoSeeked);    // v1.3.1: 補漏
       YT.videoEl.removeEventListener('ratechange',  onVideoRateChange); // v1.3.1: 補漏
+      YT.videoEl.removeEventListener('ended',       onVideoEnded);
       YT.videoEl = null;
     }
     YT.active             = false;

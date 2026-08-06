@@ -3,7 +3,7 @@
 import { browser } from '../lib/compat.js';
 import { formatBytes, formatTokens, formatUSD, formatMoney } from '../lib/format.js';
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
-import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
+import { RELEASE_HIGHLIGHT_KEYS } from '../lib/release-highlights.js';
 import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
 import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js';
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
@@ -278,10 +278,11 @@ async function init() {
       $('update-dot').hidden = false;
       $('welcome-banner').hidden = false;
       $('welcome-banner-title').textContent = t('popup.banner.welcome', { version: welcomeNotice.version });
-      // AMO source review: RELEASE_HIGHLIGHTS 是 dev hardcoded 字串陣列（見 lib/release-highlights.js）,
-      // highlightToHtml 是同檔案內的安全 markdown-to-html 轉換（只處理 **bold** → <strong>），無 user input。
-      $('welcome-bullets').innerHTML = RELEASE_HIGHLIGHTS
-        .map(h => `<li>${highlightToHtml(h)}</li>`)
+      // AMO source review: RELEASE_HIGHLIGHT_KEYS 對應 lib/i18n.js 內 dev hardcoded 的
+      // 譯文字串（見 lib/release-highlights.js），highlightToHtml 是本檔內的安全
+      // markdown-to-html 轉換（只處理 **bold** → <strong>），無 user input。
+      $('welcome-bullets').innerHTML = RELEASE_HIGHLIGHT_KEYS
+        .map(k => `<li>${highlightToHtml(t(k))}</li>`)
         .join('');
     }
   } catch { /* 略 */ }

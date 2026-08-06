@@ -146,6 +146,8 @@ async function load() {
   $('toastAutoHide').checked = s.toastAutoHide !== false;
   // v1.6.8: Toast master switch
   $('showProgressToast').checked = s.showProgressToast !== false;
+  // v2.3.0: 簡繁轉換完成不顯示通知(預設 true = 不顯示)
+  $('hideZhConvertToast').checked = s.hideZhConvertToast !== false;
 
   // 懸浮翻譯按鈕：enable（null = 一律預設開啟）+ 大小 + 透明度
   $('floatingIcon').checked = typeof s.floatingIcon === 'boolean' ? s.floatingIcon : true;
@@ -994,6 +996,7 @@ async function _saveImpl() {
     toastAutoHide: $('toastAutoHide').checked,
     // v1.6.8: Toast master switch（false 完全不顯示，連訊息都不發）
     showProgressToast: $('showProgressToast').checked,
+    hideZhConvertToast: $('hideZhConvertToast').checked,
     // 懸浮翻譯按鈕：使用者明確切過 → 一律寫 boolean（之後不再走平台預設）
     floatingIcon: $('floatingIcon').checked,
     floatingIconSize: (() => { const v = document.querySelector('input[name="floatingIconSize"]:checked')?.value; return ['16', '24', '32'].includes(v) ? Number(v) : 24; })(),
@@ -1802,6 +1805,7 @@ function sanitizeImport(raw) {
     autoTranslateSlot:   { type: 'number', min: 1, max: 3, int: true }, // v1.6.13
     modelPricingOverrides: { type: 'object' }, // v1.6.14
     showProgressToast:   { type: 'boolean' }, // v1.6.8
+    hideZhConvertToast:  { type: 'boolean' }, // v2.3.0:簡繁轉換完成不顯示通知
     floatingIcon:        { type: 'boolean', nullable: true }, // 懸浮按鈕 enable（null = 預設開啟）
     floatingIconSize:    { type: 'number', oneOf: [16, 24, 32] }, // icon 邊長 px（16 小 / 24 中 / 32 大）
     floatingIconOpacity: { type: 'number', min: 0.1, max: 1 },

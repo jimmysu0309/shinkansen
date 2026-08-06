@@ -236,12 +236,17 @@
   let toastAutoHide = true;
   // v1.6.8: Toast master switch — false 時 SK.showToast 入口直接 return
   let showProgressToast = true;
+  // v2.3.0:「簡繁轉換完成不顯示通知」開關(options「翻譯進度通知」區)。
+  // 只壓免費簡繁轉換的完成 toast,LLM 翻譯的通知不受影響;由 content.js
+  // convertOnly 成功路徑查詢(SK.shouldHideZhConvertToast)。預設 true(不顯示)。
+  let hideZhConvertToast = true;
 
-  browser.storage.sync.get(['toastOpacity', 'toastPosition', 'toastAutoHide', 'showProgressToast']).then((s) => {
+  browser.storage.sync.get(['toastOpacity', 'toastPosition', 'toastAutoHide', 'showProgressToast', 'hideZhConvertToast']).then((s) => {
     applyToastOpacity(s.toastOpacity);
     applyToastPosition(s.toastPosition);
     if (typeof s.toastAutoHide === 'boolean') toastAutoHide = s.toastAutoHide;
     if (typeof s.showProgressToast === 'boolean') showProgressToast = s.showProgressToast;
+    if (typeof s.hideZhConvertToast === 'boolean') hideZhConvertToast = s.hideZhConvertToast;
   });
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.toastOpacity) {
@@ -257,6 +262,9 @@
       showProgressToast = changes.showProgressToast.newValue ?? true;
       // 切到 false 即時隱藏目前 toast（不等下一次 showToast 觸發）
       if (!showProgressToast && SK.hideToast) SK.hideToast();
+    }
+    if (area === 'sync' && changes.hideZhConvertToast) {
+      hideZhConvertToast = changes.hideZhConvertToast.newValue ?? true;
     }
   });
 
@@ -345,6 +353,11 @@
   // 暴露給呼叫端（例如未來 content.js fast-path 跳過 buildToastOptions）與 regression spec 用
   SK.shouldShowToast = function shouldShowToast() {
     return showProgressToast;
+  };
+
+  // v2.3.0:「簡繁轉換完成不顯示通知」查詢(content.js convertOnly 成功路徑用)
+  SK.shouldHideZhConvertToast = function shouldHideZhConvertToast() {
+    return hideZhConvertToast;
   };
 
   SK.showToast = function showToast(kind, msg, opts = {}) {

@@ -715,6 +715,7 @@ export const DEFAULT_SETTINGS = {
   // 不建 DOM、不開 Shadow root、不發訊息（與單純調 opacity=0 不同——後者仍會渲染）。
   // 使用情境：使用者翻譯流量大、不在乎個別頁面進度，希望全靜音。
   showProgressToast: true,
+  hideZhConvertToast: true,   // v2.3.0:簡繁轉換完成不顯示 toast(只壓免費轉換的完成通知;預設關閉通知)
   // v1.5.0: 顯示模式（'single' 覆蓋 / 'dual' 雙語對照），由 popup toggle 切換。
   // 'single' 沿用 v1.4 之前所有路徑，'dual' 走 content-inject.js 的 injectDual。
   displayMode: 'single',

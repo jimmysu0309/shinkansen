@@ -99,6 +99,29 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons 與 App Store（iOS / iPadOS Safari）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v2.3.0 <span class="release-date">2026-08-06 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.0.9</p>
+
+  <p class="lead">這版最大的新功能是「EPUB 電子書翻譯」，「翻譯文件」也擴充支援 TXT / Markdown / HTML；新增簡繁網頁轉換（免費），並累積大量翻譯品質與穩定性修正</p>
+
+  <ul>
+    <li><strong>新增「EPUB 電子書翻譯」（beta）</strong>：「翻譯文件」頁現在支援 .epub 電子書，整套設計圍繞「譯一本書最痛的問題：譯名跨章節漂移」——翻譯前逐章掃描全書抽出人名 / 地名 / 術語對照表，過目、編輯、鎖定後全書一致；可先翻一兩章驗品質再續翻；翻完可跑「譯後一致性掃描」揪出譯名漂移與術語表未遵守的段落，支援自動替換與就地修正；EPUB 檔下載可選單語譯文或雙語對照譯本；術語表可匯出 / 匯入，系列作續集可沿用前作譯名；新增「本文件額外翻譯指令」欄位，可針對單一文件下客製翻譯指示</li>
+
+    <li><strong>文件翻譯支援 TXT / Markdown / HTML</strong>：除了 PDF 與 EPUB，現在也能上傳 .txt / .md / .html 檔，術語表、譯後一致性掃描、預覽編輯、費用預估全部沿用，譯文輸出格式與原檔相同（Markdown 進 Markdown 出、程式碼區塊原樣保留）。另外，術語表匯入新增 CSV 兩欄簡表格式，外部整理的名詞對照表可直接匯入</li>
+
+    <li><strong>新增簡繁網頁轉換（免費）</strong>：簡中網頁自動翻成繁中（或繁中翻簡中），本機直接自動字詞轉換不送 AI 翻譯——速度更快、零 token 費用</li>
+
+    <li><strong>YouTube 字幕多項修正</strong>：youtube.com/live/ 形式的直播連結現在也能翻譯字幕；譯文不再把英文單字切成兩半顯示；台灣影片不再被 YouTube 的英文自動翻譯軌帶偏；目標設繁中時，簡中影片字幕不再多翻一次；雙語字幕改為跟隨顯示模式設定；自動字幕 AI 分句的時間軸與句子邊界修正；整體可靠性提升</li>
+
+    <li><strong>術語表修正與強化</strong>：「網域專用術語表」修復——先前填 example.com 但頁面實際在 www.example.com（或貼了完整網址）會比對不中，看起來像只有全域有效，現在自動容錯命中，既有設定不需重填；術語表一致化啟用時，「譯名（原文）」對照改為全頁只出現一次</li>
+
+    <li><strong>譯文編輯模式強化</strong>：新增浮動工具列（復原 / 完成）；貼上內容自動轉純文字，不再帶入外部樣式；並修正多項編輯狀態問題</li>
+
+    <li><strong>PDF 翻譯品質總修</strong>：版面偵測重構與多項渲染修正，表格與多欄版面的譯文覆蓋更精準</li>
+
+    <li><strong>大量翻譯品質與穩定性修正</strong>：譯文段數不符時先用序號標記自動二次對齊，大幅減少逐段重送；整段譯文被誤判「跟原文相同」而靜默丟棄的問題修復；前端框架站（The Verge 等）重繪把譯文打回原文的守護補強，並完整保留段內連結；含互動註腳的段落整段不翻、被行內程式碼包住的標題不翻、媒體型自訂元素翻譯後消失等偵測與注入修復；快速鍵「翻譯 / 還原」切換修復；嵌入式播放器誤翻計費修復；Gemini 模型清單更新，成效不彰的「API 配額管理」設定整項移除；另完成三輪全面 code review，收尾 84 條正確性與效能修復</li>
+  </ul>
+
   <h2>v2.0.9 <span class="release-date">2026-07-09 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v2.0.0</p>
 

@@ -99,6 +99,29 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.3.0 <span class="release-date">Released 2026-08-06</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.0.9</p>
+
+  <p class="lead">The headline feature in this release is EPUB e-book translation; document translation also gains TXT / Markdown / HTML support, free Simplified ↔ Traditional Chinese page conversion is added, and a large batch of translation-quality and stability fixes lands.</p>
+
+  <ul>
+    <li><strong>New "EPUB e-book translation" (beta)</strong>: the "Translate document" page now accepts .epub files. The design centers on the most painful problem of translating a book — names drifting across chapters. Before translating, Shinkansen scans the whole book chapter by chapter to extract a glossary of people / places / terms, which you can review, edit, and lock so it stays consistent across the entire book; translate one or two chapters first to check quality, then continue; after translating, run the consistency scan to catch drifting names and glossary violations, with automatic replacement and in-place fixes; the EPUB download can be translation-only or a bilingual edition; the glossary can be exported / imported so sequels can reuse the previous book's names; a new "extra translation instructions for this document" field lets you give custom guidance for a single document.</li>
+
+    <li><strong>Document translation supports TXT / Markdown / HTML</strong>: besides PDF and EPUB, you can now upload .txt / .md / .html files — the glossary, consistency scan, preview editing, and cost estimate all carry over — and the output keeps the original format (Markdown in, Markdown out; code blocks pass through untranslated). Glossary import also gains a simple two-column CSV format, so externally curated name lists can be imported directly.</li>
+
+    <li><strong>New: Simplified ↔ Traditional Chinese page conversion (free)</strong>: Simplified-Chinese pages now translate to Traditional Chinese (and vice versa) through direct on-device character and phrase conversion instead of calling the AI — faster, with zero token cost.</li>
+
+    <li><strong>Several YouTube subtitle fixes</strong>: youtube.com/live/ live-stream links now get subtitle translation too; translated subtitles no longer split English words in half; Taiwanese videos are no longer thrown off by YouTube's auto-translated English track; Simplified-Chinese videos are no longer re-translated when your target is Traditional Chinese; bilingual subtitles now follow the display-mode setting; timing and sentence-boundary fixes for AI segmentation of auto-generated subtitles; overall reliability improved.</li>
+
+    <li><strong>Glossary fixes and improvements</strong>: fixed site-specific glossaries never matching when you entered example.com but the page actually lives at www.example.com (or you pasted a full URL) — matching is now tolerant and existing entries need no re-entry; with glossary enforcement on, the "translated name (original)" annotation now appears only once per page.</li>
+
+    <li><strong>Translation editing improvements</strong>: a new floating toolbar (undo / done); pasted content is converted to plain text so external styling no longer leaks in; several editing-state fixes.</li>
+
+    <li><strong>PDF translation quality overhaul</strong>: reworked layout detection plus several rendering fixes — translated text covers tables and multi-column layouts more precisely.</li>
+
+    <li><strong>A large batch of translation-quality and stability fixes</strong>: when the translated paragraph count doesn't match, a sequence-number retry now re-aligns automatically, greatly reducing per-paragraph fallbacks; fixed whole paragraphs being silently dropped when misjudged as "identical to the original"; stronger protection against front-end framework sites (The Verge, etc.) reverting translations on re-render, now fully preserving inline links; detection and injection fixes for paragraphs with interactive footnotes, headings wrapped in inline code, and media-style custom elements disappearing after translation; fixed the shortcut translate / restore toggle; fixed embedded players being translated and billed by mistake; the Gemini model list is refreshed and the underused "API quota management" setting has been removed; plus three full-codebase review rounds closing out 84 correctness and performance fixes.</li>
+  </ul>
+
   <h2>v2.0.9 <span class="release-date">Released 2026-07-09</span></h2>
   <p class="release-meta">Compared with the previous store version v2.0.0</p>
 

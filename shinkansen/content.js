@@ -1709,6 +1709,15 @@
           localCacheHitSegments: pageUsage.cacheHits,
           url: location.href,
         });
+        // v2.3.0:「簡繁轉換完成不顯示通知」開關——只壓免費簡繁轉換的完成 toast,
+        // LLM 翻譯不受影響。用 hideToast 收掉轉換期間的進度 toast(不然會殘留
+        // 「翻譯中…」),並整段跳過成功 toast(含 update / welcome notice 掛載——
+        // 若在此 build 會消耗每日節流額度卻沒顯示,留給下一次真正顯示的 toast)。
+        // 注意不可提前 return:後面的 scheduleRescanForLateContent / startSpaObserver
+        // 是簡繁自動轉換 SPA 續轉的必要收尾。
+        if (convertOnly && SK.shouldHideZhConvertToast?.()) {
+          SK.hideToast?.();
+        } else {
         // v1.6.1: 翻譯成功 toast 順帶顯示「有新版可下載」（每日節流）。
         // v1.6.5: 同時也帶 welcome notice（CWS 剛升級提示，每日節流）。
         const updateNotice = await SK.maybeBuildUpdateNotice();
@@ -1739,6 +1748,7 @@
           welcomeNotice,
           action,
         });
+        }
       }
 
       // 記錄用量到 IndexedDB(convertOnly 純本地轉換零 API 用量,不寫紀錄——
