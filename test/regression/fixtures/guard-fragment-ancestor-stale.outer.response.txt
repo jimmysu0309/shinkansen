@@ -1,3 +1,0 @@
-外層 fragment alpha 測試這裡
-外層 fragment beta 測試這裡
-外層 fragment gamma 測試這裡
