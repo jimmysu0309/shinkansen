@@ -1800,11 +1800,13 @@
     if (STATE.translatedMode === 'dual' || (STATE.translationCache && STATE.translationCache.size > 0)) {
       SK.removeDualWrappers?.();
     }
-    // framework-managed nodeValue mutate：對 el 內存的每個 {node, originalValue} 寫回
+    // framework-managed nodeValue mutate：對 el 內存的每個 {node, originalValue} 寫回。
+    // v2.0.85: detached node 也照寫——framework（React 等）會 detach / reattach 同一節點,
+    // 只寫 connected 會讓 reattach 回來的節點帶著譯文殭屍殘留
     if (STATE.nodeValueMutateBackup && STATE.nodeValueMutateBackup.size > 0) {
       STATE.nodeValueMutateBackup.forEach((backup, el) => {
         backup.forEach(({ node, originalValue }) => {
-          if (node && node.isConnected) {
+          if (node) {
             try { node.nodeValue = originalValue; } catch (_) {}
           }
         });
@@ -1815,11 +1817,16 @@
       });
       STATE.nodeValueMutateBackup.clear();
     }
-    // single 軌：innerHTML 還原。v1.8.20: SPA framework rerender 後 el 可能已 detached，
-    // 直接寫 innerHTML 不報錯但對頁面零作用——跳過並回報數量
+    // single 軌：innerHTML 還原。v2.0.85: detached el 也照樣還原（v1.8.20 起原本跳過）——
+    // SPA framework（React 等）會 detach 後 reattach「同一個」節點（例如留言區小元件
+    // re-render），跳過會讓 reattach 回來的節點帶著譯文 + marker 殭屍殘留：
+    // isPageTranslated() 判 true 但還原 Map 已清空 → restorePage 殭屍保底 location.reload()
+    // （使用者症狀：toggle 第三下頁面閃一下 reload、沒翻譯）。對 detached 節點寫
+    // innerHTML / 清 attribute 無副作用：真被 framework 丟棄的節點多寫一次無害，
+    // 會 reattach 的節點回來就是乾淨原文。detached 數仍回報供 caller log 觀察。
     let detached = 0;
     STATE.originalHTML.forEach((originalHTML, el) => {
-      if (!el.isConnected) { detached++; return; }
+      if (!el.isConnected) detached++;
       // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 翻譯前用
       // el.innerHTML 讀出來自存的原始 DOM 字串），純還原用，無 user input 流入。
       el.innerHTML = originalHTML;
@@ -1834,6 +1841,9 @@
     STATE.originalFontFamily?.clear?.();
     STATE.translationCache?.clear?.();  // v1.5.0
     SK.restoreDocLang?.();  // v2.0.73：還原 <html lang> 原值
+    // v2.0.85: Map 已全清,此時 DOM 上還掛注入痕跡的節點都是簿記追不到的無主殘留
+    // (站點 clone / 換回舊節點),掃掉才不會讓 isPageTranslated() 永遠 true
+    SK.sweepOrphanTranslationMarkers?.();
     return detached;
   }
 
@@ -1844,7 +1854,7 @@
     SK.abortRescanRuns();
     const detached = restoreInjectedDom();
     if (detached > 0) {
-      SK.sendLog?.('warn', 'system', 'restoreOriginalHTMLAndReset: skipped detached elements', { detached });
+      SK.sendLog?.('warn', 'system', 'restoreOriginalHTMLAndReset: restored detached elements (framework may reattach)', { detached });
     }
     STATE.translated = false;
     // v1.10.20: 翻譯開始時就會點亮 icon badge（SET_BADGE_TRANSLATED），
@@ -1923,7 +1933,7 @@
     // restoreOriginalHTMLAndReset 共用，歷史演進註解見該函式）
     const restoreDetached = restoreInjectedDom();
     if (restoreDetached > 0) {
-      SK.sendLog?.('warn', 'system', 'restorePage: skipped detached elements (page may not fully restore)', { detached: restoreDetached });
+      SK.sendLog?.('warn', 'system', 'restorePage: restored detached elements (framework may reattach)', { detached: restoreDetached });
     }
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0

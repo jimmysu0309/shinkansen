@@ -36,7 +36,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
 - **Document translation (PDF / EPUB)**: upload a PDF or EPUB and translate the whole file — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output. Details in "Document translation" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with Traditional Chinese; styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
-- **Bilingual subtitles**: one-click toggle in the toolbar icon menu makes subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. YouTube and Google Drive videos share the same setting. Details in "Bilingual subtitles" below.
+- **Bilingual subtitles**: when the display mode is set to "Bilingual", subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. Applies to both YouTube and Google Drive videos. Details in "Bilingual subtitles" below.
 - **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
 - **Custom glossary**: pin specific terms to your preferred translations so proper nouns are always rendered consistently. Two layers (global + domain-specific) where domain rules override global. Details in "Custom glossary" below.
 - **Blocked-word list**: an editable list of words you don't want in the translation. Works for any target language — write your own substitution pairs (defaults to empty for most targets; ships with 25 entries for Traditional Chinese targets). Injected as a high-prominence block at the end of the system prompt. Details in "Blocked-word list" below.
@@ -181,7 +181,7 @@ Human-uploaded captions (professional / community-contributed) are unaffected by
 
 ### Bilingual subtitles
 
-Click the Shinkansen toolbar icon, toggle "Bilingual subtitles" on in the toolbar icon menu. Subtitles will then show both original and translation simultaneously (English on top, Chinese below). Off shows Chinese only (default).
+Subtitle bilingual display follows the display mode setting: click the Shinkansen toolbar icon and pick the "Bilingual" display mode — subtitles will then show both original and translation simultaneously (English on top, Chinese below). The "Replace" mode (default) shows Chinese only. Page translation and subtitles share the same display mode, no separate setting needed.
 
 Best for:
 - **Listening practice**: glance at the original when you can't catch a word
@@ -189,8 +189,8 @@ Best for:
 - **Language learning**: use subtitles as bilingual study material
 
 Implementation notes:
-- **YouTube and Google Drive videos share the same setting** (toggling once switches both)
-- **Live toggle**: switching during playback takes effect immediately, no reload
+- **YouTube and Google Drive videos share the same display mode** (switching to Bilingual affects both)
+- **Live switch**: changing the mode during playback takes effect immediately, no reload
 - **Compatible with AI segmentation**: bilingual subtitles work cleanly on AI-segmented full sentences — full English sentence + full Chinese sentence on two lines
 
 ### Cost
@@ -295,7 +295,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.0.84 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.0.85 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

@@ -267,7 +267,8 @@ test('匯入設定時 12 條 audit 漏掉的 key 必須全部 round-trip', async
     applyFixedGlossary: true,
     applyForbiddenTerms: true,
     asrMode: 'heuristic',
-    bilingualMode: true,
+    // v2.0.85:bilingualMode 已移除(字幕雙語跟隨 displayMode)——舊匯出檔的
+    // ytSubtitle.bilingualMode(payload 內仍有)被 sanitize 丟棄,toEqual 精確比對斷言其不存在
     preferOriginalTrack: false,
   });
 });

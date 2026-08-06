@@ -190,6 +190,34 @@ if (window.__shinkansen_loaded) {
     return !!document.querySelector(SK.TRANSLATED_MARKER_SELECTOR);
   };
 
+  // v2.0.85: 無主殭屍 marker 掃除。還原流程把所有還原 Map 內的節點處理完、Map 清空後,
+  // DOM 上仍掛注入痕跡的節點都是「簿記追不到的無主殘留」——站點 framework 可能 clone
+  // 已翻譯節點(cloneNode 連 data-* attribute 一起複製)或把持有的舊譯文節點換回 DOM。
+  // 不掃掉的話 isPageTranslated() 永遠 true → 下一次 toggle 誤走 restorePage,又因
+  // 無還原素材命中殭屍保底 location.reload()(使用者症狀:toggle 第三下頁面閃一下
+  // reload、沒翻譯)。單語殘留節點的譯文文字無素材可還原,只清 marker(通常是站點
+  // 短生命週期小元件,framework 下次 re-render 就換回原文);dual wrapper 是純注入
+  // 內容,整顆移除即回原貌。restorePage / abort / SPA reset 三條還原路徑共用。
+  // 呼叫時機必須在還原 Map 清空之後(此時「掛 marker = 無主」才成立)。
+  SK.sweepOrphanTranslationMarkers = function sweepOrphanTranslationMarkers() {
+    let orphans = 0;
+    document.querySelectorAll('[data-shinkansen-translated], [data-shinkansen-nodevalue-mutated]')
+      .forEach((el) => {
+        el.removeAttribute('data-shinkansen-translated');
+        el.removeAttribute('data-shinkansen-nodevalue-mutated');
+        orphans++;
+      });
+    document.querySelectorAll(SK.TRANSLATION_WRAPPER_TAG).forEach((n) => { n.remove(); orphans++; });
+    document.querySelectorAll('[data-shinkansen-dual-source]').forEach((el) => {
+      el.removeAttribute('data-shinkansen-dual-source');
+      orphans++;
+    });
+    if (orphans > 0) {
+      SK.sendLog?.('warn', 'system', 'sweepOrphanTranslationMarkers: cleared orphan markers (site-cloned/swapped nodes)', { orphans });
+    }
+    return orphans;
+  };
+
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback
   // （例如從 v1.4.11 升級但使用者還未開過設定頁 / onInstalled 沒觸發）。
   // 內容必須與 lib/storage.js DEFAULT_SETTINGS.translatePresets 保持一致

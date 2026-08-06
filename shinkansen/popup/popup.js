@@ -393,9 +393,8 @@ async function init() {
         $('drive-subtitle-row').hidden = false;
         $('drive-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
       }
-      // commit 5c：雙語對照 toggle(YouTube + Drive 影片頁都顯示，共用 ytSubtitle.bilingualMode)
-      $('bilingual-row').hidden = false;
-      $('bilingual-toggle').checked = ytSubtitle.bilingualMode === true;
+      // v2.0.85:字幕雙語對照 toggle 已移除——雙語與否跟隨「顯示模式」(displayMode),
+      // content-youtube.js / content-drive.js 由 displayMode === 'dual' 導出
     }
   } catch { /* 非影片頁面，保持 hidden */ }
 
@@ -550,21 +549,6 @@ $('drive-subtitle-toggle').addEventListener('change', async (e) => {
   }
 });
 
-// commit 5c：雙語 toggle change handler（寫 ytSubtitle.bilingualMode 到 storage,YouTube
-// 跟 Drive 兩條路徑各自的 onChanged listener 自動反應；切換生效需 reload 影片頁）
-$('bilingual-toggle').addEventListener('change', async (e) => {
-  const bilingual = e.target.checked;
-  try {
-    const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
-    await browser.storage.sync.set({
-      ytSubtitle: { ...ytSubtitle, bilingualMode: bilingual },
-    });
-  } catch (err) {
-    statusEl.textContent = t('popup.status.bilingualToggleFailed');
-    statusEl.style.color = '#ff3b30';
-  }
-});
-
 // 字幕大小 scale change handler（寫 ytSubtitle.captionScale；content-youtube onChanged
 // 即時套用 overlay + iOS ::cue,不需 reload 影片頁）
 $('yt-caption-size').addEventListener('change', async (e) => {
@@ -660,8 +644,6 @@ browser.storage.onChanged.addListener((changes, area) => {
   const enabled = newVal.autoTranslate !== false;
   $('yt-subtitle-toggle').checked = enabled;
   $('drive-subtitle-toggle').checked = enabled;
-  // commit 5c:bilingualMode 同步
-  $('bilingual-toggle').checked = newVal.bilingualMode === true;
   // 字幕大小 scale 同步
   if (newVal.captionScale != null) $('yt-caption-size').value = String(newVal.captionScale);
 });

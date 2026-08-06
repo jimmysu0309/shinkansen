@@ -545,11 +545,13 @@
   // ─── ytSubtitle 設定載入（pipeline state 定義在 gate 前，這裡只做 runtime 接線）──
   (async () => {
     try {
-      const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+      // v2.0.85:字幕雙語對照與整頁「顯示模式」合併——bilingualMode 唯一來源是
+      // displayMode === 'dual'(舊 ytSubtitle.bilingualMode 殘留 key 忽略)
+      const { ytSubtitle = {}, displayMode } = await browser.storage.sync.get(['ytSubtitle', 'displayMode']);
       _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
       _engine = _normalizeDriveEngine(ytSubtitle.engine);
       _ytModel = ytSubtitle.model || '';
-      DRIVE.bilingualMode = ytSubtitle.bilingualMode === true;
+      DRIVE.bilingualMode = displayMode === 'dual';
       SK.sendLog('info', 'drive', 'settings loaded (from ytSubtitle)', {
         autoTranslate: _autoTranslateEnabled,
         engine: _engine,
@@ -558,26 +560,31 @@
     } catch { /* 維持預設 */ }
   })();
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes.ytSubtitle) return;
-    const newVal = changes.ytSubtitle.newValue || {};
-    const nextEnabled = newVal.autoTranslate !== false;
-    if (nextEnabled !== _autoTranslateEnabled) {
-      _autoTranslateEnabled = nextEnabled;
-      SK.sendLog('info', 'drive', 'autoTranslate setting changed', { enabled: nextEnabled });
+    if (area !== 'sync') return;
+    if (changes.ytSubtitle) {
+      const newVal = changes.ytSubtitle.newValue || {};
+      const nextEnabled = newVal.autoTranslate !== false;
+      if (nextEnabled !== _autoTranslateEnabled) {
+        _autoTranslateEnabled = nextEnabled;
+        SK.sendLog('info', 'drive', 'autoTranslate setting changed', { enabled: nextEnabled });
+      }
+      const nextEngine = _normalizeDriveEngine(newVal.engine);
+      if (nextEngine !== _engine) {
+        _engine = nextEngine;
+        SK.sendLog('info', 'drive', 'engine setting changed', { engine: nextEngine });
+      }
+      _ytModel = newVal.model || '';
     }
-    const nextEngine = _normalizeDriveEngine(newVal.engine);
-    if (nextEngine !== _engine) {
-      _engine = nextEngine;
-      SK.sendLog('info', 'drive', 'engine setting changed', { engine: nextEngine });
-    }
-    _ytModel = newVal.model || '';
-    const nextBilingual = newVal.bilingualMode === true;
-    if (nextBilingual !== DRIVE.bilingualMode) {
-      DRIVE.bilingualMode = nextBilingual;
-      // v1.8.54:雙語/純中文都走 overlay(native CC 一律關),toggle 時不再 loadModule/unloadModule;
-      //         只把 currentEntryIdx 設成 sentinel,下一幀 _renderActiveCue 重 commit src/tgt。
-      DRIVE.currentEntryIdx = -2;
-      SK.sendLog('info', 'drive', 'bilingualMode toggled live', { bilingual: nextBilingual });
+    // v2.0.85:bilingual 即時切換改監聽 displayMode(與 content-youtube.js 同款導出)
+    if (changes.displayMode) {
+      const nextBilingual = changes.displayMode.newValue === 'dual';
+      if (nextBilingual !== DRIVE.bilingualMode) {
+        DRIVE.bilingualMode = nextBilingual;
+        // v1.8.54:雙語/純中文都走 overlay(native CC 一律關),切換時不再 loadModule/unloadModule;
+        //         只把 currentEntryIdx 設成 sentinel,下一幀 _renderActiveCue 重 commit src/tgt。
+        DRIVE.currentEntryIdx = -2;
+        SK.sendLog('info', 'drive', 'bilingualMode toggled live (displayMode)', { bilingual: nextBilingual });
+      }
     }
   });
 

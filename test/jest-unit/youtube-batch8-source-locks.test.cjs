@@ -94,7 +94,8 @@ describe('C11:_ASR_END_WORDS regex escape(半行為)', () => {
 
 describe('C12:getYtConfig 快取與 onChanged 全量同步', () => {
   test('onChanged handler 全量合併 config(與 getYtConfig 同構造式)', () => {
-    expect(code).toMatch(/if \(SK\.YT\.config\) SK\.YT\.config = \{ \.\.\.DEFAULT_YT_CONFIG, \.\.\.newVal \};/);
+    // v2.0.85:全量合併保留 displayMode 導出的 bilingualMode(不吃 ytSubtitle 殘留 key)
+    expect(code).toMatch(/SK\.YT\.config = \{ \.\.\.DEFAULT_YT_CONFIG, \.\.\.newVal, bilingualMode: SK\.YT\.config\.bilingualMode === true \};/);
     // 舊的單欄位回寫已移除
     expect(code).not.toMatch(/SK\.YT\.config\.bilingualMode = newBilingual/);
   });

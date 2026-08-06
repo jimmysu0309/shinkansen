@@ -64,9 +64,11 @@
     // 「已翻譯頁面點 url 延伸子孫 url」實測重現)。解法:clear 之前先把仍 connected 的注入
     // 節點還原回原文,讓續翻看到原文正常翻;已翻過的舊內容重翻走 cache hit(近乎零成本),
     // 只有子頁真新內容才打 API。single / dual / nodeValue mutate 三種注入痕跡都要清。
+    // v2.0.85: detached el 也照樣還原（與 content.js restoreInjectedDom 同修法）——
+    // framework 可能 detach 後 reattach 同一節點,只還原 connected 會讓 reattach 回來的
+    // 節點帶著譯文 + marker 殭屍殘留
     let _spaStripped = 0;
     STATE.originalHTML.forEach((originalHTML, el) => {
-      if (!el.isConnected) return;
       // AMO source review: originalHTML 來自本 extension 翻譯前自存的原始 DOM 字串,純還原用。
       el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
@@ -77,11 +79,11 @@
     if (STATE.translatedMode === 'dual' || (STATE.translationCache && STATE.translationCache.size > 0)) {
       SK.removeDualWrappers?.();
     }
-    // framework-managed nodeValue mutate:還原仍 connected 的 text node + 清 marker
+    // framework-managed nodeValue mutate:還原 text node + 清 marker（v2.0.85: detached 也寫,同上）
     if (STATE.nodeValueMutateBackup && STATE.nodeValueMutateBackup.size > 0) {
       STATE.nodeValueMutateBackup.forEach((backup, el) => {
         backup.forEach(({ node, originalValue }) => {
-          if (node && node.isConnected) { try { node.nodeValue = originalValue; } catch (_) {} }
+          if (node) { try { node.nodeValue = originalValue; } catch (_) {} }
         });
         try {
           el.removeAttribute('data-shinkansen-nodevalue-mutated');
@@ -98,6 +100,8 @@
     STATE.originalLang?.clear?.();
     STATE.originalFontFamily?.clear?.();
     SK.restoreDocLang?.();  // v2.0.73:SPA 換頁後新內容是原文,<html lang> 還原原值
+    // v2.0.85: Map 已全清,掃掉簿記追不到的無主殭屍 marker(與 restoreInjectedDom 同)
+    SK.sweepOrphanTranslationMarkers?.();
     STATE.cache.clear();
     STATE.translated = false;
     STATE._glossaryPromise = null;

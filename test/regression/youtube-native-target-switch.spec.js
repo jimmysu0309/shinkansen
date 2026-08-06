@@ -52,7 +52,13 @@ async function setupPage(context, localServer, { captionTracks, activeTrack, tar
     const _origGet = (browser.storage && browser.storage.sync && browser.storage.sync.get) || null;
     browser.storage.sync.get = async function(key) {
       if (key === 'targetLanguage') return { targetLanguage: ${JSON.stringify(target)} };
-      if (key === 'ytSubtitle') return { ytSubtitle: { preferOriginalTrack: true, bilingualMode: ${bilingualMode ? 'true' : 'false'} } };
+      // v2.0.85:getYtConfig 改讀 ['ytSubtitle', 'displayMode'],bilingual 由
+      // displayMode === 'dual' 導出(spec 的 bilingualMode 參數對映 displayMode)
+      const wantsYt = key === 'ytSubtitle' || (Array.isArray(key) && key.includes('ytSubtitle'));
+      if (wantsYt) return {
+        ytSubtitle: { preferOriginalTrack: true },
+        displayMode: ${bilingualMode ? "'dual'" : "'single'"},
+      };
       return _origGet ? _origGet(key) : {};
     };
     chrome.storage.sync.get = browser.storage.sync.get;

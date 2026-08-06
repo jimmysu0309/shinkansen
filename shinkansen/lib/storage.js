@@ -667,9 +667,9 @@ export const DEFAULT_SETTINGS = {
     //                   兼顧速度與品質。toggle 開啟時用（預設）。
     //   'llm'         = 純 LLM 自由分句（內部保留，UI 不再可選）。
     asrMode: 'progressive',
-    // commit 5c：雙語對照模式。預設 false=純中文（YouTube 既有行為：CSS 隱藏原生 CC;
-    // Drive 透過 postMessage unloadModule 關 player CC)。true=中英對照（原生 CC + 中文 overlay)
-    bilingualMode: false,
+    // v2.0.85:bilingualMode 欄位已移除——字幕雙語與否跟隨整頁「顯示模式」
+    // (displayMode === 'dual'),content-youtube.js / content-drive.js 於 runtime 導出;
+    // 舊版寫入的 ytSubtitle.bilingualMode 殘留 key 一律忽略
     // 影片載入時依優先序自動選 caption track:
     //   1) target lang native（任 kind）→ 不啟動 Shinkansen 翻譯，讓 YT 自己顯示
     //   2) 影片原始語 manual track（kind=''）→ setOption 切到此 track 再翻譯

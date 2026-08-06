@@ -7,7 +7,7 @@
 - 最後更新：2026-06-09（v1.10.44）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.84
+- 目前 Extension 版本：2.0.85
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.84 為止）
+### 2.1 已實作（v2.0.85 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -458,9 +458,11 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 
 **nv-mutate 軌重套保留 inline 結構**：`STATE.nvMutateTranslation` 記錄形式為 `{ plain, raw, slots }`——`plain` 是剝掉佔位符的純文字譯文，`raw` ＋ `slots` 在 Layer A1/A3（帶 slots 同構配對）注入成功時一併記錄（A3.5 純文字 fallback 只記 `plain`）。guard sweep 與 Layer A4 的重套統一走 `nvReapplySaved`：先以 `raw` ＋ `slots` 重走 A3 同構配對（framework 打回原文後段落結構與首翻相同，配對成功則各 text node 原地換譯文、`<a>` 等 inline 元素結構保留），配對不成才 fallback 純文字重套（slots=[] 的整段塞第一個 text node、其餘清空——含連結的段落會退化成純文字，內容不遺失但失去可點性）。修復場景：prose 段落內嵌多個 inline `<a>`，站方重繪打回原文後 guard 補課，舊行為只有純文字可用、一律 flatten 成空殼連結。
 
-**YouTube 字幕**：`content-youtube.js` 維持單語字幕替換路徑，不支援 dual。
+**YouTube／Drive 字幕跟隨顯示模式**：字幕雙語與否由 `displayMode === 'dual'` 決定（單一資料源，無獨立設定）——`content-youtube.js` `getYtConfig` 讀 `['ytSubtitle', 'displayMode']` 導出 runtime 內部欄位 `YT.config.bilingualMode`，`content-drive.js` 同款導出 `DRIVE.bilingualMode`；兩者的 `storage.onChanged` 監聽 `displayMode` 支援播放中即時切換（YouTube 走 `_applyBilingualMode`、Drive 設 `currentEntryIdx` sentinel 下一幀重 commit）。舊版（v2.0.84 以前）popup 字幕雙語 toggle 寫入的 `ytSubtitle.bilingualMode` 為殘留 key，讀取時一律忽略、匯入設定時被 sanitize 丟棄。字幕的 dual 呈現走 overlay（`<shinkansen-yt-overlay>` shadow DOM 的 `.src`／`.tgt`），與整頁 dual 的 `<shinkansen-translation>` wrapper 機制無關。
 
 **YouTube 字幕字級 scale**（`ytSubtitle.captionScale`，%，預設 100 = 跟隨各平台原生字幕大小）：全平台統一旋鈕，一個值套**三條渲染路徑**——(1) overlay（ASR／雙語,桌面／macOS／iOS 視窗內）：乘到 `--sk-cue-size`（原生字級 px × scale／100，`_scaledCueSizePx`）；(2) YouTube 視窗內原生字幕 `.ytp-caption-segment`（內建字幕單語譯文 **以及** YouTube 自家字幕／帳號層級自動翻譯——後者 Shinkansen 沒接手寫字幕,光靠 `_setSegmentText` hook 接不到）：scale≠100 時啟動 `_captionScaleObserver`（觀察 `#movie_player` subtree,rAF 合併）持續把畫面上任何 segment 套成設定大小（`_applyScaleToSegment`：`dataset.skBaseFs` 捕捉 YouTube 原始基準避免回授、值相同不重設不自觸發迴圈）;scale=100 停掉 observer + 還原 base（零殘留）。`_setSegmentText` 寫譯文時也順手套一次（Shinkansen-active 即時生效）；(3) iPhone／iPad 原生全螢幕（`webkitEnterFullscreen`，overlay 被系統播放器取代）：注入 `video::cue { font-size: <captionScale>% }`（真機驗證 iOS 原生全螢幕套用網頁 `::cue`；Safari 18.2 起系統預設字幕樣式可被網頁覆寫）。設定位於 **popup**，僅在 YouTube 影片頁（`youtube.com/watch`）顯示；change handler 寫 `ytSubtitle.captionScale`，content-youtube.js `onChanged` 即時套用（`_applyYtCaptionScale`：重套 overlay `--sk-cue-size` + 逐個原生 segment + iOS `::cue`）。預設 100 = 三條路徑全零改變（`_applyScaleToSegment` 在 scale=100 且未套過時完全不碰 segment）。
+
+**YouTube 字幕 overlay 顏色跟隨原生字幕樣式設定**：overlay 三條路徑（ASR 純中文／ASR 雙語／non-ASR 雙語）的文字與背景顏色不硬編，跟隨使用者在 YouTube 播放器「字幕樣式」設定的字型顏色／背景顏色（含各自透明度）。實作：`_readNativeCaptionColors` 讀原生 `.ytp-caption-segment` 的 computed `color`／`background-color`（已是顏色 × 透明度合成結果），兩個同步點（`_updateOverlay` ASR 路徑、`_updateNonAsrBilingualOverlay` non-ASR 雙語路徑）經 `_applyNativeCaptionColors` 寫入 host CSS variable `--sk-cue-color`／`--sk-cue-bg`，shadow `.cue-block` 消費。帶 last-good cache（無字幕空窗沿用上次有效值，同 `_readNativeCaptionFontSize` pattern）；從沒讀到過時走 CSS var fallback `#fff`／`rgba(0,0,0,0.75)`（對齊 YouTube 預設）。ASR 藏原生字幕用 visibility／opacity，computed style 仍可讀不受影響。非 ASR 單語路徑譯文直接寫回原生 segment，顏色設定原生生效，不經此機制。
 
 **模式切換時機**：popup 切換 displayMode 時若已翻譯，content script 收到 `MODE_CHANGED` 訊息會顯示提示 toast，要求使用者按快速鍵重新翻譯以套用；當前頁面不動（避免半翻半改）。下次 `translatePage` 進入時讀取最新 `displayMode` 寫進 `STATE.translatedMode` 鎖定本次模式。
 

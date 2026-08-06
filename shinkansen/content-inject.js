@@ -1975,6 +1975,15 @@
     document.querySelectorAll('[data-shinkansen-dual-source]').forEach(el => {
       el.removeAttribute('data-shinkansen-dual-source');
     });
+    // v2.0.85: document query 搆不到當下 detached 的段落（framework 可能之後 reattach
+    // 同一節點,殭屍 wrapper / attribute 會跟著回來）——循 translationCache 逐項清。
+    // caller（restoreInjectedDom / resetForSpaNavigation）都在呼叫本函式之後才 clear cache
+    if (STATE.translationCache) {
+      STATE.translationCache.forEach(({ wrapper }, original) => {
+        try { wrapper?.remove?.(); } catch (_) {}
+        try { original?.removeAttribute?.('data-shinkansen-dual-source'); } catch (_) {}
+      });
+    }
   };
 
   /** 全域 wrapper 樣式注入（content.css 跨 host 行為不可靠，inline style 才能保證生效） */

@@ -321,10 +321,19 @@
 
   async function getYtConfig() {
     if (SK.YT.config) return SK.YT.config;
-    const saved = await browser.storage.sync.get('ytSubtitle');
-    SK.YT.config = { ...DEFAULT_YT_CONFIG, ...(saved.ytSubtitle || {}) };
+    const saved = await browser.storage.sync.get(['ytSubtitle', 'displayMode']);
+    // v2.0.85:字幕雙語對照與整頁「顯示模式」合併——bilingualMode 唯一來源是
+    // displayMode === 'dual'(單一資料源,CLAUDE.md 工作流原則 §5)。舊版 popup toggle
+    // 寫的 ytSubtitle.bilingualMode 殘留 key 一律忽略(spread 後強制覆寫)。
+    SK.YT.config = {
+      ...DEFAULT_YT_CONFIG,
+      ...(saved.ytSubtitle || {}),
+      bilingualMode: saved.displayMode === 'dual',
+    };
     return SK.YT.config;
   }
+  // 暴露給 spec 用(youtube-bilingual-displaymode 路徑 A regression 驗 displayMode 導出)
+  SK._getYtConfig = getYtConfig;
 
   // ─── 時間字串轉 ms（TTML 格式 "HH:MM:SS.mmm"） ────────────
 
@@ -1238,8 +1247,10 @@
             display: inline-block;
             max-width: 100%;
             padding: 0.05em 0.3em;
-            background: rgba(0, 0, 0, 0.75);   /* 對齊 YouTube 原生 */
-            color: #fff;
+            /* v2.0.85:顏色跟隨 YouTube 字幕樣式設定(_applyNativeCaptionColors 寫入
+               CSS var);讀不到原生字幕前 fallback 對齊 YouTube 預設 */
+            background: var(--sk-cue-bg, rgba(0, 0, 0, 0.75));
+            color: var(--sk-cue-color, #fff);
             border-radius: 3px;
             text-align: center;
             box-sizing: border-box;
@@ -1454,6 +1465,9 @@
   // 暴露給 spec 用
   SK._wrapTargetTextForOverlay = _wrapTargetText;
   SK._setOverlayContent = _setOverlayContent;
+  // v2.0.85:ASR overlay render 入口 seam(youtube-caption-color-sync 路徑 A regression
+  // 驗 _updateOverlay 內的顏色同步呼叫點)
+  SK._updateAsrOverlay = (...args) => _updateOverlay(...args);
   SK._splitAsrSubBatches = (windowSegs, videoNowMs, windowStartMs, playbackRate) =>
     _splitAsrSubBatches(windowSegs, videoNowMs, windowStartMs, playbackRate);
 
@@ -1514,6 +1528,8 @@
       if (cs.fontStyle) host.style.setProperty('--sk-cue-font-style', cs.fontStyle);
       if (cs.fontWeight) host.style.setProperty('--sk-cue-font-weight', cs.fontWeight);
     }
+    // v2.0.85:文字/背景顏色跟隨 YouTube 字幕樣式設定(non-ASR 雙語同步點)
+    _applyNativeCaptionColors(host);
 
     _updateOverlayAnchor();
   }
@@ -1747,6 +1763,37 @@
     return '"PingFang TC", "Microsoft JhengHei", "微軟正黑體", "Heiti TC", "Noto Sans CJK TC", sans-serif';
   }
 
+  // v2.0.85:overlay 文字/背景顏色同步——YouTube 字幕樣式設定(字型顏色、背景顏色、
+  // 各自的透明度)是「單一事實」,原生 .ytp-caption-segment 的 computed color /
+  // background-color 已是使用者設定的合成結果(顏色 × 透明度)。overlay 硬編
+  // #fff / rgba(0,0,0,0.75) 會讓這組設定看起來無效(使用者回報)。
+  // 比照 _readNativeCaptionFontSize:來源元素短暫消失(無字幕空窗)時沿用上次讀到的
+  // 有效值;從沒讀到過回 null,交給 shadow CSS var 的 fallback 預設值。
+  // 注:ASR 模式藏原生字幕走 visibility/opacity(見 _ensureAsrStylesheet 註解),
+  // computed color 不受影響,藏起來照樣讀得到。
+  let _lastGoodCaptionColors = null;
+  function _readNativeCaptionColors() {
+    const seg = document.querySelector('.ytp-caption-segment');
+    if (seg) {
+      const cs = getComputedStyle(seg);
+      if (cs.color || cs.backgroundColor) {
+        _lastGoodCaptionColors = { color: cs.color, background: cs.backgroundColor };
+      }
+    }
+    return _lastGoodCaptionColors;
+  }
+  // 把讀到的顏色寫進 overlay host 的 CSS variables(.cue-block / .src / .tgt 消費)
+  function _applyNativeCaptionColors(host) {
+    const colors = _readNativeCaptionColors();
+    if (!colors || !host) return;
+    if (colors.color) host.style.setProperty('--sk-cue-color', colors.color);
+    if (colors.background) host.style.setProperty('--sk-cue-bg', colors.background);
+  }
+  // 暴露給 spec 用(youtube-caption-color-sync 路徑 A regression)
+  SK._readNativeCaptionColors = _readNativeCaptionColors;
+  SK._applyNativeCaptionColors = _applyNativeCaptionColors;
+  SK._resetCaptionColorsCache = () => { _lastGoodCaptionColors = null; };
+
   // displayCues 找當前命中的 cue。資料量典型 < 200,linear scan 足夠。
   // 若使用者拖進度條跳到很遠位置,timeupdate 觸發後會自動命中新 cue。
   //
@@ -1788,6 +1835,8 @@
       host.style.setProperty('--sk-cue-size', _scaledCueSizePx(nativeFz) + 'px');
       const nativeFf = _readNativeCaptionFontFamily();
       if (nativeFf) host.style.setProperty('--sk-cue-font-family', nativeFf);
+      // v2.0.85:文字/背景顏色跟隨 YouTube 字幕樣式設定
+      _applyNativeCaptionColors(host);
     }
     const currentMs = YT.videoEl.currentTime * 1000;
     const cue = _findActiveCue(currentMs);
@@ -4176,24 +4225,32 @@
   window.addEventListener('yt-navigate-finish', _onYtSpaNavigate);   // 桌面 www
   window.addEventListener('state-navigateend', _onYtSpaNavigate);    // 行動版 mweb
 
-  // commit 5c:bilingualMode 即時切換(toggle 不需要 reload 影片頁)
-  // v1.8.42:non-ASR 也支援 toggle live,_applyBilingualMode 內會分流處理
+  // v2.0.85:字幕雙語對照與整頁「顯示模式」合併——bilingual 即時切換改監聽
+  // displayMode(popup 顯示模式按鈕寫 sync.displayMode),不再有獨立 toggle。
+  // v1.8.42:non-ASR 也支援 live 切換,_applyBilingualMode 內會分流處理
   //         (ASR 動 player class、non-ASR 重跑 segment;內部都有 active guard)。
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes.ytSubtitle) return;
-    const newVal = changes.ytSubtitle.newValue || {};
-    const newBilingual = newVal.bilingualMode === true;
-    // 批次 8 C12:全量更新 config 快取(與 getYtConfig 同一構造式)——原本只回寫
-    // bilingualMode / captionScale,播放中改 engine / asrMode / onTheFly /
-    // windowSizeS 都要 stop-restart 才生效且 UI 無提示。config 欄位多為讀時取值,
-    // 全量合併風險低;in-flight 批次沿用舊值屬可接受(下一視窗起生效)。
-    if (SK.YT.config) SK.YT.config = { ...DEFAULT_YT_CONFIG, ...newVal };
-    if (SK.YT.active) {
-      _applyBilingualMode(newBilingual);
-      SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual, isAsr: SK.YT.isAsr });
+    if (area !== 'sync') return;
+    if (changes.ytSubtitle) {
+      const newVal = changes.ytSubtitle.newValue || {};
+      // 批次 8 C12:全量更新 config 快取(與 getYtConfig 同一構造式)——播放中改
+      // engine / asrMode / onTheFly / windowSizeS 即時生效(欄位多為讀時取值,
+      // 全量合併風險低;in-flight 批次沿用舊值屬可接受)。bilingualMode 是
+      // displayMode 導出值,不吃 ytSubtitle(殘留 key 忽略),沿用當前值。
+      if (SK.YT.config) {
+        SK.YT.config = { ...DEFAULT_YT_CONFIG, ...newVal, bilingualMode: SK.YT.config.bilingualMode === true };
+      }
+      // 字幕字級 scale:設定變更即時套用(overlay --sk-cue-size + iOS ::cue)
+      if ('captionScale' in newVal) _applyYtCaptionScale(newVal.captionScale);
     }
-    // 字幕字級 scale:設定變更即時套用(overlay --sk-cue-size + iOS ::cue,見 _applyYtCaptionScale)
-    if ('captionScale' in newVal) _applyYtCaptionScale(newVal.captionScale);
+    if (changes.displayMode) {
+      const newBilingual = changes.displayMode.newValue === 'dual';
+      if (SK.YT.config) SK.YT.config = { ...SK.YT.config, bilingualMode: newBilingual };
+      if (SK.YT.active) {
+        _applyBilingualMode(newBilingual);
+        SK.sendLog('info', 'youtube', 'bilingualMode toggled live (displayMode)', { bilingual: newBilingual, isAsr: SK.YT.isAsr });
+      }
+    }
   });
 
   // 字幕字級 scale 初值:模組載入時讀一次

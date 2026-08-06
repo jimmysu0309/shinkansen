@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>restore-detached-reattach fixture</title>
+</head>
+<body>
+  <main>
+    <!-- single 軌:還原時已 detached、之後被 framework reattach 的段落 -->
+    <p id="p1">The quick brown fox jumps over the lazy dog near the river bank.</p>
+    <p id="p2">A second paragraph stays connected during the whole restore cycle.</p>
+
+    <!-- dual 軌:original + wrapper 一起隨容器 detach -->
+    <div id="dualwrap">
+      <p id="d1">Dual mode paragraph that will be detached together with its wrapper.</p>
+    </div>
+
+    <!-- nodeValue mutate 軌 -->
+    <p id="nv">Framework managed text node paragraph.</p>
+  </main>
+</body>
+</html>

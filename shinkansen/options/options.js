@@ -1009,7 +1009,8 @@ async function _saveImpl() {
     // v1.0.21: 頁面層級繁中偵測開關
     // v1.2.11: YouTube 字幕設定
     // 先 spread 現有 ytSubtitle,保留「不在本表單」的 popup-managed 欄位
-    //（captionScale / bilingualMode / preferOriginalTrack）——否則整顆 set 會洗掉它們。
+    //（captionScale / preferOriginalTrack）——否則整顆 set 會洗掉它們。
+    // (bilingualMode 已於 v2.0.85 移除,字幕雙語跟隨 displayMode)
     ytSubtitle: {
       ...(existing.ytSubtitle || {}),
       engine: ($('ytEngine')?.value || 'gemini'),  // v1.4.0
@@ -2066,7 +2067,8 @@ function sanitizeImport(raw) {
       applyFixedGlossary:  { type: 'boolean' },
       applyForbiddenTerms: { type: 'boolean' },
       asrMode:             { type: 'string', oneOf: ['heuristic', 'progressive', 'llm'] },
-      bilingualMode:       { type: 'boolean' },
+      // bilingualMode 已於 v2.0.85 移除(字幕雙語跟隨 displayMode);舊匯出檔的
+      // ytSubtitle.bilingualMode 進 sanitize 會被略過,不再寫回
       preferOriginalTrack: { type: 'boolean' },
       captionScale:        { type: 'number', min: 50, max: 400 },
     };

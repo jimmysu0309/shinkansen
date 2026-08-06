@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube bilingual follows displayMode fixture</title>
+</head>
+<body>
+  <!-- 最小 player DOM:movie_player root + caption 容器 + video。
+       v2.0.85「字幕雙語對照跟隨顯示模式」路徑 A regression 用。 -->
+  <div id="movie_player" class="html5-video-player">
+    <div class="ytp-caption-window-container">
+      <div class="caption-window">
+        <span class="ytp-caption-segment" id="seg">Hello world</span>
+      </div>
+    </div>
+    <video width="800" height="450"></video>
+  </div>
+</body>
+</html>
