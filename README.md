@@ -321,9 +321,13 @@ v2.3.0 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 ## 第三方資源
 
 Shinkansen 整合下列開源軟體與字型，完整來源、授權與授權檔位置見
-[THIRD-PARTY-NOTICES.md](shinkansen/THIRD-PARTY-NOTICES.md):
+[THIRD-PARTY-NOTICES.md](shinkansen/THIRD-PARTY-NOTICES.md)：
 
-- **PDF.js**(Mozilla,Apache 2.0)— 翻譯文件功能 PDF 解析 / render
-- **pdf-lib**(Hopding,MIT)— 譯文 PDF 下載重組
-- **fontkit**(Devon Govett / Hopding fork,MIT)— pdf-lib 的字型解析後端
-- **Noto Sans CJK TC Regular**(Google Noto,SIL OFL 1.1)— 譯文 PDF 內嵌中文字型
+- **PDF.js**（Mozilla，Apache 2.0）— 文件翻譯的 PDF 解析 / render
+- **pdf-lib**（@cantoo/pdf-lib，MIT）— 譯文 PDF 下載重組
+- **fontkit**（pdf-fontkit，MIT）— pdf-lib 的字型解析 / subset 後端
+- **Chart.js**（Chart.js Contributors，MIT）— 用量明細分頁的圖表繪製
+- **fflate**（Arjun Barrett，MIT）— EPUB 解壓與譯本重新打包
+- **@mozilla/readability**（Mozilla / Arc90，Apache 2.0）— 送到 Instapaper 前的正文抽取
+- **opencc-js／OpenCC 字典**（nk2028／BYVoid，MIT／Apache 2.0）— 簡繁本地互轉
+- **Noto Sans CJK TC**（Google Noto，SIL OFL 1.1）— 譯文 PDF 內嵌中文字型（Regular + Bold）

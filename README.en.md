@@ -321,6 +321,10 @@ licenses, and license file locations are listed in
 [THIRD-PARTY-NOTICES.md](shinkansen/THIRD-PARTY-NOTICES.md):
 
 - **PDF.js** (Mozilla, Apache 2.0) — PDF parsing / page rendering for the document translation feature
-- **pdf-lib** (Hopding, MIT) — bilingual PDF reconstruction on download
-- **fontkit** (Devon Govett / Hopding fork, MIT) — font parser used by pdf-lib for CJK subsetting
-- **Noto Sans CJK TC Regular** (Google Noto, SIL OFL 1.1) — embedded Traditional Chinese font for the translated PDF
+- **pdf-lib** (@cantoo/pdf-lib, MIT) — bilingual PDF reconstruction on download
+- **fontkit** (pdf-fontkit, MIT) — font parsing / subsetting backend used by pdf-lib
+- **Chart.js** (Chart.js Contributors, MIT) — charts on the usage breakdown tab
+- **fflate** (Arjun Barrett, MIT) — EPUB unzip / repack for the translated book
+- **@mozilla/readability** (Mozilla / Arc90, Apache 2.0) — article extraction before sending to Instapaper
+- **opencc-js / OpenCC dictionaries** (nk2028 / BYVoid, MIT / Apache 2.0) — local Simplified ↔ Traditional Chinese conversion
+- **Noto Sans CJK TC** (Google Noto, SIL OFL 1.1) — embedded Traditional Chinese font for the translated PDF (Regular + Bold)
