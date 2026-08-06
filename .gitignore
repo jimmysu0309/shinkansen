@@ -69,4 +69,17 @@ shinkansen/lib/instapaper-keys.js
 # Codex agent 本機設定(CLAUDE.md 的 Codex 鏡像,不入 repo)
 AGENTS.md
 .agents/
+
+# 回歸測試套件(2026-08-06 移出公開 repo)
+# 現住私有 repo github.com/jimmysu0309/Shinkansen-test,clone 回本路徑掛載——
+# 路徑不變是刻意的:spec 相對路徑 / npm test / release.sh 全部不用改。
+# 不用 submodule:那會在公開 repo 留下 .gitmodules 指向私有 URL。
+# 重新掛載:git clone https://github.com/jimmysu0309/Shinkansen-test.git test
 test/
+
+# 內部文件與 Claude 工作流檔的疊加版控(2026-08-06 起)
+# SPEC-PRIVATE.md / CLAUDE.md / AGENTS.md / .claude/ 檔案仍在原位(上方規則已 ignore),
+# 版控走「疊加的第二個倉庫」:.private-git 是它的 git-dir、work-tree 指向本根目錄,
+# 只追蹤上列檔案,推到私有 repo github.com/jimmysu0309/Shinkansen-docs。
+# 操作一律加 --git-dir:git --git-dir=.private-git status --short / add -u / commit / push
+.private-git/
