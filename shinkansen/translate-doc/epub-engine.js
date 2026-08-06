@@ -71,7 +71,7 @@ function applyEpubSerializerPolicy(SK) {
   };
 }
 
-function getSerializerSK() {
+export function getSerializerSK() {
   const SK = window.__SK;
   if (!SK || typeof SK.serializeWithPlaceholders !== 'function') {
     throw new EpubParseError('bad-zip',
@@ -185,11 +185,14 @@ function htmlCloneFromXhtml(el) {
 
 /**
  * 抽出一章的可翻譯 block。
+ * export 供 doc-file-engine.js 的 HTML 檔路徑重用(單一資料源:HTML 檔案
+ * 與 EPUB 章節共用同一條偵測 / 序列化邏輯;querySelector / localName 對
+ * DOMParser('text/html') 產出的 document 同樣成立)。
  * @param {Document} xhtmlDoc
  * @param {number} chapterIndex
  * @returns {Array} blocks
  */
-function collectChapterBlocks(xhtmlDoc, chapterIndex, SK) {
+export function collectChapterBlocks(xhtmlDoc, chapterIndex, SK) {
   const body = xhtmlDoc.getElementsByTagNameNS('*', 'body')[0];
   if (!body) return [];
   const blocks = [];

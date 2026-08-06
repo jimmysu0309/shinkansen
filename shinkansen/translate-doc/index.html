@@ -21,13 +21,13 @@
         <div class="dropzone-icon">📄</div>
         <div class="dropzone-title" data-i18n="doc.upload.dropzone.title">拖放文件至此</div>
         <div class="dropzone-hint" data-i18n="doc.upload.dropzone.hint">或點擊選取檔案</div>
-        <input type="file" id="file-input" accept="application/pdf,.pdf,application/epub+zip,.epub" hidden>
+        <input type="file" id="file-input" accept="application/pdf,.pdf,application/epub+zip,.epub,.txt,text/plain,.md,.markdown,text/markdown,.htm,.html,text/html" hidden>
       </div>
 
       <div class="constraints">
         <div class="constraint-item">
           <span class="constraint-label" data-i18n="doc.upload.constraint.label">支援上限</span>
-          <span class="constraint-value" data-i18n="doc.upload.constraint.value">PDF 50 頁 / 10 MB・EPUB 100 MB</span>
+          <span class="constraint-value" data-i18n="doc.upload.constraint.value">PDF 50 頁 / 10 MB・EPUB / TXT / Markdown / HTML 100 MB</span>
         </div>
       </div>
 
@@ -73,7 +73,7 @@
       <h2 class="result-title" id="chapters-book-title"></h2>
       <div class="result-summary">
         <div class="result-row"><span data-i18n="doc.epub.row.author">作者</span><span id="chapters-author"></span></div>
-        <div class="result-row"><span data-i18n="doc.epub.row.version">EPUB 版本</span><span id="chapters-epub-version"></span></div>
+        <div class="result-row"><span data-i18n="doc.epub.row.version">格式</span><span id="chapters-epub-version"></span></div>
         <div class="result-row"><span data-i18n="doc.epub.row.chapters">章節數</span><span id="chapters-count"></span></div>
         <div class="result-row"><span data-i18n="doc.epub.row.chars">可翻譯字數</span><span id="chapters-chars"></span></div>
         <div class="result-row"><span data-i18n="doc.epub.row.selected">已勾選</span><span id="chapters-selected-summary"></span></div>
@@ -338,7 +338,7 @@
         <span class="glossary-toolbar-title" data-i18n="doc.glossary.title">文章術語表</span>
         <span id="glossary-count" class="glossary-count">0 條</span>
         <span class="edit-toolbar-spacer"></span>
-        <button id="glossary-import-btn" class="secondary-btn" type="button" title="從 JSON 檔匯入術語表（可與現有內容合併或覆蓋）" data-i18n="doc.glossary.btn.import" data-i18n-attr-title="doc.glossary.btn.import.title">匯入術語表</button>
+        <button id="glossary-import-btn" class="secondary-btn" type="button" title="從 JSON 或 CSV 檔匯入術語表（可與現有內容合併或覆蓋；CSV 為兩欄「原文,譯名」）" data-i18n="doc.glossary.btn.import" data-i18n-attr-title="doc.glossary.btn.import.title">匯入術語表</button>
         <button id="glossary-export-btn" class="secondary-btn" type="button" title="把目前術語表存成 JSON 檔" data-i18n="doc.glossary.btn.export" data-i18n-attr-title="doc.glossary.btn.export.title">匯出術語表</button>
         <button id="glossary-reextract-btn" class="secondary-btn" type="button" title="重新請 AI 抽取（覆蓋現有內容）" data-i18n="doc.glossary.btn.reextract" data-i18n-attr-title="doc.glossary.btn.reextract.title">重新抽取</button>
         <button id="glossary-clear-btn" class="secondary-btn" type="button" title="清空整份術語表" data-i18n="doc.glossary.btn.clear" data-i18n-attr-title="doc.glossary.btn.clear.title">清空</button>
@@ -376,7 +376,7 @@
           <button id="book-forbidden-add-btn" class="secondary-btn" type="button" data-i18n="doc.glossary.btn.addRow">＋ 加一列</button>
         </div>
       </div>
-      <input type="file" id="glossary-import-file" accept="application/json,.json" hidden>
+      <input type="file" id="glossary-import-file" accept="application/json,.json,text/csv,.csv" hidden>
     </section>
 
     <!-- 階段 4：debug overlay（W2-iter1 視覺化先行——疊 SVG 在 PDF.js canvas 上） -->

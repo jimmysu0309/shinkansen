@@ -307,16 +307,28 @@
     // m.youtube.com(行動版)v1.10.25 起支援:mweb 用同一套 html5 player 核心,
     // /api/timedtext XHR 格式同桌面(fmt=json3),#movie_player API 齊全(已 probe 實證)。
     // 差異點(CC 按鈕不存在 / SPA 事件名不同)在各依賴點以結構特徵 fallback 處理。
+    // /live/<id>(直播 / 直播存檔分享連結)v2.0.87 起支援:server 端 200 不轉址、
+    // SPA 也不改寫成 /watch(2026-08-06 probe 實證),頁面本體就是 watch 頁,
+    // videoId 改在 path(見 getVideoIdFromUrl)
     return (location.hostname === 'www.youtube.com' || location.hostname === 'm.youtube.com')
-      && location.pathname.startsWith('/watch');
+      && (location.pathname.startsWith('/watch') || YT_LIVE_PATH_RE.test(location.pathname));
   };
 
   function normText(t) {
     return t.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
+  // /live/<videoId> 路徑形態(videoId 字元集 = YouTube id 的 [A-Za-z0-9_-])。
+  // 與 content-youtube-main.js 的 urlVid 抽取是同一份事實的雙實作
+  //(MAIN world 隔離拿不到 __SK),改這裡必同步那邊
+  const YT_LIVE_PATH_RE = /^\/live\/([A-Za-z0-9_-]{6,})/;
+
   function getVideoIdFromUrl() {
-    return new URL(location.href).searchParams.get('v') || null;
+    const u = new URL(location.href);
+    const v = u.searchParams.get('v');
+    if (v) return v;
+    const m = u.pathname.match(YT_LIVE_PATH_RE);
+    return m ? m[1] : null;
   }
 
   async function getYtConfig() {

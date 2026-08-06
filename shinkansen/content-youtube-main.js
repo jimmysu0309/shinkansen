@@ -194,7 +194,10 @@
           // 前一支影片的 stale response,此時 setOption 會作用在錯的對象。對 URL ?v=
           // 比對,不符就回錯誤讓 isolated 端稍後重試(同 query-player-response 的
           // stale 防護思路)。
-          const urlVid = new URL(location.href).searchParams.get('v');
+          // /live/<id> 直播連結 videoId 在 path(v2.0.87)。與 content-youtube.js
+          // getVideoIdFromUrl 是同一份事實的雙實作(MAIN world 隔離),改這裡必同步那邊
+          const _liveM = location.pathname.match(/^\/live\/([A-Za-z0-9_-]{6,})/);
+          const urlVid = new URL(location.href).searchParams.get('v') || (_liveM ? _liveM[1] : null);
           const respVid = resp?.videoDetails?.videoId || null;
           if (urlVid && respVid && urlVid !== respVid) throw new Error('stale-player-response');
           const tracks = resp?.captions?.playerCaptionsTracklistRenderer?.captionTracks;

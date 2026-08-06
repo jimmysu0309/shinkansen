@@ -374,7 +374,9 @@ async function init() {
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     const url = tab?.url || '';
-    const isYtWatch = url.includes('youtube.com/watch');
+    // /live/<id> 直播分享連結也是 watch 頁本體（v2.0.87，與 content-youtube.js
+    // isYouTubePage 同步）
+    const isYtWatch = /youtube\.com\/(watch|live\/)/.test(url);
     const isDriveFile = /^https:\/\/drive\.google\.com\/file\//.test(url);
     if (isYtWatch || isDriveFile) {
       // 批次 8 D10:三個 toggle 共用同一筆 ytSubtitle,合併成一次 sync.get(原本連讀 2-3 次)

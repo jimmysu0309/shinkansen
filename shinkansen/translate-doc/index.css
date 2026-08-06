@@ -1174,6 +1174,10 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
   gap: 8px;
   margin: 12px 0 8px;
 }
+/* 顯式 display:flex 蓋掉 UA 的 [hidden]（本頁同款陷阱第 N 次）——
+   單章文件（txt / html / 無標題 md，v2.0.87）不出章節勾選 UI */
+.chapters-select-actions[hidden],
+.chapters-list[hidden] { display: none !important; }
 .chapters-list {
   border: 1px solid var(--border, #ddd);
   border-radius: 8px;

@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.0.86
+- 目前 Extension 版本：2.0.87
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.0.86 為止）
+### 2.1 已實作（v2.0.87 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -40,7 +40,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 |---------|------|------|
 | 網頁翻譯 | ✅ | Option+S（Gemini）/ Option+G（Google Translate）切換；單語覆蓋 / 雙語對照雙模式；漸進分批注入；還原原文 |
 | 雙語對照模式 | ✅ | 譯文以 wrapper 形式附在原段落後；4 種視覺標記；顯示模式同時決定字幕雙語與否 |
-| YouTube 字幕翻譯 | ✅ | 自動偵測字幕即時翻譯；ASR（自動字幕）AI 分句；時間視窗批次；雙語 overlay；字幕大小與顏色跟隨原生設定；行動版 `m.youtube.com` 支援 |
+| YouTube 字幕翻譯 | ✅ | 自動偵測字幕即時翻譯；ASR（自動字幕）AI 分句；時間視窗批次；雙語 overlay；字幕大小與顏色跟隨原生設定；行動版 `m.youtube.com` 支援；`/watch` 與 `/live/<id>`（直播 / 直播存檔分享連結）路徑皆支援 |
 | SPA 支援 | ✅ | 站內導航自動偵測；動態載入內容補翻；譯文防覆蓋保護；續翻模式 |
 | 段落偵測 | ✅ | 結構化 DOM walker；技術性排除（code / 表單 / 站底 footer）；內容品味判斷交給 system prompt |
 | 佔位符序列化 | ✅ | 行內元素（連結 / 粗斜體等）與媒體在譯文中完整保留 |
@@ -60,7 +60,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 自動翻譯網站 | ✅ | 網域白名單（支援萬用字元）；`autoTranslate` 總開關 |
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
-| 文件翻譯（PDF / EPUB） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；詳見 §17 |
+| 文件翻譯（PDF / EPUB / TXT / Markdown / HTML） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；詳見 §17 |
 | iOS／iPadOS Safari | 🚧 | TestFlight 階段；四指輕點觸發；popup／options 觸控調整；不含 PDF 翻譯 |
 
 ### 2.3 明確不做
@@ -332,7 +332,7 @@ shinkansen/
 │   ├── update-check.js       # 版本更新檢查
 │   ├── zh-convert.js         # 簡繁本地互轉（§3.12）
 │   └── vendor/               # 第三方程式庫（pdfjs／pdf-lib + fontkit／chart.min.js／fflate／Noto Sans TC 字型／opencc 簡繁字典）
-├── translate-doc/            # 文件翻譯：PDF + EPUB（§17，web_accessible_resources）
+├── translate-doc/            # 文件翻譯：PDF + EPUB + TXT / MD / HTML（§17，web_accessible_resources）
 │   ├── index.html / index.js / index.css
 │   ├── settings.html / settings.js
 │   ├── block-types.js        # block type 共用常數
@@ -342,7 +342,8 @@ shinkansen/
 │   ├── epub-engine.js        # EPUB 解析（§17.10）
 │   ├── epub-scan.js          # 譯後一致性掃描（§17.10）
 │   ├── epub-writer.js        # 譯本 EPUB 重建（§17.10）
-│   ├── epub-session-db.js    # EPUB 翻譯工作階段存檔（IndexedDB）
+│   ├── epub-session-db.js    # 書籍式文件翻譯工作階段存檔（IndexedDB）
+│   ├── doc-file-engine.js    # TXT / Markdown / HTML 解析與譯文檔重建 + 術語表 CSV 解析（§17.11）
 │   ├── dev-verify.js         # dev 驗證 harness hook（production 不載入）
 │   ├── reader.js             # 線上閱讀器（雙頁並排，§17.6）
 │   └── translate.js          # 文件翻譯 pipeline 協調
@@ -649,14 +650,14 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 
 ---
 
-## 17. 文件翻譯（PDF / EPUB）
+## 17. 文件翻譯（PDF / EPUB / TXT / Markdown / HTML）
 
 ### 17.1 功能總覽
 
-使用者透過 popup 點選「翻譯文件」開啟獨立分頁，本機上傳 PDF 或 EPUB 檔案，選擇翻譯 preset（沿用既有三組 preset），系統解析、批次送翻、提供：
+使用者透過 popup 點選「翻譯文件」開啟獨立分頁，本機上傳 PDF、EPUB、TXT、Markdown（`.md` / `.markdown`）或 HTML（`.htm` / `.html`）檔案，選擇翻譯 preset（沿用既有三組 preset），系統解析、批次送翻、提供：
 
-1. **線上閱讀器**：雙頁並排顯示（左原 / 右譯），雙向 scroll sync（同頁同比例定位）、zoom 控制、同步捲動開關
-2. **下載譯文檔**：PDF 輸出 `<原檔名>-shinkansen.pdf`（譯文直接寫在原頁面版面上，頁數與原檔相同）；EPUB 輸出譯本 EPUB（單語 / 雙語對照可選）
+1. **線上閱讀器**（PDF）：雙頁並排顯示（左原 / 右譯），雙向 scroll sync（同頁同比例定位）、zoom 控制、同步捲動開關
+2. **下載譯文檔**：PDF 輸出 `<原檔名>-shinkansen.pdf`（譯文直接寫在原頁面版面上，頁數與原檔相同）；EPUB 輸出譯本 EPUB（單語 / 雙語對照可選）；TXT / Markdown / HTML 輸出 `<原檔名>-shinkansen.<原副檔名>`（譯文輸出格式 = 輸入格式）
 
 ### 17.2 限制與上限（PDF）
 
@@ -718,10 +719,22 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - **譯文空格自動校正**（`translateDoc.epubAutoFixSpacing`，預設開）：中文譯文的 CJK↔拉丁間距自動補齊、全形標點旁多餘空格自動移除
 - **工作階段存檔**：翻譯進度（含手動編輯）、全書術語表、本書禁用詞、額外翻譯指令、累計費用整包存本機 IndexedDB；重開同檔自動還原；不受「清除翻譯記憶」影響。支援匯出 / 匯入 `-session.json`（跨書匯入拒絕）
 - **放棄本書翻譯**：紅字按鈕，confirm 後清掉這本書全部工作進度與快取，回到選檔畫面
-- **全書術語表**：分輪掃描全書抽取譯名對照（上限 500 條），跨章節譯名一致；可手動編輯、逐條「對照一次」選項
+- **全書術語表**：分輪掃描全書抽取譯名對照（上限 500 條），跨章節譯名一致；可手動編輯、逐條「對照一次」選項；匯入支援 JSON（含選項 flag）與 CSV（兩欄「原文,譯名」，容許 BOM / CRLF / 引號跳脫 / 表頭列；非 CSV 副檔名但 JSON parse 失敗時自動退回 CSV 解析），匯入走合併 / 覆蓋 dialog 與上限保護
 - **本書禁用詞 / 額外翻譯指令**：per-document 補充規則，隨工作階段保存
 - **輸出格式**：EPUB 2 來源可選升級輸出 EPUB 3；譯本內容可選單語譯文或雙語對照（切換重新下載零重翻費用）
 - **段落間距至少 0.5em**（`translateDoc.epubParagraphSpacing`，預設關）：改善 `margin:0` 傳統排版的段落擁擠
 - **譯後一致性掃描**（`translateDoc.consistencyScan`，預設開）：翻譯完成後掃描「同一原文多譯名 / 指定譯名缺席」並列出可一鍵取代的違規清單。注意訊號層：掃的是譯名一致性，不驗「單一譯名但翻得差」（品質歸 prompt / 模型）
 
 解析 / 序列化 / 譯本重建（writer）/ 掃描演算法等實作細節見 SPEC-PRIVATE §32。
+
+### 17.11 TXT / Markdown / HTML 檔案翻譯
+
+與 EPUB 共用同一條「書籍式文件」管線（章節清單 / 全書術語表 / 譯後一致性掃描 / 預覽編輯 / 工作階段存檔 / 費用預估全部沿用），只有解析與譯文檔重建按格式分流：
+
+- **TXT**：按空行分段為翻譯單位；空白行、純標點 / 數字段（分隔線、頁碼）原樣保留。無章節結構——整份單一「章節」，不出章節勾選 UI，主按鈕為「開始翻譯」
+- **Markdown**：按 ATX 標題（`#` / `##`）切章，比照 EPUB 出章節勾選清單；標題 / 清單 / 引用的標記前綴由重建端保留，fenced code block 不翻譯原樣帶過；無標題檔視同單章
+- **HTML**：整份單一章節，段落偵測與行內標記序列化沿用 EPUB 章節引擎（粗斜體 / 連結等 inline 標記保留），`<script>` / 樣式 / 其餘結構原樣帶過；輸出時更新 `<html lang>` 為目標語言，來源未宣告 charset 時補 `<meta charset="utf-8">`
+- **限制**：檔案硬上限與 EPUB 相同（100 MB）；已選字數超過 50 萬字時顯示成本警告
+- **格式列**：章節清單資訊列的「格式」欄顯示 EPUB 版本或 TXT / Markdown / HTML
+- 雙語對照譯本輸出為 EPUB 專屬，TXT / Markdown / HTML 不提供
+- **整份未翻輸出 === 輸入**（重建不變量）：未翻 / 失敗段落在譯文檔中以原文原樣輸出

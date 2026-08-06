@@ -47,7 +47,9 @@ function editedHtmlToFrag(html) {
 // override 來自 computeAnnotationDedupe（「對照只出現一次」後處理版本），
 // raw 與 plain 兩路都要吃 override——反序列化失敗走 fallback 時不可漏掉後處理。
 // bilingual = true 時原文保留、譯文以 sibling / 內嵌 div 插入（見 insertDualTranslation）
-function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual = false) {
+// export 供 doc-file-engine.js 的 HTML 檔譯文寫回重用（單一資料源；
+// importNode / replaceChildren 對 DOMParser('text/html') 的 document 同樣成立）
+export function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual = false) {
   const el = block.el;
   if (!el) return false;
   // 同一份 xhtmlDoc 會被重複下載重複套用（單語 replaceChildren 會毀掉 DOM 內
