@@ -142,6 +142,7 @@
     // ── lang 名稱（toast 動態插入「此頁面已是X」用）──────
 
     // ── options 共用 ─────────────────────────────────────
+    'options.pageTitle': 'Shinkansen 設定',
     'options.tab.settings': '一般設定',
     'options.tab.youtube': 'YouTube 字幕',
     'options.tab.gemini': 'Gemini',
@@ -1123,6 +1124,7 @@
     // ── lang 名稱 ──────────────────────────────────────────
 
     // ── options 共用 ─────────────────────────────────────
+    'options.pageTitle': 'Shinkansen 设置',
     'options.tab.settings': '常规设置',
     'options.tab.youtube': 'YouTube 字幕',
     'options.tab.gemini': 'Gemini',
@@ -2100,6 +2102,7 @@
     // ── lang names ────────────────────────────────────────
 
     // ── options shared ───────────────────────────────────
+    'options.pageTitle': 'Shinkansen Settings',
     'options.tab.settings': 'General',
     'options.tab.youtube': 'YouTube subtitles',
     'options.tab.gemini': 'Gemini',
@@ -3077,6 +3080,7 @@
     // ── lang 名称（toast 動的挿入「このページは既に X」用）──────
 
     // ── options 共通 ─────────────────────────────────────
+    'options.pageTitle': 'Shinkansen 設定',
     'options.tab.settings': '一般設定',
     'options.tab.youtube': 'YouTube 字幕',
     'options.tab.gemini': 'Gemini',
@@ -4054,6 +4058,7 @@
     // ── lang 이름 (toast 동적 삽입 "이 페이지는 이미 X" 용) ──────
 
     // ── options 공용 ─────────────────────────────────────
+    'options.pageTitle': 'Shinkansen 설정',
     'options.tab.settings': '일반 설정',
     'options.tab.youtube': 'YouTube 자막',
     'options.tab.gemini': 'Gemini',
@@ -5030,6 +5035,7 @@
     // ── nombre de idioma (inserción dinámica en toast "Esta página ya está en X") ──────
 
     // ── options común ─────────────────────────────────────
+    'options.pageTitle': 'Ajustes de Shinkansen',
     'options.tab.settings': 'General',
     'options.tab.youtube': 'Subtítulos de YouTube',
     'options.tab.gemini': 'Gemini',
@@ -6006,6 +6012,7 @@
     // ── nom de langue (insertion dynamique « Cette page est déjà en X » dans le toast) ──────
 
     // ── options commun ─────────────────────────────────────
+    'options.pageTitle': 'Paramètres de Shinkansen',
     'options.tab.settings': 'Général',
     'options.tab.youtube': 'Sous-titres YouTube',
     'options.tab.gemini': 'Gemini',
@@ -6982,6 +6989,7 @@
     // ── Sprachname (dynamisch in toast „Diese Seite ist bereits auf X" eingefügt) ──────
 
     // ── options allgemein ─────────────────────────────────────
+    'options.pageTitle': 'Shinkansen-Einstellungen',
     'options.tab.settings': 'Allgemein',
     'options.tab.youtube': 'YouTube-Untertitel',
     'options.tab.gemini': 'Gemini',

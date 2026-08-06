@@ -83,3 +83,6 @@ test/
 # 只追蹤上列檔案,推到私有 repo github.com/jimmysu0309/Shinkansen-docs。
 # 操作一律加 --git-dir:git --git-dir=.private-git status --short / add -u / commit / push
 .private-git/
+
+# XcodeBuildMCP 專案設定（本機工具設定，不入版控）
+.xcodebuildmcp/

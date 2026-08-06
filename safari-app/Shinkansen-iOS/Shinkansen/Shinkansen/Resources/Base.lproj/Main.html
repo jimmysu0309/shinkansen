@@ -592,12 +592,21 @@
                 render();
             }
 
-            function finishOnboard() {
-                markOnboard();
-                saveToHost();             // 把 onboarding 選的 API Key + 模型寫回 host
+            // 只切畫面回主頁，不碰 host 設定。「導航回主畫面」與「提交引導選擇」必須分開：
+            // 啟動時 seenOnboard 為真也走這裡，若在這條路徑呼叫 saveToHost，頁面剛載入的
+            // 空 state（apiKey: ''）會把 App Group 的 hostApiKey 覆寫清空（model 是 null
+            // 反而 cast 失敗逃過一劫）→ 擴充功能 pull 到「有模型、沒金鑰」。
+            function showHome() {
                 if (onboard) onboard.hidden = true;
                 if (settings) settings.hidden = true;
                 if (home) home.hidden = false;
+            }
+
+            // 真正走完（或略過）引導才呼叫：記錄已看過 + 把選的 API Key + 模型寫回 host
+            function finishOnboard() {
+                markOnboard();
+                saveToHost();
+                showHome();
             }
 
             if (nextBtn) nextBtn.addEventListener('click', function () {
@@ -657,8 +666,8 @@
                 b.addEventListener('click', openIosSettings);
             });
 
-            // 入口：看過 → 直接 home；沒看過 → 跑引導
-            if (seenOnboard()) { finishOnboard(); }
+            // 入口：看過 → 直接 home（只導航，不寫 host，見 showHome 註解）；沒看過 → 跑引導
+            if (seenOnboard()) { showHome(); }
             else { showOnboard(); }
         })();
     </script>
