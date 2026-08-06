@@ -20,6 +20,7 @@ import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 erro
 import { saveToInstapaper, buildInstapaperPayload } from './lib/instapaper.js'; // 送到 Instapaper（Alt+I 快捷鍵路徑）
 import { planStreamingPartialReuse } from './lib/stream-reuse.js'; // v1.10.61: streaming 批次 missing-only 分流
 import { convertZhBatch, ZH_CONVERT_DIRECTIONS } from './lib/zh-convert.js'; // 簡繁本地互轉（OpenCC 字典，lazy load）
+import './lib/domain-utils.js'; // UMD 副作用載入（掛 globalThis.__SKDomain）：網域術語表 byDomain 比對走與白名單同一份規則
 
 // instapaper-keys.js（gitignored）的 consumer 金鑰載入。
 // 不能用 dynamic import()：MV3 service worker 禁止 dynamic import（實測 throw
@@ -341,9 +342,17 @@ function buildFixedGlossaryEntries(fixedGlossary, sender) {
   if (fixedGlossary.byDomain && sender?.tab?.url) {
     try {
       const hostname = new URL(sender.tab.url).hostname;
-      domainEntries = Array.isArray(fixedGlossary.byDomain[hostname])
-        ? fixedGlossary.byDomain[hostname].filter((e) => e.source && e.target)
-        : [];
+      // byDomain key 是使用者輸入的任意形式（可能含 https:// / www. / 尾斜線），
+      // 不可對 hostname 做 exact match（`medium.com` 永遠比不中 `www.medium.com`，
+      // 使用者被迫全搬全域）。比對統一走 lib/domain-utils.js 的白名單同款規則
+      //（正規化 + www. 互通 + `*.` 萬用字元），多 key 命中時依排序後合併。
+      const keys = globalThis.__SKDomain.matchingDomainKeys(hostname, fixedGlossary.byDomain);
+      for (const key of keys) {
+        const entries = Array.isArray(fixedGlossary.byDomain[key])
+          ? fixedGlossary.byDomain[key].filter((e) => e.source && e.target)
+          : [];
+        domainEntries.push(...entries);
+      }
     } catch { /* invalid URL */ }
   }
   if (globalEntries.length === 0 && domainEntries.length === 0) return null;

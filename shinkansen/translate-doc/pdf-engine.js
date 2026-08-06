@@ -9,12 +9,14 @@ import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
 // MV3 不能跨 origin 載 worker，必須 vendor 進 extension 並用 chrome.runtime.getURL 指過去
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/vendor/pdfjs/pdf.worker.min.mjs');
 
-// 上限與軟警告依 SPEC §17.2
+// 上限依 SPEC §17.2
+// v2.0.86：原本另有 softWarnPages / softWarnBytes 兩個「軟警告」門檻，但頁數門檻
+// 全專案零引用、bytes 門檻只回一句 level:'warn' 訊息而唯一 caller（translate-doc/
+// index.js handleFile）直接忽略 → 使用者從來看不到。依 MVP 原則移除死常數與死分支，
+// 日後真要做大檔提示再連同 UI 一起設計（訊息也要走 i18n，不能像舊分支硬編繁中）
 export const LIMITS = Object.freeze({
   hardMaxPages: 50,
   hardMaxBytes: 10 * 1024 * 1024,
-  softWarnPages: 30,
-  softWarnBytes: 5 * 1024 * 1024,
 });
 
 // 已知不支援的 PDF 樣態（SPEC §17.2）——抽完文字後再判斷
@@ -51,7 +53,7 @@ export class PdfParseError extends Error {
 
 /**
  * 上傳前檢查：檔案大小、副檔名/MIME。頁數要等載入後才知道。
- * 回傳 { level: 'ok' | 'warn' | 'error', message?: string }
+ * 回傳 { level: 'ok' | 'error', message?: string }
  */
 export function preflightFile(file) {
   if (!file) return { level: 'error', message: '未選取檔案' };
@@ -63,10 +65,6 @@ export function preflightFile(file) {
   if (file.size > LIMITS.hardMaxBytes) {
     const mb = (file.size / 1024 / 1024).toFixed(1);
     return { level: 'error', message: `檔案 ${mb} MB 超過 ${LIMITS.hardMaxBytes / 1024 / 1024} MB 上限,請先拆分後再上傳` };
-  }
-  if (file.size > LIMITS.softWarnBytes) {
-    const mb = (file.size / 1024 / 1024).toFixed(1);
-    return { level: 'warn', message: `檔案 ${mb} MB 較大,翻譯時間會較長` };
   }
   return { level: 'ok' };
 }

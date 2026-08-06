@@ -859,6 +859,7 @@ const CUSTOM_PROVIDER_API_KEY = 'customProviderApiKey';
 const LEGACY_SYNC_KEYS = [
   'ytPreserveLineBreaks',  // v1.2.38 移除（YouTube 字幕保留換行，改為永遠 true)
   'preserveLineBreaks',    // 同上（全頁翻譯版本，更早期）
+  'skipTraditionalChinesePage', // v1.9.26 移除（整頁繁中 skip 機制下架，改逐段判定）
   'tier',                  // v2.0.64 移除（API 配額管理整項功能下架）
   'safetyMargin',          // 同上
   'rpmOverride',           // 同上

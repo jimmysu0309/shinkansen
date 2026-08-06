@@ -239,9 +239,6 @@ async function handleFile(file) {
     showError(pre.message);
     return;
   }
-  // softWarn（超過 5MB 但未達 10MB）目前先不做 modal，直接繼續解析
-  // 軟警告完整 modal 走 W7 UX polish
-
   // 切新檔前釋放舊 pdfDoc(避免 PDF.js Worker 累積)
   releaseCurrentDoc();
 

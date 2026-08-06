@@ -2305,7 +2305,10 @@ $('fixed-domain-select').addEventListener('change', () => {
 
 $('fixed-domain-add-btn').addEventListener('click', () => {
   const input = $('fixed-domain-input');
-  const domain = (input.value || '').trim().toLowerCase();
+  // 使用者常貼完整網址（https:// / 路徑 / 尾斜線），存進 byDomain 前收斂成純主機名
+  //（與自動翻譯白名單同一份正規化規則）。runtime 比對端（background
+  // buildFixedGlossaryEntries）另有 matchingDomainKeys 容錯舊資料的未正規化 key
+  const domain = window.__SKDomain.normalizeDomainEntry(input.value || '');
   if (!domain) return;
   if (!fixedGlossary.byDomain[domain]) {
     fixedGlossary.byDomain[domain] = [];

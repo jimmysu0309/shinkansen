@@ -66,6 +66,11 @@ const loadCJKBoldBytes = () => loadFontBytes(FONT_PATH_BOLD, boldRef);
  * 生成譯文 PDF 的核心 pipeline(供 reader WYSIWYG render + 下載按鈕共用)。
  * 不觸發 download,只回傳 bytes 與 filename
  *
+ * 輸出形式見本檔頂端 header（W6-iter2）：每張原頁產出一張譯文頁、頁數與原檔相同，
+ * **不是**函式名 "Bilingual" 字面上的雙頁並排對照。要寫使用者看得到的說明時以 header
+ * 為準 —— v2.0.86 之前下載按鈕 title 寫成「雙頁並排對照」就是照著函式名 / 已廢棄的
+ * W6-iter1 設計寫的
+ *
  * @param {ArrayBuffer} originalArrayBuffer
  * @param {LayoutDoc}   layoutDoc
  * @param {object}      [options]

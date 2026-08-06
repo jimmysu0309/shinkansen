@@ -48,10 +48,24 @@
     });
   }
 
+  // byDomain 物件（網域專用術語表等「以網域字串為 key」的設定）中，hostname 命中
+  // 哪些 key。key 是使用者輸入的任意形式（可能含協定 / www. / 尾斜線），比對規則
+  // 與 matchDomain 完全一致（單一資料源）：`*.` 萬用字元、www. 互通、輸入正規化。
+  // 回傳排序後的命中 key 陣列（多 key 命中時呼叫端合併順序穩定）。
+  function matchingDomainKeys(hostname, byDomain) {
+    if (!hostname || !byDomain || typeof byDomain !== 'object' || Array.isArray(byDomain)) return [];
+    return Object.keys(byDomain).filter(function (key) {
+      return matchDomain(hostname, [key]);
+    }).sort();
+  }
+
   var api = {
     normalizeDomainEntry: normalizeDomainEntry,
-    matchDomain: matchDomain
+    matchDomain: matchDomain,
+    matchingDomainKeys: matchingDomainKeys
   };
-  if (typeof window !== 'undefined') window.__SKDomain = api;
+  // global = window（頁面 / content script）或 globalThis（MV3 service worker 的
+  // ES module import 副作用載入——SW 沒有 window，background.js 走 globalThis.__SKDomain）
+  global.__SKDomain = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

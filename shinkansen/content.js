@@ -2664,20 +2664,10 @@
       try { SK.showToast(e.kind, SK.t(e.key), e.kind === 'loading' ? {} : { autoHideMs: 4000 }); } catch (_) {}
       return;
     }
-    // v1.2.12: YouTube 字幕翻譯開關（popup toggle 用）
-    if (msg?.type === 'GET_SUBTITLE_STATE') {
-      sendResponse({ ok: true, active: SK.YT?.active ?? false });
-      return true;
-    }
     // v1.8.53: background CLEAR_CACHE 完成後 broadcast，清 YT in-memory 翻譯狀態
     // (popup「清除翻譯快取」按鈕走這條，bypass 了 Debug Bridge)。idempotent。
     if (msg?.type === 'YT_RESET_AFTER_CACHE_CLEAR') {
       try { SK.YT?._resetTranslationStateForCacheClear?.(); } catch (_) {}
-      return;
-    }
-    // v1.4.0: Google Translate 快捷鍵（Opt+G）
-    if (msg?.type === 'TOGGLE_TRANSLATE_GOOGLE') {
-      SK.translatePageGoogle();
       return;
     }
     // v1.5.0: 顯示模式切換通知。若已翻譯，提示使用者重新翻譯以套用。
