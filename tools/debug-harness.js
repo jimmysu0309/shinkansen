@@ -136,6 +136,7 @@ async function main() {
       `--load-extension=${EXT_PATH}`,
       '--no-first-run',
       '--no-default-browser-check',
+      '--mute-audio',   // Jimmy 指示(2026-08-06):playwright 測試(含 YouTube)一律靜音
     ],
   });
 
