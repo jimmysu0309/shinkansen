@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.3.1
+- 目前 Extension 版本：2.3.2
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.3.1 為止）
+### 2.1 已實作（v2.3.2 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -189,7 +189,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 
 - `uiLanguage = 'auto'`（預設）：依 `navigator.language` 推導；或強制鎖任一語言
 - 自製 dict（`lib/i18n.js`，約 880 條 entry × 8 語，zh-TW 為 source of truth）而非 `chrome.i18n`（後者綁瀏覽器 locale 無法獨立切換）；缺 key 三層 fallback 保證不顯示空字串
-- `_locales/` 8 語 `messages.json`（`extName` / `extDescription`）：manifest 的 `name` / `description` 以 `__MSG_*__` 引用，瀏覽器擴充功能管理頁、Safari 設定頁與商店 listing 短描述隨系統 / 瀏覽器語言顯示；`default_locale: zh_TW` 為 fallback。`extDescription` 每語 ≤ 132 字元（Chrome manifest 上限）
+- `_locales/` 8 語 `messages.json`（`extName` / `extDescription`）：manifest 的 `name` / `description` 以 `__MSG_*__` 引用，瀏覽器擴充功能管理頁、Safari 設定頁與商店 listing 短描述隨系統 / 瀏覽器語言顯示；`default_locale: zh_TW` 為 fallback。`extDescription` 每語 ≤ 112 字元（各平台取最嚴：Apple 驗 112、Chrome 為 132）
 - popup / options / content toast / 文件翻譯頁全面走 dict；regression 由 `test/regression/i18n-*.spec.js` 8 檔覆蓋
 
 ### 3.11 送到 Instapaper（下游 reader 整合）
