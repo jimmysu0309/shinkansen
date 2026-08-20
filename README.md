@@ -6,17 +6,17 @@
 
 名稱「新幹線」象徵快速、平穩、流暢的閱讀體驗。
 
-> [從 Chrome Web Store 安裝](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) · [從 Firefox Add-ons 安裝](https://addons.mozilla.org/firefox/addon/shinkansen/) · [從 Mac App Store 安裝](https://apps.apple.com/tw/app/shinkansen-translator/id6768586680) · [下載最新版本 zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · 安裝教學與產品介紹見 [官方網頁](https://jimmysu0309.github.io/shinkansen/) · [更新紀錄](https://jimmysu0309.github.io/shinkansen/release-notes.html)
+> [從 Chrome Web Store 安裝](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) · [從 Firefox Add-ons 安裝](https://addons.mozilla.org/firefox/addon/shinkansen/) · [從 Mac App Store 安裝](https://apps.apple.com/tw/app/shinkansen-translator/id6768586680) · [從 App Store 安裝（iOS / iPadOS）](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) · [下載最新版本 zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · 安裝教學與產品介紹見 [官方網頁](https://jimmysu0309.github.io/shinkansen/) · [更新紀錄](https://jimmysu0309.github.io/shinkansen/release-notes.html)
 
 ## 近期重大更新
 
+- **iOS / iPadOS 版**正式登陸 [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298)，Safari 擴充功能搭配四指觸控翻譯與懸浮按鈕，開箱即用
 - 新增 **EPUB 電子書翻譯**（beta）：整本電子書丟進「翻譯文件」頁即可翻譯，全書術語表與譯後一致性掃描確保人名譯名前後一致，可先翻一兩章驗品質再續翻，譯本可下載單語或雙語對照版
 - 新增 **TXT / Markdown / HTML 檔案**文件翻譯：純文字與 Markdown 小說、儲存下來的網頁都能整份翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 **CSV**（兩欄「原文,譯名」），外部整理的名詞對照表可直接匯入
 - 新增**簡繁網頁轉換（免費）**：簡體（或繁體）中文內容走內建字典本地轉換——不需 API Key、不打任何 API、離線可用
 - **YouTube 字幕多項修正**：youtube.com/live/ 直播連結也能翻譯字幕、英文單字不再被切成兩半、台灣影片不再被英文自動翻譯軌帶偏，整體可靠性提升
 - **PDF 翻譯品質大幅強化**：表格與規格書的版面偵測、譯文渲染全面重修，譯文更貼近原稿排版
 - **大量翻譯品質與穩定性修正**：網域專用術語表正確套用、譯文編輯模式強化、譯文被前端框架打回原文的守護補強等
-- **iOS / iPadOS 版**即將登陸 App Store，敬請期待
 
 ## 為什麼做這個專案
 

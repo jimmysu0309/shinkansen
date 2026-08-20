@@ -1,0 +1,78 @@
+name: Sync iOS version
+
+# 每 6 小時抓 iOS App Store 上架版本，若與 docs/index.html 內 marker
+# 不同就 commit + push 同步。iOS 落後 GitHub 是正常的(人工審核)，
+# 此 workflow 讓 Landing Page 上「App Store（iOS / iPadOS）」按鈕的版本副標
+# 永遠反映 App Store 真實狀態，不需要人工同步。
+#
+# 用 GITHUB_TOKEN 推回 main 不會觸發其他 workflow(GitHub 設計如此)，
+# 所以不會跟 release.yml 互相觸發成迴圈。
+
+on:
+  schedule:
+    - cron: '50 */6 * * *'  # 每 6 小時 :50，錯開 cws(:00) / amo(:20) / mas(:40)
+  workflow_dispatch:        # 允許手動觸發(測試用)
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch iOS App Store listing & extract version
+        id: ios
+        run: |
+          set -euo pipefail
+
+          # iTunes Lookup API 公開無需認證，回傳 JSON 含 results[0].version
+          # 文件:https://performance-partners.apple.com/search-api
+          URL="https://itunes.apple.com/lookup?id=6776958298&country=tw"
+
+          JSON=$(curl -sf "$URL")
+
+          VERSION=$(printf '%s' "$JSON" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['results'][0]['version'] if d.get('results') else '')")
+
+          # App Store Connect 的版本字串可能帶 v 前綴(例 v1.10.17)，
+          # marker 內統一存純數字三段，顯示用的 v 由 HTML 模板提供
+          VERSION="${VERSION#v}"
+
+          if [ -z "$VERSION" ]; then
+            echo "::error ::Failed to extract iOS version from iTunes Lookup API response."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected iOS version: $VERSION"
+
+      - name: Update docs/index.html if version changed
+        run: |
+          set -euo pipefail
+
+          NEW="${{ steps.ios.outputs.version }}"
+          # [^<]+ 容忍 marker 內殘留非數字字元(例曾被寫入 v 前綴)，
+          # 內層再抽純三段版本號比對
+          CUR=$(grep -oE '<!-- ios-version-start -->[^<]+<!-- ios-version-end -->' docs/index.html \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+
+          if [ -z "$CUR" ]; then
+            echo "::error ::Could not find <!-- ios-version-start -->...<!-- ios-version-end --> marker in docs/index.html"
+            exit 1
+          fi
+
+          if [ "$NEW" = "$CUR" ]; then
+            echo "iOS version unchanged ($CUR), no update needed."
+            exit 0
+          fi
+
+          echo "Updating iOS version: $CUR → $NEW"
+          sed -i -E "s|<!-- ios-version-start -->[^<]+<!-- ios-version-end -->|<!-- ios-version-start -->${NEW}<!-- ios-version-end -->|" docs/index.html
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html
+          git commit -m "docs — Landing Page iOS 版本自動同步：${CUR} → ${NEW}"
+          git push

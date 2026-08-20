@@ -61,7 +61,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
 | 文件翻譯（PDF / EPUB / TXT / Markdown / HTML） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；詳見 §17 |
-| iOS／iPadOS Safari | 🚧 | TestFlight 階段；四指輕點觸發；popup／options 觸控調整；不含 PDF 翻譯 |
+| iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；四指輕點觸發；popup／options 觸控調整；不含 PDF 翻譯 |
 
 ### 2.3 明確不做
 
