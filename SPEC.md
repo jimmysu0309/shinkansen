@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.3.2
+- 目前 Extension 版本：2.4.0
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.3.2 為止）
+### 2.1 已實作（v2.4.0 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -216,7 +216,7 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 | 其他 | 不分流，全走 LLM |
 
 - 混合頁兩路並存：可轉段落走本地轉換、其餘照走 LLM；轉換結果不寫翻譯快取、不記用量（零 API）
-- **自動模式**（`settings.autoConvertZh`，預設關）：開啟後頁面載入 / SPA 導航自動轉換（只跑本地轉換、絕不打 API）；popup toggle「簡繁自動互轉（免費）」只在 target 為中文變體時顯示，切換即時生效（取消時僅還原本地轉換結果，LLM 翻譯成果不受影響）
+- **自動模式**（`settings.autoConvertZh`，預設開）：頁面載入 / SPA 導航自動轉換（只跑本地轉換、絕不打 API）；popup toggle「簡繁自動互轉（免費）」只在 target 為中文變體時顯示，切換即時生效（取消時僅還原本地轉換結果，LLM 翻譯成果不受影響）
 - 完成 toast 標示「免費未使用 API」；混合頁完整翻譯時標示其中 N 段本地轉換
 - **實作**：`lib/zh-convert.js` + `lib/vendor/opencc/`（字典 10 檔約 1.1MB，lazy load）；分流判定與 SPA 邊角處理見 SPEC-PRIVATE §32
 
@@ -406,7 +406,7 @@ shinkansen/
   },
   "domainRules": { "whitelist": [] },
   "autoTranslate": false,
-  "autoConvertZh": false,
+  "autoConvertZh": true,
   "debugLog": false,
   "translateDoc": {
     "systemPrompt": "（見 DEFAULT_DOC_SYSTEM_PROMPT）",
@@ -460,7 +460,8 @@ shinkansen/
   "floatingIconOpacity": 0.7,
   "floatingIconSize": 24,
   "floatingIconPos": { "edge": "right", "offsetY": 1 },
-  "fourFingerGesture": false,
+  "fourFingerGesture": true,
+  "iosPromoDismissed": false,
   "autoTranslateSlot": 2,
   "modelPricingOverrides": {},
   "customProvider": {
@@ -547,7 +548,7 @@ shinkansen/
 
 ### 10.2 iOS／iPadOS 四指手勢
 
-四指輕點 = 主要預設快速鍵完整 toggle（`content-touch.js`）；`fourFingerGesture` 設定控制，預設關（懸浮按鈕為主要觸控入口）。
+四指輕點 = 主要預設快速鍵完整 toggle（`content-touch.js`）；`fourFingerGesture` 設定控制，預設開（易誤觸發的使用者可在 options 關閉；懸浮按鈕與硬體鍵盤快速鍵不受此開關影響）。
 
 ### 10.3 iOS background keep-alive
 

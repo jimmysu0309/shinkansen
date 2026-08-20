@@ -55,15 +55,28 @@ const EMPTY_REASON_CODES = {
  * 「漏算 thoughtsTokenCount → 費用低估 3 倍」bug 的認知根源。故 usage 解析一律
  * 走 parseGeminiUsage() 把 thoughts 計入 output(見該函式)。
  *
+ * 2026-08-20 更正:gemini-3.7-flash 起 'minimal' 下架——真 API 實測 minimal 回
+ * 400 "Thinking level MINIMAL is not supported for this model",low / medium /
+ * high 皆 200。版本判定與 modelDropsSamplingParams 同款解析(≥ 3.7 或未來
+ * gemini-4+ 都命中),future-proof:新世代一律送 'low'(合法範圍內最省)。
+ *
  * 偵測策略:
  *   - 模型名含 "pro"(case-insensitive)→ 'low'(Pro 強制 thinking)
- *   - 否則 → 'minimal'(Flash 系列繼續省 token)
+ *   - 版本 ≥ 3.7(含未來 gemini-4+)→ 'low'('minimal' 已下架,送了 400)
+ *   - 否則 → 'minimal'(3.6 以前的 Flash 系列繼續省 token)
  *
  * 此函式 export 是為了 unit spec 鎖死 model → level 對映。
  */
 export function pickThinkingConfig(model) {
-  const isPro = /pro/i.test(String(model || ''));
-  return { thinkingLevel: isPro ? 'low' : 'minimal' };
+  const m = String(model || '');
+  if (/pro/i.test(m)) return { thinkingLevel: 'low' };
+  const ver = m.match(/gemini-(\d+)(?:\.(\d+))?/i);
+  if (ver) {
+    const major = Number(ver[1]);
+    const minor = Number(ver[2] || 0);
+    if (major > 3 || (major === 3 && minor >= 7)) return { thinkingLevel: 'low' };
+  }
+  return { thinkingLevel: 'minimal' };
 }
 
 /**

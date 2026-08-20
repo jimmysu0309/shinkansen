@@ -114,6 +114,7 @@ if (window.__shinkansen_loaded) {
     // shape: { provider: 'gemini'|'google'|'openai-compat', engine?, modelOverride?, glossary? }
     translationContext: null,
     translating: false,      // v0.80: 翻譯進行中（防止重複觸發 + 支援中途取消）
+    translatingConvertOnly: false, // 2026-08-20: 本輪是否為背景簡繁轉換 run(手動翻譯可靜默擠掉它,不被 toggle 吃)
     abortController: null,   // v0.80: AbortController，翻譯中按 Alt+S 或離開頁面時 abort
     cache: new Map(),       // 段落文字 → 譯文
     // 記錄每個被替換過的元素與它原本的 innerHTML，供還原使用。

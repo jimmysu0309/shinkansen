@@ -56,7 +56,9 @@ jobs:
 
       - name: Zip shinkansen folder (Chrome)
         run: |
-          zip -r shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen/
+          # 檔名帶 chrome 標示與 firefox 版對稱(2026-08-20 起;先前 shinkansen-vX.Y.Z.zip
+          # 無瀏覽器標示,使用者分不清是哪個瀏覽器的包)
+          zip -r shinkansen-chrome-${{ steps.version.outputs.VERSION }}.zip shinkansen/
 
       - name: Build Firefox ZIP (transformed manifest)
         run: |
@@ -103,7 +105,7 @@ jobs:
             fi
             echo "ok: $1 含 $2"
           }
-          check "shinkansen-${V}.zip"                'shinkansen/lib/instapaper-keys.js'
+          check "shinkansen-chrome-${V}.zip"         'shinkansen/lib/instapaper-keys.js'
           check "shinkansen-firefox-${V}.zip"        'lib/instapaper-keys.js'
           check "shinkansen-firefox-${V}-source.zip" 'shinkansen/lib/instapaper-keys.js'
 
@@ -112,7 +114,7 @@ jobs:
         with:
           name: ${{ steps.version.outputs.VERSION }}
           files: |
-            shinkansen-${{ steps.version.outputs.VERSION }}.zip
+            shinkansen-chrome-${{ steps.version.outputs.VERSION }}.zip
             shinkansen-firefox-${{ steps.version.outputs.VERSION }}.zip
             shinkansen-firefox-${{ steps.version.outputs.VERSION }}-source.zip
           generate_release_notes: true

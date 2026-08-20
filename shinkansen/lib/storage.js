@@ -614,8 +614,10 @@ export const DEFAULT_SETTINGS = {
   domainRules: { whitelist: [] },
   autoTranslate: false,
   // 簡繁自動互轉:開啟後 target 為 zh-TW / zh-CN 時,偵測為相反中文變體的頁面
-  // 於載入 / SPA 導航自動走 OpenCC 本地轉換(免費、不打 API)。popup toggle 控制
-  autoConvertZh: false,
+  // 於載入 / SPA 導航自動走 OpenCC 本地轉換(免費、不打 API)。popup toggle 控制。
+  // 2026-08-20 Jimmy 指示改預設開(本地轉換免費零 API,預設開對使用者只有好處;
+  // 讀取端 content.js / content-spa.js / popup.js 的 destructure fallback 必須同值)
+  autoConvertZh: true,
   debugLog: false,
   // W7:文件翻譯設定 group。獨立 settings page (translate-doc/settings.html)
   // 編輯。為將來擴充各 Office 格式(.docx / .xlsx / .pptx)做好結構 — systemPrompt
@@ -760,6 +762,9 @@ export const DEFAULT_SETTINGS = {
   // 內容會以 <forbidden_terms_blacklist> 區塊注入到 systemInstruction 末端，
   // 且修改清單後快取 key 會帶 _b<hash> 後綴讓既有快取自動失效。
   forbiddenTerms: DEFAULT_FORBIDDEN_TERMS,
+  // iOS / iPadOS 上架提示(popup banner)的永久關閉旗標。預設 false(顯示);
+  // 使用者按 × 後寫 true,跨裝置同步。options 頁首 pill 不受此旗標影響(較不干擾)。
+  iosPromoDismissed: false,
   // v1.6.1: 「不再顯示更新提示」toggle。預設 false（顯示提示）。
   // 對應 storage.local 的 updateAvailable 物件由 lib/update-check.js 寫入，不在 sync。
   disableUpdateNotice: false,
@@ -778,10 +783,11 @@ export const DEFAULT_SETTINGS = {
   floatingIconOpacity: 0.7,
   floatingIconSize: 24,
   floatingIconPos: { edge: 'right', offsetY: 1 },
-  // 四指觸控手勢 enable（iOS / iPadOS）。預設 false（改由懸浮按鈕當主要觸控入口，
-  //   四指手勢易誤觸發故預設關，使用者可在 Options 開啟）。
+  // 四指觸控手勢 enable（iOS / iPadOS）。預設 true（2026-08-20 Jimmy 指示改預設開，
+  //   讓觸控裝置開箱即有手勢入口；易誤觸發的使用者可在 Options 關閉）。
   // content-touch.js isEnabled() 額外 gate 此旗標；桌面 build 無此手勢，旗標無作用。
-  fourFingerGesture: false,
+  // 讀取端 content-touch.js 的初始值必須同值（該處不走 DEFAULT_SETTINGS merge）。
+  fourFingerGesture: true,
   // v1.6.13: 自動翻譯網站（白名單）觸發時要用哪一組 preset。預設 slot 2 = Flash。
   // 修法前自動翻譯路徑直接 SK.translatePage() 不帶 slot,fallback 全域 geminiConfig.model;
   // 使用者改 preset model 後 Alt+S 走新 model，但白名單路徑仍走全域 → UX 不一致。
@@ -922,6 +928,16 @@ export async function migrateGemini35FlashModelIfNeeded(syncSaved) {
   return _migrateGeminiModelId(syncSaved, GEMINI_35_FLASH_OLD_ID, GEMINI_35_FLASH_NEW_ID);
 }
 
+// 一次性遷移(2026-08-20):gemini-3.6-flash 自模型清單下架,由新一代 gemini-3.7-flash
+// 接替(2026-08-13 GA;促銷價 $0.75 / $3.75 至 2026 年底,比 3.6 的 $1.50 / $7.50 便宜)。
+// 存了舊 ID 的使用者設定改寫成 3.7-flash,避免 dropdown 選不到 / pricing 查不到。
+// 與 35→36 遷移串聯:存 3.5-flash 的極舊設定會先遷成 3.6 再由本函式遷成 3.7。
+export const GEMINI_36_FLASH_OLD_ID = 'gemini-3.6-flash';
+export const GEMINI_36_FLASH_NEW_ID = 'gemini-3.7-flash';
+export async function migrateGemini36FlashModelIfNeeded(syncSaved) {
+  return _migrateGeminiModelId(syncSaved, GEMINI_36_FLASH_OLD_ID, GEMINI_36_FLASH_NEW_ID);
+}
+
 // 共用實作:掃 saved 設定裡所有可能存模型 ID 的欄位(geminiConfig.model /
 // glossary.model / ytSubtitle.model / translatePresets[*].model /
 // modelPricingOverrides key)把 OLD 改寫成 NEW 後 storage.sync.set 寫回。
@@ -1007,6 +1023,7 @@ export async function getSettings() {
   await migrateApiKeyIfNeeded(saved);
   await migrateGeminiFlashLiteModelIfNeeded(saved);
   await migrateGemini35FlashModelIfNeeded(saved);
+  await migrateGemini36FlashModelIfNeeded(saved);
   // 從 local 讀 apiKey（v0.62 起的正規位置）
   const { [API_KEY_STORAGE_KEY]: apiKey = '' } = await browser.storage.local.get(API_KEY_STORAGE_KEY);
   // P1: 先決定 targetLanguage,後面 forbiddenTerms 預設依此分歧。

@@ -141,6 +141,10 @@ if [ "${SKIP_SAFARI:-0}" != "1" ]; then
 fi
 
 echo ""
+echo "==> 同步 release 資產 + source 到本機 dist/(只留最新版;2026-08-20 Jimmy 指示)"
+./tools/sync-dist.sh "v${VERSION}" || echo "⚠️  dist 同步失敗,手動補跑:tools/sync-dist.sh v${VERSION}"
+
+echo ""
 echo "v${VERSION} 已推送,GitHub Release 已建立。"
 echo "  Chrome / Firefox     : https://github.com/jimmysu0309/shinkansen/releases"
 if [ "${SKIP_SAFARI:-0}" != "1" ]; then

@@ -327,6 +327,42 @@ button.link.small:hover { text-decoration: underline; }
 .update-banner[hidden] { display: none !important; }
 
 /* v1.6.5: 剛升級綠色 welcome banner（CWS 自動更新後顯示一次） */
+/* iOS / iPadOS 上架提示(整條可點,× 永久關閉;iOS build 由 popup.js 隱藏) */
+.ios-promo-banner {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 8px;
+  background: #0071e3;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ios-promo-banner:hover { background: #005bb5; }
+/* display: flex 會 override user-agent 的 [hidden] { display: none }(同 .update-banner 的坑) */
+.ios-promo-banner[hidden] { display: none !important; }
+.ios-promo-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 9px 4px 9px 12px;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+}
+.ios-promo-dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: #fff;
+  opacity: .75;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 10px;
+  cursor: pointer;
+}
+.ios-promo-dismiss:hover { opacity: 1; }
+
 .welcome-banner {
   display: flex;
   flex-direction: column;

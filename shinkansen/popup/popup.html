@@ -31,6 +31,13 @@
       <span id="update-banner-version"></span>
     </button>
 
+    <!-- iOS / iPadOS 上架提示:整條可點連到 App Store(無 country 前綴由 Apple 依地區導向),
+         × 永久關閉(storage.sync.iosPromoDismissed);iOS build 不顯示(popup.js gate) -->
+    <div id="ios-promo-banner" class="ios-promo-banner" hidden>
+      <a id="ios-promo-link" class="ios-promo-link" href="https://apps.apple.com/app/id6776958298" target="_blank" rel="noopener" data-i18n="popup.iosPromo.text">📱 iOS／iPadOS 版已上架 · 前往 App Store</a>
+      <button id="ios-promo-dismiss" class="ios-promo-dismiss" type="button" data-i18n-attr-title="popup.iosPromo.dismiss" data-i18n-attr-aria-label="popup.iosPromo.dismiss">×</button>
+    </div>
+
     <button id="translate-btn" class="primary" data-i18n="popup.action.translate">翻譯本頁</button>
     <button id="edit-btn" class="secondary" hidden data-i18n="popup.action.editStart">編輯譯文</button>
     <!-- 送到 Instapaper：只有 instapaperEnabled && 已連結 才由 popup.js 顯示 -->

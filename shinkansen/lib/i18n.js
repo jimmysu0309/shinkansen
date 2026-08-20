@@ -27,11 +27,13 @@
     'popup.title.updateAvailable': '有新版可下載',
     'popup.banner.welcome': '🎉 已升級至 v{version}',
     'popup.banner.welcomeBullets': '本版新增：',
+    'popup.banner.hl.ios': '**iOS／iPadOS 版正式上架**：Safari 擴充功能搭配四指觸控翻譯與懸浮按鈕，iPhone / iPad 開箱即用 → [App Store 下載](https://apps.apple.com/tw/app/id6776958298)',
     'popup.banner.hl.epub': '**新增「EPUB 電子書翻譯」**（beta）：整本電子書丟進「翻譯文件」頁即可翻譯，全書術語表與譯後一致性掃描確保譯名前後一致，可下載單語或雙語對照譯本',
     'popup.banner.hl.docfiles': '**新增 TXT / Markdown / HTML 檔案文件翻譯**：譯文輸出格式與原檔相同，術語表匯入同步支援 CSV',
-    'popup.banner.hl.opencc': '**新增 簡繁網頁轉換（免費）**：簡繁中文走內建字典本地轉換，不需 API Key、離線可用',
     'popup.banner.welcomeDismiss': '知道了',
     'popup.banner.updateNoticeTitle': '📦 有新版可下載',
+    'popup.iosPromo.text': '📱 iOS／iPadOS 版已上架 · 前往 App Store',
+    'popup.iosPromo.dismiss': '關閉提示',
     'popup.banner.updateNoticeVersion': 'v{newVersion}（你目前是 v{currentVersion}）',
     'popup.label.displayMode': '顯示模式',
     'popup.label.modeSingle': '單語覆蓋',
@@ -167,6 +169,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 有新版可下載',
+    'options.iosPromo.badge': '📱 iOS／iPadOS 版已上架 · 前往 App Store',
     'options.updateBanner.dismiss': '不再提示',
     'options.updateBanner.dismissTitle': '不再顯示更新提示',
     'options.updateBanner.version': 'v{newVersion}（你目前是 v{currentVersion}）',
@@ -311,7 +314,7 @@
     'options.floating.opacityHint': '覺得太搶眼可以往左拉降低不透明度，讓按鈕變淡一點',
     // 四指觸控翻譯（iOS / iPadOS）
     'options.fourFinger.heading': '四指觸控翻譯',
-    'options.fourFinger.intro': '預設關閉，避免誤觸發。開啟後在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；懸浮按鈕與硬體鍵盤快速鍵不受此開關影響',
+    'options.fourFinger.intro': '預設開啟。在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；容易誤觸發時可在此關閉，懸浮按鈕與硬體鍵盤快速鍵不受此開關影響',
     'options.fourFinger.enable': '啟用四指觸控手勢',
 
     // ── options 金額顯示幣值 ─────────────────────────────
@@ -355,12 +358,12 @@
 
     // ── options Gemini 分頁 ─────────────────────────────
     'options.gemini.pricing.heading': '模型計價',
-    'options.gemini.pricing.intro.html': 'Shinkansen 內建已知 Gemini 模型的標準層級單價（<strong id="pricing-calibrated-date">2026-07</strong> 校準），用於計算翻譯成本顯示在翻譯完成通知與「用量紀錄」分頁。Google 改價時可在下方覆蓋對應模型，空白表示用內建價。詳細費率見 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a>',
+    'options.gemini.pricing.intro.html': 'Shinkansen 內建已知 Gemini 模型的標準層級單價（<strong id="pricing-calibrated-date">2026-08</strong> 校準），用於計算翻譯成本顯示在翻譯完成通知與「用量紀錄」分頁。Google 改價時可在下方覆蓋對應模型，空白表示用內建價。詳細費率見 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a>',
     'options.gemini.pricing.priority': 'Preset 翻譯的計價優先順序：覆蓋值 → 內建表 → 下方「後備路徑單價」。單位皆為「每 1M tokens 的美金價格」',
     'options.gemini.pricing.flashLite.builtin': '內建 $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '內建 $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': '內建 $0.30 / $2.50（不支援 cache）',
-    'options.gemini.pricing.pro.builtin': '內建 $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': '內建 $0.75 / $3.75（2026 促銷價）',
     'options.gemini.pricing.cachedDiscountHint.html': '三欄依序為 <strong>input / output 單價</strong>(USD/M tokens)與 <strong>cache 命中折扣</strong>(%，例：90 = 命中部分省 90%)。Gemini 2.5 起 implicit cache 預設 90% off',
 
     'options.gemini.partial.heading': '節省模式',
@@ -432,7 +435,7 @@
     'options.glossary.auto.modelLabel': '術語擷取模型',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite（預設，快又便宜）',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash（較慢但語意理解較強）',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash（$1.50 / $7.50）',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash（$0.75 / $3.75）',
     'options.glossary.auto.modelSame': '與主翻譯模型相同',
     'options.glossary.auto.modelHint': '術語擷取是任務簡單的單次請求，Flash Lite 通常已夠用，且比 Flash 快 1.5-3 倍、便宜 5 倍',
     'options.glossary.auto.advSummary': '進階設定（等待門檻、Temperature、逾時時間、術語擷取 Prompt）',
@@ -608,7 +611,7 @@
     'options.yt.gemini.modelSame': '（與網頁翻譯主要預設相同）',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite($0.25 / $1.50)— 便宜，字幕品質足夠',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview($0.50 / $3.00)— 推薦',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash($1.50 / $7.50)',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash($0.75 / $3.75)',
     'options.yt.gemini.modelHint': '選擇模型後，下方計價會自動帶入參考價；你也可以手動修改',
     'options.yt.gemini.inputLabel': '字幕 Input 單價（USD / 1M tokens）',
     'options.yt.gemini.inputPlaceholder': '（與文章翻譯相同）',
@@ -1009,11 +1012,13 @@
     'popup.title.updateAvailable': '有新版可下载',
     'popup.banner.welcome': '🎉 已升级至 v{version}',
     'popup.banner.welcomeBullets': '本版新增：',
+    'popup.banner.hl.ios': '**iOS／iPadOS 版正式上架**：Safari 扩展搭配四指触控翻译与悬浮按钮，iPhone / iPad 开箱即用 → [App Store 下载](https://apps.apple.com/cn/app/id6776958298)',
     'popup.banner.hl.epub': '**新增「EPUB 电子书翻译」**（beta）：整本电子书放入「翻译文档」页即可翻译，全书术语表与译后一致性扫描确保译名前后一致，可下载单语或双语对照译本',
     'popup.banner.hl.docfiles': '**新增 TXT / Markdown / HTML 文件翻译**：译文输出格式与原文件相同，术语表导入同步支持 CSV',
-    'popup.banner.hl.opencc': '**新增 简繁网页转换（免费）**：简繁中文使用内置词典本地转换，无需 API Key、可离线使用',
     'popup.banner.welcomeDismiss': '知道了',
     'popup.banner.updateNoticeTitle': '📦 有新版可下载',
+    'popup.iosPromo.text': '📱 iOS／iPadOS 版已上架 · 前往 App Store',
+    'popup.iosPromo.dismiss': '关闭提示',
     'popup.banner.updateNoticeVersion': 'v{newVersion}（你目前是 v{currentVersion}）',
     'popup.label.displayMode': '显示模式',
     'popup.label.modeSingle': '单语覆盖',
@@ -1149,6 +1154,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 有新版可下载',
+    'options.iosPromo.badge': '📱 iOS／iPadOS 版已上架 · 前往 App Store',
     'options.updateBanner.dismiss': '不再提示',
     'options.updateBanner.dismissTitle': '不再显示更新提示',
     'options.updateBanner.version': 'v{newVersion}（你当前是 v{currentVersion}）',
@@ -1291,7 +1297,7 @@
     'options.floating.opacity': '按钮透明度 {value}%',
     'options.floating.opacityHint': '觉得太显眼可以往左拉降低不透明度，让按钮变淡一点',
     'options.fourFinger.heading': '四指触控翻译',
-    'options.fourFinger.intro': '默认关闭，避免误触发。开启后在手机 / 平板用四根手指轻点页面即翻译、四指长按用次要预设；悬浮按钮与硬件键盘快捷键不受此开关影响',
+    'options.fourFinger.intro': '默认开启。在手机 / 平板用四根手指轻点页面即翻译、四指长按用次要预设；容易误触发时可在此关闭，悬浮按钮与硬件键盘快捷键不受此开关影响',
     'options.fourFinger.enable': '启用四指触控手势',
 
     // ── options 金额显示币值 ─────────────────────────────
@@ -1335,12 +1341,12 @@
 
     // ── options Gemini 分页 ─────────────────────────────
     'options.gemini.pricing.heading': '模型计价',
-    'options.gemini.pricing.intro.html': 'Shinkansen 内置已知 Gemini 模型的标准层级单价（<strong id="pricing-calibrated-date">2026-07</strong> 校准），用于计算翻译成本显示在翻译完成通知与「用量记录」分页。Google 改价时可在下方覆盖对应模型，空白表示用内置价。详细费率见 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定价页</a>',
+    'options.gemini.pricing.intro.html': 'Shinkansen 内置已知 Gemini 模型的标准层级单价（<strong id="pricing-calibrated-date">2026-08</strong> 校准），用于计算翻译成本显示在翻译完成通知与「用量记录」分页。Google 改价时可在下方覆盖对应模型，空白表示用内置价。详细费率见 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定价页</a>',
     'options.gemini.pricing.priority': 'Preset 翻译的计价优先顺序：覆盖值 → 内置表 → 下方「后备路径单价」。单位皆为「每 1M tokens 的美金价格」',
     'options.gemini.pricing.flashLite.builtin': '内置 $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '内置 $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': '内置 $0.30 / $2.50（不支持 cache）',
-    'options.gemini.pricing.pro.builtin': '内置 $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': '内置 $0.75 / $3.75（2026 促销价）',
     'options.gemini.pricing.cachedDiscountHint.html': '三栏依次为 <strong>input / output 单价</strong>(USD/M tokens)与 <strong>cache 命中折扣</strong>(%，例：90 = 命中部分省 90%)。Gemini 2.5 起 implicit cache 默认 90% off',
 
     'options.gemini.partial.heading': '节省模式',
@@ -1412,7 +1418,7 @@
     'options.glossary.auto.modelLabel': '术语提取模型',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite（默认，快又便宜）',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash（较慢但语义理解较强）',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash（$1.50 / $7.50）',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash（$0.75 / $3.75）',
     'options.glossary.auto.modelSame': '与主翻译模型相同',
     'options.glossary.auto.modelHint': '术语提取是任务简单的单次请求，Flash Lite 通常已够用，且比 Flash 快 1.5-3 倍、便宜 5 倍',
     'options.glossary.auto.advSummary': '高级设置（等待门槛、Temperature、超时时间、术语提取 Prompt）',
@@ -1588,7 +1594,7 @@
     'options.yt.gemini.modelSame': '（与网页翻译主要预设相同）',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite（$0.25 / $1.50）— 便宜，字幕质量足够',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview（$0.50 / $3.00）— 推荐',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash（$1.50 / $7.50）',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash（$0.75 / $3.75）',
     'options.yt.gemini.modelHint': '选择模型后，下方计价会自动带入参考价；你也可以手动修改',
     'options.yt.gemini.inputLabel': '字幕 Input 单价（USD / 1M tokens）',
     'options.yt.gemini.inputPlaceholder': '（与文章翻译相同）',
@@ -1987,11 +1993,13 @@
     'popup.title.updateAvailable': 'Update available',
     'popup.banner.welcome': '🎉 Updated to v{version}',
     'popup.banner.welcomeBullets': "What's new:",
+    'popup.banner.hl.ios': '**iOS / iPadOS app now available** — Safari extension with four-finger touch translate and the floating button, ready on iPhone / iPad → [Get it on the App Store](https://apps.apple.com/us/app/id6776958298)',
     'popup.banner.hl.epub': '**New: EPUB book translation** (beta) — drop a whole ebook into the Translate document page; a book-wide glossary and consistency scan keep names consistent; download monolingual or bilingual',
     'popup.banner.hl.docfiles': '**New: TXT / Markdown / HTML file translation** — output keeps the original format; glossary import also accepts CSV',
-    'popup.banner.hl.opencc': '**New: Simplified ↔ Traditional Chinese page conversion (free)** — built-in local dictionaries, no API key, works offline',
     'popup.banner.welcomeDismiss': 'Got it',
     'popup.banner.updateNoticeTitle': '📦 Update available',
+    'popup.iosPromo.text': '📱 iOS / iPadOS app is out · Get it on the App Store',
+    'popup.iosPromo.dismiss': 'Dismiss',
     'popup.banner.updateNoticeVersion': 'v{newVersion} (you are on v{currentVersion})',
     'popup.label.displayMode': 'Display mode',
     'popup.label.modeSingle': 'Replace',
@@ -2127,6 +2135,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Update available',
+    'options.iosPromo.badge': '📱 iOS / iPadOS app is out · Get it on the App Store',
     'options.updateBanner.dismiss': "Don't show again",
     'options.updateBanner.dismissTitle': "Don't show update notice again",
     'options.updateBanner.version': 'v{newVersion} (you have v{currentVersion})',
@@ -2269,7 +2278,7 @@
     'options.floating.opacity': 'Button opacity {value}%',
     'options.floating.opacityHint': 'If too prominent, drag left to lower opacity and make the button more subtle',
     'options.fourFinger.heading': 'Four-finger touch translate',
-    'options.fourFinger.intro': 'Off by default to avoid accidental triggers. When on, tap with four fingers to translate and four-finger long-press for the secondary preset; the floating button and hardware keyboard shortcuts are unaffected by this switch',
+    'options.fourFinger.intro': 'On by default. On phones / tablets, tap with four fingers to translate and four-finger long-press for the secondary preset; turn it off here if it triggers accidentally — the floating button and hardware keyboard shortcuts are unaffected by this switch',
     'options.fourFinger.enable': 'Enable four-finger touch gesture',
 
     // ── options currency ─────────────────────────────────
@@ -2313,12 +2322,12 @@
 
     // ── options Gemini tab ───────────────────────────────
     'options.gemini.pricing.heading': 'Model pricing',
-    'options.gemini.pricing.intro.html': 'Shinkansen has built-in Gemini standard tier prices (calibrated <strong id="pricing-calibrated-date">2026-07</strong>), used for translation cost shown in completion notifications and the "Usage history" tab. When Google changes prices, override per-model below; blank means use built-in price. See <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini official pricing page</a> for details',
+    'options.gemini.pricing.intro.html': 'Shinkansen has built-in Gemini standard tier prices (calibrated <strong id="pricing-calibrated-date">2026-08</strong>), used for translation cost shown in completion notifications and the "Usage history" tab. When Google changes prices, override per-model below; blank means use built-in price. See <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini official pricing page</a> for details',
     'options.gemini.pricing.priority': 'Preset translation pricing priority: override → built-in table → "Fallback path price" below. All units are USD per 1M tokens',
     'options.gemini.pricing.flashLite.builtin': 'Built-in $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Built-in $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': 'Built-in $0.30 / $2.50 (no caching)',
-    'options.gemini.pricing.pro.builtin': 'Built-in $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': 'Built-in $0.75 / $3.75 (2026 intro price)',
     'options.gemini.pricing.cachedDiscountHint.html': 'The three columns are <strong>input / output price</strong> (USD/M tokens) and <strong>cache-hit discount</strong> (%, e.g. 90 = cached portion saves 90%). Gemini 2.5+ implicit cache defaults to 90% off',
 
     'options.gemini.partial.heading': 'Save mode',
@@ -2390,7 +2399,7 @@
     'options.glossary.auto.modelLabel': 'Term extraction model',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite (default, fast and cheap)',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash (slower but stronger semantic understanding)',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash ($1.50 / $7.50)',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash ($0.75 / $3.75)',
     'options.glossary.auto.modelSame': 'Same as main translation model',
     'options.glossary.auto.modelHint': 'Term extraction is a simple single-request task; Flash Lite is usually sufficient and 1.5-3x faster + 5x cheaper than Flash',
     'options.glossary.auto.advSummary': 'Advanced (wait threshold, Temperature, timeout, term extraction Prompt)',
@@ -2566,7 +2575,7 @@
     'options.yt.gemini.modelSame': '(Same as web translation primary preset)',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite ($0.25 / $1.50) — cheap, subtitle quality sufficient',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview ($0.50 / $3.00) — recommended',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash ($1.50 / $7.50)',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash ($0.75 / $3.75)',
     'options.yt.gemini.modelHint': 'After selecting a model, the pricing below auto-fills the reference price; you can also modify manually',
     'options.yt.gemini.inputLabel': 'Subtitle Input price (USD / 1M tokens)',
     'options.yt.gemini.inputPlaceholder': '(Same as article translation)',
@@ -2965,11 +2974,13 @@
     'popup.title.updateAvailable': '新バージョンあり',
     'popup.banner.welcome': '🎉 v{version} にアップデートしました',
     'popup.banner.welcomeBullets': 'このバージョンの新機能：',
+    'popup.banner.hl.ios': '**iOS／iPadOS 版が正式リリース**：Safari 拡張機能に 4 本指タッチ翻訳とフローティングボタンを搭載、iPhone / iPad ですぐ使えます → [App Store でダウンロード](https://apps.apple.com/jp/app/id6776958298)',
     'popup.banner.hl.epub': '**「EPUB 電子書籍翻訳」を追加**（beta）：電子書籍を「ドキュメント翻訳」ページに入れるだけで全体を翻訳。書籍全体の用語集と訳後の一貫性スキャンで訳名を統一、単言語版・対訳版をダウンロード可能',
     'popup.banner.hl.docfiles': '**TXT / Markdown / HTML ファイル翻訳を追加**：訳文は元ファイルと同じ形式で出力、用語集のインポートは CSV にも対応',
-    'popup.banner.hl.opencc': '**簡体字・繁体字ページ変換（無料）を追加**：内蔵辞書でローカル変換、API キー不要・オフラインでも利用可能',
     'popup.banner.welcomeDismiss': 'OK',
     'popup.banner.updateNoticeTitle': '📦 新バージョンあり',
+    'popup.iosPromo.text': '📱 iOS／iPadOS 版が App Store に登場',
+    'popup.iosPromo.dismiss': '閉じる',
     'popup.banner.updateNoticeVersion': 'v{newVersion}（現在：v{currentVersion}）',
     'popup.label.displayMode': '表示モード',
     'popup.label.modeSingle': '原文置換',
@@ -3105,6 +3116,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 新バージョンあり',
+    'options.iosPromo.badge': '📱 iOS／iPadOS 版が App Store に登場',
     'options.updateBanner.dismiss': '今後表示しない',
     'options.updateBanner.dismissTitle': '更新通知を今後表示しない',
     'options.updateBanner.version': 'v{newVersion}（現在：v{currentVersion}）',
@@ -3247,7 +3259,7 @@
     'options.floating.opacity': 'ボタンの透明度 {value}%',
     'options.floating.opacityHint': '目立ちすぎる場合は左にドラッグして不透明度を下げ、ボタンを控えめにできます',
     'options.fourFinger.heading': '4 本指タッチ翻訳',
-    'options.fourFinger.intro': '誤操作を防ぐため既定でオフ。オンにするとスマホ / タブレットで 4 本指タップで翻訳、4 本指長押しでセカンダリプリセット。フローティングボタンとハードウェアキーボードのショートカットはこのスイッチの影響を受けません',
+    'options.fourFinger.intro': '既定でオン。スマホ / タブレットで 4 本指タップで翻訳、4 本指長押しでセカンダリプリセット。誤操作が多い場合はここでオフにできます。フローティングボタンとハードウェアキーボードのショートカットはこのスイッチの影響を受けません',
     'options.fourFinger.enable': '4 本指タッチジェスチャを有効化',
 
     // ── options 金額表示通貨 ─────────────────────────────
@@ -3291,12 +3303,12 @@
 
     // ── options Gemini タブ ─────────────────────────────
     'options.gemini.pricing.heading': 'モデル料金',
-    'options.gemini.pricing.intro.html': 'Shinkansen には主要な Gemini モデルの標準ティア単価が組み込まれており（<strong id="pricing-calibrated-date">2026-07</strong> 校正）、翻訳完了通知と「使用量履歴」タブで翻訳コストを計算します。Google が価格を変更した際は下のフィールドで該当モデルを上書きできます。空欄なら組み込み価格を使用。詳細は <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 公式料金ページ</a> をご覧ください',
+    'options.gemini.pricing.intro.html': 'Shinkansen には主要な Gemini モデルの標準ティア単価が組み込まれており（<strong id="pricing-calibrated-date">2026-08</strong> 校正）、翻訳完了通知と「使用量履歴」タブで翻訳コストを計算します。Google が価格を変更した際は下のフィールドで該当モデルを上書きできます。空欄なら組み込み価格を使用。詳細は <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 公式料金ページ</a> をご覧ください',
     'options.gemini.pricing.priority': 'プリセット翻訳の料金優先順位：上書き値 → 組み込み表 → 下の「フォールバック単価」。単位はすべて「100 万トークンあたりの USD」',
     'options.gemini.pricing.flashLite.builtin': '組み込み $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '組み込み $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': '組み込み $0.30 / $2.50（キャッシュ非対応）',
-    'options.gemini.pricing.pro.builtin': '組み込み $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': '組み込み $0.75 / $3.75（2026 年プロモ価格）',
     'options.gemini.pricing.cachedDiscountHint.html': '3 つの列は順に <strong>input / output 単価</strong>（USD/M tokens）と <strong>cache ヒット割引</strong>（%、例：90 = ヒット部分は 90% 節約）。Gemini 2.5 以降、implicit cache はデフォルト 90% off',
 
     'options.gemini.partial.heading': '節約モード',
@@ -3368,7 +3380,7 @@
     'options.glossary.auto.modelLabel': '用語抽出モデル',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite（デフォルト、高速＆安価）',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash（やや遅いが意味理解が強い）',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash（$1.50 / $7.50）',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash（$0.75 / $3.75）',
     'options.glossary.auto.modelSame': 'メイン翻訳モデルと同じ',
     'options.glossary.auto.modelHint': '用語抽出はシンプルな単発リクエストのため、通常は Flash Lite で十分。Flash より 1.5–3 倍高速、5 倍安価です',
     'options.glossary.auto.advSummary': '詳細設定（待機しきい値、Temperature、タイムアウト、用語抽出プロンプト）',
@@ -3544,7 +3556,7 @@
     'options.yt.gemini.modelSame': '（ウェブページ翻訳のメインプリセットと同じ）',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite（$0.25 / $1.50）— 安価、字幕品質に十分',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview（$0.50 / $3.00）— 推奨',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash（$1.50 / $7.50）',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash（$0.75 / $3.75）',
     'options.yt.gemini.modelHint': 'モデルを選択すると、下の料金に参考価格が自動入力されます。手動修正も可能',
     'options.yt.gemini.inputLabel': '字幕 Input 単価（USD / 1M tokens）',
     'options.yt.gemini.inputPlaceholder': '（記事翻訳と同じ）',
@@ -3943,11 +3955,13 @@
     'popup.title.updateAvailable': '새 버전 있음',
     'popup.banner.welcome': '🎉 v{version}(으)로 업그레이드됨',
     'popup.banner.welcomeBullets': '이 버전 새 기능:',
+    'popup.banner.hl.ios': '**iOS / iPadOS 버전 정식 출시** — Safari 확장 프로그램에 네 손가락 터치 번역과 플로팅 버튼 탑재, iPhone / iPad에서 바로 사용 → [App Store에서 받기](https://apps.apple.com/kr/app/id6776958298)',
     'popup.banner.hl.epub': '**「EPUB 전자책 번역」 추가**(beta): 전자책을 「문서 번역」 페이지에 넣기만 하면 전체 번역. 책 전체 용어집과 번역 후 일관성 검사로 번역명을 통일, 단일 언어판·대역판 다운로드 가능',
     'popup.banner.hl.docfiles': '**TXT / Markdown / HTML 파일 번역 추가**: 번역 결과는 원본과 같은 형식으로 출력, 용어집 가져오기는 CSV도 지원',
-    'popup.banner.hl.opencc': '**간체 ↔ 번체 페이지 변환(무료) 추가**: 내장 사전으로 로컬 변환, API 키 불필요·오프라인 사용 가능',
     'popup.banner.welcomeDismiss': '확인',
     'popup.banner.updateNoticeTitle': '📦 새 버전 있음',
+    'popup.iosPromo.text': '📱 iOS / iPadOS 버전 App Store 출시',
+    'popup.iosPromo.dismiss': '닫기',
     'popup.banner.updateNoticeVersion': 'v{newVersion} (현재: v{currentVersion})',
     'popup.label.displayMode': '표시 모드',
     'popup.label.modeSingle': '원문 대체',
@@ -4083,6 +4097,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 새 버전 있음',
+    'options.iosPromo.badge': '📱 iOS / iPadOS 버전 App Store 출시',
     'options.updateBanner.dismiss': '다시 표시 안 함',
     'options.updateBanner.dismissTitle': '업데이트 알림 다시 표시 안 함',
     'options.updateBanner.version': 'v{newVersion} (현재: v{currentVersion})',
@@ -4225,7 +4240,7 @@
     'options.floating.opacity': '버튼 투명도 {value}%',
     'options.floating.opacityHint': '너무 눈에 띄면 왼쪽으로 드래그해 불투명도를 낮춰 버튼을 더 은은하게 만들 수 있습니다',
     'options.fourFinger.heading': '네 손가락 터치 번역',
-    'options.fourFinger.intro': '오작동을 막기 위해 기본 꺼짐. 켜면 휴대폰 / 태블릿에서 네 손가락으로 탭하면 번역, 네 손가락 길게 누르면 보조 프리셋. 플로팅 버튼과 하드웨어 키보드 단축키는 이 스위치의 영향을 받지 않습니다',
+    'options.fourFinger.intro': '기본 켜짐. 휴대폰 / 태블릿에서 네 손가락으로 탭하면 번역, 네 손가락 길게 누르면 보조 프리셋. 오작동이 잦으면 여기서 끌 수 있습니다. 플로팅 버튼과 하드웨어 키보드 단축키는 이 스위치의 영향을 받지 않습니다',
     'options.fourFinger.enable': '네 손가락 터치 제스처 사용',
 
     // ── options 금액 표시 통화 ─────────────────────────────
@@ -4269,12 +4284,12 @@
 
     // ── options Gemini 탭 ─────────────────────────────
     'options.gemini.pricing.heading': '모델 가격',
-    'options.gemini.pricing.intro.html': 'Shinkansen은 알려진 Gemini 모델의 표준 등급 단가가 내장되어 있으며 (<strong id="pricing-calibrated-date">2026-07</strong> 보정됨), 번역 비용을 계산하여 번역 완료 알림과 "사용 기록" 탭에 표시합니다. Google이 가격을 변경할 때 아래에서 해당 모델을 덮어쓸 수 있으며, 비워두면 내장 가격을 사용합니다. 자세한 요율은 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 공식 가격 페이지</a>를 참조하세요',
+    'options.gemini.pricing.intro.html': 'Shinkansen은 알려진 Gemini 모델의 표준 등급 단가가 내장되어 있으며 (<strong id="pricing-calibrated-date">2026-08</strong> 보정됨), 번역 비용을 계산하여 번역 완료 알림과 "사용 기록" 탭에 표시합니다. Google이 가격을 변경할 때 아래에서 해당 모델을 덮어쓸 수 있으며, 비워두면 내장 가격을 사용합니다. 자세한 요율은 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 공식 가격 페이지</a>를 참조하세요',
     'options.gemini.pricing.priority': '프리셋 번역의 가격 우선순위: 덮어쓰기 값 → 내장 표 → 아래 "백업 경로 단가". 단위는 모두 "100만 tokens당 USD 가격"',
     'options.gemini.pricing.flashLite.builtin': '내장 $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '내장 $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': '내장 $0.30 / $2.50 (캐시 미지원)',
-    'options.gemini.pricing.pro.builtin': '내장 $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': '내장 $0.75 / $3.75 (2026 프로모션 가격)',
     'options.gemini.pricing.cachedDiscountHint.html': '세 열은 차례대로 <strong>input / output 단가</strong>(USD/M tokens)와 <strong>cache 적중 할인</strong>(%, 예: 90 = 적중 부분 90% 절약)입니다. Gemini 2.5부터 implicit cache 기본 90% off',
 
     'options.gemini.partial.heading': '절약 모드',
@@ -4346,7 +4361,7 @@
     'options.glossary.auto.modelLabel': '용어 추출 모델',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite (기본, 빠르고 저렴)',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash (다소 느리지만 의미 이해 강함)',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash ($1.50 / $7.50)',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash ($0.75 / $3.75)',
     'options.glossary.auto.modelSame': '메인 번역 모델과 동일',
     'options.glossary.auto.modelHint': '용어 추출은 단순한 단일 요청이므로 보통 Flash Lite로 충분하며, Flash보다 1.5–3배 빠르고 5배 저렴합니다',
     'options.glossary.auto.advSummary': '고급 설정 (대기 임계값, Temperature, 시간 초과, 용어 추출 Prompt)',
@@ -4522,7 +4537,7 @@
     'options.yt.gemini.modelSame': '(웹 페이지 번역 메인 프리셋과 동일)',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite ($0.25 / $1.50) — 저렴, 자막 품질 충분',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview ($0.50 / $3.00) — 권장',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash ($1.50 / $7.50)',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash ($0.75 / $3.75)',
     'options.yt.gemini.modelHint': '모델 선택 후 아래 가격에 참고가가 자동 입력됩니다; 수동으로 수정도 가능합니다',
     'options.yt.gemini.inputLabel': '자막 Input 단가 (USD / 1M tokens)',
     'options.yt.gemini.inputPlaceholder': '(글 번역과 동일)',
@@ -4920,11 +4935,13 @@
     'popup.title.updateAvailable': 'Nueva versión disponible',
     'popup.banner.welcome': '🎉 Actualizado a v{version}',
     'popup.banner.welcomeBullets': 'Novedades de esta versión:',
+    'popup.banner.hl.ios': '**La app para iOS / iPadOS ya está disponible** — extensión de Safari con traducción por toque de cuatro dedos y botón flotante, lista en iPhone / iPad → [Descargar en el App Store](https://apps.apple.com/es/app/id6776958298)',
     'popup.banner.hl.epub': '**Nuevo: traducción de libros EPUB** (beta) — arrastra un libro entero a la página «Traducir documento»; el glosario de todo el libro y el análisis de coherencia mantienen los nombres uniformes; descarga monolingüe o bilingüe',
     'popup.banner.hl.docfiles': '**Nuevo: traducción de archivos TXT / Markdown / HTML** — la salida conserva el formato original; el glosario también se puede importar en CSV',
-    'popup.banner.hl.opencc': '**Nuevo: conversión de páginas entre chino simplificado y tradicional (gratis)** — diccionarios locales integrados, sin clave API, funciona sin conexión',
     'popup.banner.welcomeDismiss': 'Entendido',
     'popup.banner.updateNoticeTitle': '📦 Nueva versión disponible',
+    'popup.iosPromo.text': '📱 App para iOS / iPadOS ya en el App Store',
+    'popup.iosPromo.dismiss': 'Cerrar',
     'popup.banner.updateNoticeVersion': 'v{newVersion} (tu versión actual: v{currentVersion})',
     'popup.label.displayMode': 'Modo de visualización',
     'popup.label.modeSingle': 'Reemplazar original',
@@ -5060,6 +5077,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Nueva versión disponible',
+    'options.iosPromo.badge': '📱 App para iOS / iPadOS ya en el App Store',
     'options.updateBanner.dismiss': 'No volver a mostrar',
     'options.updateBanner.dismissTitle': 'No volver a mostrar avisos de actualización',
     'options.updateBanner.version': 'v{newVersion} (tu versión actual: v{currentVersion})',
@@ -5202,7 +5220,7 @@
     'options.floating.opacity': 'Opacidad del botón {value}%',
     'options.floating.opacityHint': 'Si resulta muy llamativo, arrastra a la izquierda para bajar la opacidad y hacer el botón más discreto',
     'options.fourFinger.heading': 'Traducción táctil con cuatro dedos',
-    'options.fourFinger.intro': 'Desactivado por defecto para evitar activaciones accidentales. Al activarlo, en móviles / tabletas toca con cuatro dedos para traducir y mantén pulsado con cuatro dedos para el preajuste secundario; el botón flotante y los atajos de teclado físico no se ven afectados por este interruptor',
+    'options.fourFinger.intro': 'Activado por defecto. En móviles / tabletas toca con cuatro dedos para traducir y mantén pulsado con cuatro dedos para el preajuste secundario; si se activa accidentalmente puedes desactivarlo aquí. El botón flotante y los atajos de teclado físico no se ven afectados por este interruptor',
     'options.fourFinger.enable': 'Activar gesto táctil de cuatro dedos',
 
     // ── options moneda mostrada ─────────────────────────────
@@ -5246,12 +5264,12 @@
 
     // ── options pestaña Gemini ─────────────────────────────
     'options.gemini.pricing.heading': 'Precios de los modelos',
-    'options.gemini.pricing.intro.html': 'Shinkansen incluye los precios estándar de los modelos Gemini conocidos (calibrados <strong id="pricing-calibrated-date">2026-07</strong>) para calcular el coste de la traducción y mostrarlo en la notificación de fin de traducción y en la pestaña "Historial de uso". Si Google cambia los precios puedes sobrescribir el modelo correspondiente abajo; en blanco se usa el precio integrado. Tarifas detalladas en la <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">página oficial de precios de Gemini</a>',
+    'options.gemini.pricing.intro.html': 'Shinkansen incluye los precios estándar de los modelos Gemini conocidos (calibrados <strong id="pricing-calibrated-date">2026-08</strong>) para calcular el coste de la traducción y mostrarlo en la notificación de fin de traducción y en la pestaña "Historial de uso". Si Google cambia los precios puedes sobrescribir el modelo correspondiente abajo; en blanco se usa el precio integrado. Tarifas detalladas en la <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">página oficial de precios de Gemini</a>',
     'options.gemini.pricing.priority': 'Prioridad de cálculo en la traducción de preajustes: valor sobrescrito → tabla integrada → "precio fallback" de abajo. Las unidades son siempre "USD por 1M tokens"',
     'options.gemini.pricing.flashLite.builtin': 'Integrado $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Integrado $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': 'Integrado $0.30 / $2.50 (sin caché)',
-    'options.gemini.pricing.pro.builtin': 'Integrado $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': 'Integrado $0.75 / $3.75 (precio promocional 2026)',
     'options.gemini.pricing.cachedDiscountHint.html': 'Las tres columnas son <strong>precio input / output</strong> (USD/M tokens) y <strong>descuento de cache hit</strong> (%, ej.: 90 = la parte cacheada ahorra 90%). Desde Gemini 2.5, la implicit cache es por defecto 90% off',
 
     'options.gemini.partial.heading': 'Modo ahorro',
@@ -5323,7 +5341,7 @@
     'options.glossary.auto.modelLabel': 'Modelo de extracción',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite (por defecto, rápido y barato)',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash (más lento pero entiende mejor el sentido)',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash ($1.50 / $7.50)',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash ($0.75 / $3.75)',
     'options.glossary.auto.modelSame': 'Igual que el modelo de traducción principal',
     'options.glossary.auto.modelHint': 'La extracción de términos es una tarea simple de una sola petición; Flash Lite suele ser suficiente y es 1.5–3 veces más rápido y 5 veces más barato que Flash',
     'options.glossary.auto.advSummary': 'Avanzado (umbral de espera, Temperature, tiempo de espera, prompt de extracción)',
@@ -5499,7 +5517,7 @@
     'options.yt.gemini.modelSame': '(igual que el preajuste principal de la traducción web)',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite ($0.25 / $1.50) — barato, calidad suficiente para subtítulos',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview ($0.50 / $3.00) — recomendado',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash ($1.50 / $7.50)',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash ($0.75 / $3.75)',
     'options.yt.gemini.modelHint': 'Al elegir un modelo, el campo de precios de abajo se rellena con el precio de referencia; también se puede modificar a mano',
     'options.yt.gemini.inputLabel': 'Precio Input subtítulos (USD / 1M tokens)',
     'options.yt.gemini.inputPlaceholder': '(igual que la traducción de artículos)',
@@ -5897,11 +5915,13 @@
     'popup.title.updateAvailable': 'Nouvelle version disponible',
     'popup.banner.welcome': '🎉 Mis à jour vers v{version}',
     'popup.banner.welcomeBullets': 'Nouveautés de cette version :',
+    'popup.banner.hl.ios': "**L'app iOS / iPadOS est disponible** — extension Safari avec traduction par toucher à quatre doigts et bouton flottant, prête sur iPhone / iPad → [Télécharger sur l'App Store](https://apps.apple.com/fr/app/id6776958298)",
     'popup.banner.hl.epub': "**Nouveau : traduction de livres EPUB** (bêta) — déposez un livre entier dans la page « Traduire un document » ; le glossaire du livre et l'analyse de cohérence gardent les noms uniformes ; téléchargement monolingue ou bilingue",
     'popup.banner.hl.docfiles': "**Nouveau : traduction de fichiers TXT / Markdown / HTML** — la sortie conserve le format d'origine ; le glossaire peut aussi être importé en CSV",
-    'popup.banner.hl.opencc': '**Nouveau : conversion de pages entre chinois simplifié et traditionnel (gratuit)** — dictionnaires locaux intégrés, sans clé API, fonctionne hors ligne',
     'popup.banner.welcomeDismiss': 'Compris',
     'popup.banner.updateNoticeTitle': '📦 Nouvelle version disponible',
+    'popup.iosPromo.text': '📱 App iOS / iPadOS disponible sur l\'App Store',
+    'popup.iosPromo.dismiss': 'Fermer',
     'popup.banner.updateNoticeVersion': 'v{newVersion} (votre version actuelle : v{currentVersion})',
     'popup.label.displayMode': 'Mode d\'affichage',
     'popup.label.modeSingle': 'Remplacer l\'original',
@@ -6037,6 +6057,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Nouvelle version disponible',
+    'options.iosPromo.badge': '📱 App iOS / iPadOS disponible sur l\'App Store',
     'options.updateBanner.dismiss': 'Ne plus afficher',
     'options.updateBanner.dismissTitle': 'Ne plus afficher les avis de mise à jour',
     'options.updateBanner.version': 'v{newVersion} (votre version actuelle : v{currentVersion})',
@@ -6179,7 +6200,7 @@
     'options.floating.opacity': 'Opacité du bouton {value}%',
     'options.floating.opacityHint': 'Si trop visible, glissez vers la gauche pour réduire l\'opacité et rendre le bouton plus discret',
     'options.fourFinger.heading': 'Traduction tactile à quatre doigts',
-    'options.fourFinger.intro': 'Désactivé par défaut pour éviter les déclenchements accidentels. Une fois activé, sur téléphone / tablette touchez avec quatre doigts pour traduire, appui long à quatre doigts pour le préréglage secondaire ; le bouton flottant et les raccourcis clavier matériels ne sont pas affectés par cet interrupteur',
+    'options.fourFinger.intro': 'Activé par défaut. Sur téléphone / tablette touchez avec quatre doigts pour traduire, appui long à quatre doigts pour le préréglage secondaire ; en cas de déclenchements accidentels vous pouvez le désactiver ici. Le bouton flottant et les raccourcis clavier matériels ne sont pas affectés par cet interrupteur',
     'options.fourFinger.enable': 'Activer le geste tactile à quatre doigts',
 
     // ── options devise d\'affichage ─────────────────────────────
@@ -6223,12 +6244,12 @@
 
     // ── options onglet Gemini ─────────────────────────────
     'options.gemini.pricing.heading': 'Tarification des modèles',
-    'options.gemini.pricing.intro.html': 'Shinkansen intègre les tarifs standards des modèles Gemini connus (calibrés <strong id="pricing-calibrated-date">2026-07</strong>) pour calculer le coût de la traduction et l\'afficher dans la notification de fin et dans l\'onglet « Historique d\'utilisation ». Si Google change ses prix, vous pouvez surcharger le modèle correspondant ci-dessous ; vide = prix intégré. Tarifs détaillés sur la <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">page officielle des prix Gemini</a>',
+    'options.gemini.pricing.intro.html': 'Shinkansen intègre les tarifs standards des modèles Gemini connus (calibrés <strong id="pricing-calibrated-date">2026-08</strong>) pour calculer le coût de la traduction et l\'afficher dans la notification de fin et dans l\'onglet « Historique d\'utilisation ». Si Google change ses prix, vous pouvez surcharger le modèle correspondant ci-dessous ; vide = prix intégré. Tarifs détaillés sur la <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">page officielle des prix Gemini</a>',
     'options.gemini.pricing.priority': 'Priorité de tarification de la traduction par préréglage : valeur de surcharge → table intégrée → « tarif de fallback » ci-dessous. Unité : « USD pour 1M tokens »',
     'options.gemini.pricing.flashLite.builtin': 'Intégré $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Intégré $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': 'Intégré $0.30 / $2.50 (sans cache)',
-    'options.gemini.pricing.pro.builtin': 'Intégré $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': 'Intégré $0.75 / $3.75 (prix promo 2026)',
     'options.gemini.pricing.cachedDiscountHint.html': 'Les trois colonnes sont, dans l\'ordre, <strong>tarif input / output</strong> (USD/M tokens) et <strong>remise sur cache hit</strong> (%, ex. : 90 = la portion en cache économise 90%). Depuis Gemini 2.5, l\'implicit cache est par défaut à 90% off',
 
     'options.gemini.partial.heading': 'Mode économie',
@@ -6300,7 +6321,7 @@
     'options.glossary.auto.modelLabel': 'Modèle d\'extraction de termes',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite (par défaut, rapide et économique)',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash (un peu plus lent mais meilleure compréhension sémantique)',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash ($1.50 / $7.50)',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash ($0.75 / $3.75)',
     'options.glossary.auto.modelSame': 'Identique au modèle de traduction principal',
     'options.glossary.auto.modelHint': 'L\'extraction de termes est une requête simple unique, Flash Lite suffit généralement et est 1.5–3 fois plus rapide et 5 fois moins cher que Flash',
     'options.glossary.auto.advSummary': 'Réglages avancés (seuil d\'attente, Temperature, délai d\'expiration, prompt d\'extraction)',
@@ -6476,7 +6497,7 @@
     'options.yt.gemini.modelSame': '(identique au préréglage principal de la traduction web)',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite ($0.25 / $1.50) — économique, qualité de sous-titres suffisante',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview ($0.50 / $3.00) — recommandé',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash ($1.50 / $7.50)',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash ($0.75 / $3.75)',
     'options.yt.gemini.modelHint': 'Après sélection du modèle, le tarif ci-dessous est rempli automatiquement avec le prix de référence ; vous pouvez aussi le modifier à la main',
     'options.yt.gemini.inputLabel': 'Tarif Input sous-titres (USD / 1M tokens)',
     'options.yt.gemini.inputPlaceholder': '(identique à la traduction d\'articles)',
@@ -6874,11 +6895,13 @@
     'popup.title.updateAvailable': 'Neue Version verfügbar',
     'popup.banner.welcome': '🎉 Aktualisiert auf v{version}',
     'popup.banner.welcomeBullets': 'Neu in dieser Version:',
+    'popup.banner.hl.ios': '**iOS / iPadOS-App jetzt verfügbar** — Safari-Erweiterung mit Vier-Finger-Übersetzung und schwebender Schaltfläche, sofort einsatzbereit auf iPhone / iPad → [Im App Store laden](https://apps.apple.com/de/app/id6776958298)',
     'popup.banner.hl.epub': '**Neu: EPUB-Buchübersetzung** (Beta) — ein ganzes E-Book auf der Seite „Dokument übersetzen" übersetzen; buchweites Glossar und Konsistenzprüfung halten Namen einheitlich; Download einsprachig oder zweisprachig',
     'popup.banner.hl.docfiles': '**Neu: Übersetzung von TXT- / Markdown- / HTML-Dateien** — Ausgabe behält das Originalformat; Glossar-Import unterstützt auch CSV',
-    'popup.banner.hl.opencc': '**Neu: Umwandlung zwischen vereinfachtem und traditionellem Chinesisch (kostenlos)** — integrierte lokale Wörterbücher, ohne API-Key, offline nutzbar',
     'popup.banner.welcomeDismiss': 'OK',
     'popup.banner.updateNoticeTitle': '📦 Neue Version verfügbar',
+    'popup.iosPromo.text': '📱 iOS / iPadOS-App jetzt im App Store',
+    'popup.iosPromo.dismiss': 'Schließen',
     'popup.banner.updateNoticeVersion': 'v{newVersion} (deine Version: v{currentVersion})',
     'popup.label.displayMode': 'Anzeigemodus',
     'popup.label.modeSingle': 'Original ersetzen',
@@ -7014,6 +7037,7 @@
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Neue Version verfügbar',
+    'options.iosPromo.badge': '📱 iOS / iPadOS-App jetzt im App Store',
     'options.updateBanner.dismiss': 'Nicht mehr anzeigen',
     'options.updateBanner.dismissTitle': 'Update-Hinweise nicht mehr anzeigen',
     'options.updateBanner.version': 'v{newVersion} (deine Version: v{currentVersion})',
@@ -7156,7 +7180,7 @@
     'options.floating.opacity': 'Schaltflächen-Deckkraft {value}%',
     'options.floating.opacityHint': 'Wenn zu auffällig, nach links ziehen, um die Deckkraft zu verringern und die Schaltfläche dezenter zu machen',
     'options.fourFinger.heading': 'Vier-Finger-Touch-Übersetzung',
-    'options.fourFinger.intro': 'Standardmäßig aus, um versehentliches Auslösen zu vermeiden. Wenn aktiviert, auf Smartphones / Tablets mit vier Fingern tippen zum Übersetzen, Vier-Finger-Langdruck für die sekundäre Voreinstellung; die schwebende Schaltfläche und Hardware-Tastaturkürzel sind von diesem Schalter nicht betroffen',
+    'options.fourFinger.intro': 'Standardmäßig an. Auf Smartphones / Tablets mit vier Fingern tippen zum Übersetzen, Vier-Finger-Langdruck für die sekundäre Voreinstellung; bei versehentlichem Auslösen hier deaktivierbar. Die schwebende Schaltfläche und Hardware-Tastaturkürzel sind von diesem Schalter nicht betroffen',
     'options.fourFinger.enable': 'Vier-Finger-Touch-Geste aktivieren',
 
     // ── options Anzeigewährung ─────────────────────────────
@@ -7200,12 +7224,12 @@
 
     // ── options Gemini-Reiter ─────────────────────────────
     'options.gemini.pricing.heading': 'Modellpreise',
-    'options.gemini.pricing.intro.html': 'Shinkansen enthält Standard-Stufenpreise bekannter Gemini-Modelle (kalibriert <strong id="pricing-calibrated-date">2026-07</strong>) zur Berechnung der Übersetzungskosten, angezeigt in der Übersetzungsabschluss-Benachrichtigung und im Reiter „Nutzungsverlauf". Bei Preisänderungen durch Google können die entsprechenden Modelle unten überschrieben werden; leer = eingebauter Preis. Detaillierte Tarife auf der <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">offiziellen Gemini-Preisseite</a>',
+    'options.gemini.pricing.intro.html': 'Shinkansen enthält Standard-Stufenpreise bekannter Gemini-Modelle (kalibriert <strong id="pricing-calibrated-date">2026-08</strong>) zur Berechnung der Übersetzungskosten, angezeigt in der Übersetzungsabschluss-Benachrichtigung und im Reiter „Nutzungsverlauf". Bei Preisänderungen durch Google können die entsprechenden Modelle unten überschrieben werden; leer = eingebauter Preis. Detaillierte Tarife auf der <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">offiziellen Gemini-Preisseite</a>',
     'options.gemini.pricing.priority': 'Preispriorität für die Übersetzung von Voreinstellungen: Überschreibungswert → eingebaute Tabelle → „Fallback-Preis" unten. Einheit jeweils „USD pro 1M Tokens"',
     'options.gemini.pricing.flashLite.builtin': 'Eingebaut $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Eingebaut $0.50 / $3.00',
     'options.gemini.pricing.flashLite35.builtin': 'Eingebaut $0.30 / $2.50 (kein Cache)',
-    'options.gemini.pricing.pro.builtin': 'Eingebaut $1.50 / $7.50',
+    'options.gemini.pricing.flash37.builtin': 'Eingebaut $0.75 / $3.75 (Aktionspreis 2026)',
     'options.gemini.pricing.cachedDiscountHint.html': 'Die drei Spalten sind <strong>Input- / Output-Preis</strong> (USD/M Tokens) und <strong>Cache-Hit-Rabatt</strong> (%, z. B. 90 = der gecachte Anteil spart 90%). Ab Gemini 2.5 hat Implicit Cache standardmäßig 90% off',
 
     'options.gemini.partial.heading': 'Sparmodus',
@@ -7277,7 +7301,7 @@
     'options.glossary.auto.modelLabel': 'Modell zur Begriffsextraktion',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite (Standard, schnell und günstig)',
     'options.glossary.auto.modelFlash': 'Gemini 3 Flash (etwas langsamer, aber besseres Sinnverständnis)',
-    'options.glossary.auto.modelPro': 'Gemini 3.6 Flash ($1.50 / $7.50)',
+    'options.glossary.auto.modelPro': 'Gemini 3.7 Flash ($0.75 / $3.75)',
     'options.glossary.auto.modelSame': 'Wie das Haupt-Übersetzungsmodell',
     'options.glossary.auto.modelHint': 'Begriffsextraktion ist eine einfache Einzelanfrage, Flash Lite reicht meist aus und ist 1.5–3-mal schneller und 5-mal günstiger als Flash',
     'options.glossary.auto.advSummary': 'Erweitert (Wartegrenze, Temperature, Timeout, Begriffsextraktions-Prompt)',
@@ -7453,7 +7477,7 @@
     'options.yt.gemini.modelSame': '(wie Hauptvoreinstellung der Webseiten-Übersetzung)',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite ($0.25 / $1.50) — günstig, Untertitel-Qualität ausreichend',
     'options.yt.gemini.modelFlash': 'gemini-3-flash-preview ($0.50 / $3.00) — empfohlen',
-    'options.yt.gemini.modelPro': 'gemini-3.6-flash ($1.50 / $7.50)',
+    'options.yt.gemini.modelPro': 'gemini-3.7-flash ($0.75 / $3.75)',
     'options.yt.gemini.modelHint': 'Nach Auswahl des Modells wird der Referenzpreis automatisch unten eingetragen; manuell anpassbar',
     'options.yt.gemini.inputLabel': 'Untertitel-Input-Preis (USD / 1M Tokens)',
     'options.yt.gemini.inputPlaceholder': '(wie Artikel-Übersetzung)',
@@ -8005,12 +8029,24 @@
     };
   }
 
+  // iOS App Store 上架提示連結:依 UI 語系決定 storefront。桌面瀏覽器開無 country
+  // 前綴的 apps.apple.com 連結會落在 us store,與使用者語系不符(2026-08-20 Jimmy
+  // 回報)。單一資料源:options 頁首 pill 與 popup banner 共用本函式。
+  function iosAppStoreUrl(uiPref) {
+    const region = ({
+      'zh-TW': 'tw', 'zh-CN': 'cn', en: 'us', ja: 'jp',
+      ko: 'kr', es: 'es', fr: 'fr', de: 'de',
+    })[getUiLanguage(uiPref || 'auto')] || 'us';
+    return 'https://apps.apple.com/' + region + '/app/id6776958298';
+  }
+
   const api = {
     t,
     bgErrorMessage,
     applyI18n,
     getUiLanguage,
     subscribeUiLanguageChange,
+    iosAppStoreUrl,
     // 給 spec 用的內部 helpers
     _tables: TABLES,
     _supported: SUPPORTED_UI_LANGS,

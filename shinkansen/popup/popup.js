@@ -87,7 +87,11 @@ function highlightToHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-  return esc.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  return esc
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    // markdown 連結 [text](https://…):先 escape 才轉,href 限 https(防呆——
+    // 字串來源是 dev 維護的 i18n dict,非 user input)。iOS 上架泡泡帶商店連結用
+    .replace(/\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 }
 
 const $ = (id) => document.getElementById(id);
@@ -229,6 +233,17 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+// iOS 上架提示 × ——寫 sync 旗標永久關閉(跨裝置同步,不再顯示)
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('#ios-promo-dismiss')) return;
+  try {
+    $('ios-promo-banner').hidden = true;
+    await browser.storage.sync.set({ iosPromoDismissed: true });
+  } catch (err) {
+    console.error('[shinkansen] ios-promo dismiss failed', err);
+  }
+});
+
 // v1.6.3: 用 document-level event delegation 處理 update banner 點擊，
 // 不依賴 init() async timing 也不靠 a-tag navigate 行為——任何時候 button 出現在
 // DOM 都能 click 觸發。click handler 內臨時讀 storage 拿 release URL，最穩固。
@@ -267,6 +282,7 @@ async function init() {
   // 兩者互斥——CWS 自動升級後使用者不需要看「有新版可下載」（已在最新），看「歡迎升級」即可；
   // unpacked 使用者沒 onInstalled update 事件，看到的是黃色 update banner。
   let welcomeShown = false;
+  let welcomeVersion = null; // uiLanguage 解析後重渲染泡泡用(見下方 applyI18n 區塊)
   try {
     const { welcomeNotice } = await browser.storage.local.get('welcomeNotice');
     const decision = shouldShowWelcomeNotice(welcomeNotice, manifest.version);
@@ -275,12 +291,13 @@ async function init() {
       await browser.storage.local.remove('welcomeNotice');
     } else if (decision.show) {
       welcomeShown = true;
+      welcomeVersion = welcomeNotice.version;
       $('update-dot').hidden = false;
       $('welcome-banner').hidden = false;
       $('welcome-banner-title').textContent = t('popup.banner.welcome', { version: welcomeNotice.version });
       // AMO source review: RELEASE_HIGHLIGHT_KEYS 對應 lib/i18n.js 內 dev hardcoded 的
       // 譯文字串（見 lib/release-highlights.js），highlightToHtml 是本檔內的安全
-      // markdown-to-html 轉換（只處理 **bold** → <strong>），無 user input。
+      // markdown-to-html 轉換（**bold** → <strong>、[text](https://…) → <a>），無 user input。
       $('welcome-bullets').innerHTML = RELEASE_HIGHLIGHT_KEYS
         .map(k => `<li>${highlightToHtml(t(k))}</li>`)
         .join('');
@@ -317,7 +334,7 @@ async function init() {
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
   // P2 (v1.8.60): UI 語系獨立於 targetLanguage,讀 uiLanguage('auto' / 三語)後
   // 透過 I18N.getUiLanguage('auto') 解析為 navigator.language 推導值
-  const { autoTranslate = false, displayMode = 'single', translatePresets = [], uiLanguage, targetLanguage, autoConvertZh = false } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'uiLanguage', 'targetLanguage', 'autoConvertZh']);
+  const { autoTranslate = false, displayMode = 'single', translatePresets = [], uiLanguage, targetLanguage, autoConvertZh = true } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'uiLanguage', 'targetLanguage', 'autoConvertZh']);
   const { apiKey = '' } = await browser.storage.local.get(['apiKey']);
   $('auto').checked = autoTranslate;
 
@@ -335,11 +352,31 @@ async function init() {
   // P2: UI i18n — 寫入 _currentTarget(現在叫「ui dict 語系」更貼切,但變數名沿用),
   // 套 applyI18n,訂閱 storage.uiLanguage 變動
   _currentTarget = I18N ? I18N.getUiLanguage(uiLanguage || 'auto') : 'zh-TW';
+  // iOS 上架提示 banner:iOS build 不顯示;使用者按 × 後(sync.iosPromoDismissed)永久關閉。
+  // href 依 UI 語系決定 storefront(語系切換 callback 內同步更新)
+  {
+    const { iosPromoDismissed = false } = await browser.storage.sync.get(['iosPromoDismissed']);
+    $('ios-promo-banner').hidden = IS_IOS_BUILD || iosPromoDismissed === true;
+    if (I18N?.iosAppStoreUrl) $('ios-promo-link').href = I18N.iosAppStoreUrl(_currentTarget);
+  }
+  // welcome 泡泡在 uiLanguage 解析前就渲染(上方 banner 區塊,t() 當時 fallback
+  // zh-TW),非中文 UI 使用者會看到繁中條目——語系就緒後重渲染一次(2026-08-20 發現
+  // 既有 drift,泡泡帶 App Store 連結對外通知後不可再放著)。語系切換 callback 也重渲染
+  const rerenderWelcomeBullets = () => {
+    if (!welcomeShown) return;
+    $('welcome-banner-title').textContent = t('popup.banner.welcome', { version: welcomeVersion });
+    $('welcome-bullets').innerHTML = RELEASE_HIGHLIGHT_KEYS
+      .map(k => `<li>${highlightToHtml(t(k))}</li>`)
+      .join('');
+  };
   if (I18N) {
     I18N.applyI18n(document, _currentTarget);
+    rerenderWelcomeBullets();
     I18N.subscribeUiLanguageChange((newUi /* , newPref */) => {
       _currentTarget = newUi || 'zh-TW';
       I18N.applyI18n(document, _currentTarget);
+      if (I18N.iosAppStoreUrl) $('ios-promo-link').href = I18N.iosAppStoreUrl(_currentTarget);
+      rerenderWelcomeBullets();
       // 動態欄位重新整理(cache / usage / button label / shortcut)
       refreshCacheInfo();
       refreshUsageInfo();

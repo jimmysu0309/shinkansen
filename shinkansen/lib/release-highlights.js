@@ -19,7 +19,7 @@
  *   - **patch 升級** → 完全不用動（patch 不觸發 welcome notice）
  */
 export const RELEASE_HIGHLIGHT_KEYS = [
+  'popup.banner.hl.ios',
   'popup.banner.hl.epub',
   'popup.banner.hl.docfiles',
-  'popup.banner.hl.opencc',
 ];

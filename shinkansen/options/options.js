@@ -49,7 +49,7 @@ const MODEL_OVERRIDE_FIELDS = [
   { model: 'gemini-3.1-flash-lite', input: 'override-lite-input',   output: 'override-lite-output',   discount: 'override-lite-discount' },
   { model: 'gemini-3.5-flash-lite', input: 'override-lite35-input', output: 'override-lite35-output', discount: 'override-lite35-discount' },
   { model: 'gemini-3-flash-preview', input: 'override-flash-input', output: 'override-flash-output',  discount: 'override-flash-discount' },
-  { model: 'gemini-3.6-flash',      input: 'override-pro-input',    output: 'override-pro-output',    discount: 'override-pro-discount' },
+  { model: 'gemini-3.7-flash',      input: 'override-flash37-input', output: 'override-flash37-output', discount: 'override-flash37-discount' },
 ];
 
 // 翻譯目標語言已從 options 搬到 popup(v1.9.16),options 不再有 #targetLanguage
@@ -163,6 +163,12 @@ async function load() {
   // 四指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
   // 預設關（=== true 才開）；改由懸浮按鈕當主要觸控入口，四指易誤觸發故預設關。
   $('four-finger-section').hidden = !IS_IOS_BUILD;
+  // iOS 上架提示 pill:iOS build 本身不顯示(使用者已在 iOS 上,提示無意義)。
+  // href 依 UI 語系決定 storefront(applyUiLanguageRefresh 於語系切換時同步更新)
+  $('ios-promo').hidden = IS_IOS_BUILD;
+  if (window.__SK?.i18n?.iosAppStoreUrl) {
+    $('ios-promo').href = window.__SK.i18n.iosAppStoreUrl(s.uiLanguage || 'auto');
+  }
   $('fourFingerGesture').checked = s.fourFingerGesture === true;
 
   // 送到 Instapaper：enable 開關 + 連結狀態（已連結時顯示帳號 + 解除連結）
@@ -1296,6 +1302,8 @@ function applyUiLanguageRefresh(dictLang) {
   I18N.applyI18n(document, dictLang);
   { const _vEl = $('options-version');
     if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
+  // iOS 上架提示 pill 的 storefront 跟著 UI 語系走
+  if (I18N.iosAppStoreUrl && $('ios-promo')) $('ios-promo').href = I18N.iosAppStoreUrl(dictLang);
   // 動態 dropdown(refreshSlotDropdownLabels)用 _t() 取 prefix,UI 語系切換要重組
   refreshSlotDropdownLabels();
   // 自訂快速鍵 recorder:「（預設）」後綴 / 「未設定」文案要跟上新語言
@@ -1811,6 +1819,7 @@ function sanitizeImport(raw) {
     floatingIconOpacity: { type: 'number', min: 0.1, max: 1 },
     floatingIconPos:     { type: 'object' }, // { edge, offsetY }，content script 拖移後寫入
     fourFingerGesture:   { type: 'boolean' }, // 四指觸控手勢 enable（iOS）
+    iosPromoDismissed:   { type: 'boolean' }, // popup iOS 上架提示已關閉
     // issue #48 fix：之前漏列導致匯入時這些 key 默默丟掉
     targetLanguage:      { type: 'string', oneOf: TARGET_LANGUAGES },
     uiLanguage:          { type: 'string', oneOf: UI_LANGUAGES },

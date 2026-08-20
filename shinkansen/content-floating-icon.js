@@ -8,8 +8,13 @@
 //   同一條 path，本身含 toggle：未譯→翻、已譯→還原、翻譯中→中止。
 // - 長按（壓住達 LONGPRESS_MS、未拖移）= 跳出三 preset 選單，點任一列 →
 //   handleTranslatePreset(該 slot) + 收選單；點選單外 / 捲動 = 收選單。
-// - 拖移（pointermove 超過 DRAG_THRESHOLD_PX）= 進入拖移模式，放開時吸附最近的左／右
-//   緣，垂直位置存比例（floatingIconPos = { edge, offsetY }），視窗縮放後按比例還原。
+//   **長按 fire 後手勢即定案**：選單開出後的 pointermove 一律忽略，不再改判成拖移
+//   （手指壓著的自然抖動輕易超過門檻，沒這條 guard 會「選單一出現、手指微動就消失
+//   且按鈕跟著跑」——姊妹專案同構 code 實機回報的體感 bug，2026-08-20 修）。
+// - 拖移（pointermove 超過該次按壓的拖移門檻,且發生在長按 fire 之前）= 進入拖移模式，
+//   放開時吸附最近的左／右緣，垂直位置存比例（floatingIconPos = { edge, offsetY }），
+//   視窗縮放後按比例還原。門檻依輸入型態分開：滑鼠／觸控筆 8px、觸控（手指）16px——
+//   手指接觸面大、無支撐，靜止長按期間的抖動天生大於滑鼠。
 // - 只有 iPadOS 渲染時把 top 夾離上下角落 CORNER_DEADZONE_PX：iPadOS 視窗右下角是縮放
 //   拖曳把手、上方角落是系統手勢區，按鈕停太靠近會被 OS 攔走觸控而拖不出來。iPhone（無
 //   視窗縮放角）與桌面瀏覽器不設禁制區。預設右下角（offsetY=1）在 iPadOS 上即落在這條
@@ -28,7 +33,8 @@
   if (window !== window.top) return;     // 只在主 frame 放一顆
 
   const LONGPRESS_MS = 500;              // 壓住達此毫秒 = 長按 → 開選單；之前放開 = 短按
-  const DRAG_THRESHOLD_PX = 8;           // pointer 位移超過此距離 = 進入拖移（取消短按 / 長按）
+  const DRAG_THRESHOLD_PX = 8;           // 拖移門檻：滑鼠 / 觸控筆（位移超過 = 進入拖移，取消短按 / 長按）
+  const DRAG_THRESHOLD_TOUCH_PX = 16;    // 拖移門檻：觸控（手指抖動幅度天生較大，8px 會誤判）
   const DEFAULT_ICON_SIZE = 24;          // icon 視覺尺寸預設「中」（方形 icon 顯示邊長）；使用者可選 16 / 32
   const HIT_PADDING = 16;                // icon 外圍透明可點 padding（觸控好點）
   const EDGE_MARGIN = 6;                 // 吸附邊緣時與視窗邊的間距
@@ -566,7 +572,11 @@
     e.preventDefault();
     closeMenu();
     try { btn.setPointerCapture(e.pointerId); } catch (_e) {}
-    press = { id: e.pointerId, startX: e.clientX, startY: e.clientY, timer: null, moved: false, longFired: false };
+    // dragThreshold 在 pointerdown 一次決定（同一次按壓用同一個門檻，不在 move 重讀 pointerType）
+    press = {
+      id: e.pointerId, startX: e.clientX, startY: e.clientY, timer: null, moved: false, longFired: false,
+      dragThreshold: e.pointerType === 'touch' ? DRAG_THRESHOLD_TOUCH_PX : DRAG_THRESHOLD_PX,
+    };
     press.timer = setTimeout(() => {
       if (!press || press.moved) return;
       press.longFired = true;
@@ -577,9 +587,12 @@
 
   btn.addEventListener('pointermove', (e) => {
     if (!press || e.pointerId !== press.id) return;
+    // 長按已觸發（選單開著）→ 手勢定案為長按，之後的位移一律忽略，不再改判成拖移。
+    // 想拖按鈕的人會在長按滿之前就開始移動；選單都開出來了才動，語意上絕不是要拖
+    if (press.longFired) return;
     const dx = e.clientX - press.startX;
     const dy = e.clientY - press.startY;
-    if (!press.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+    if (!press.moved && Math.hypot(dx, dy) > press.dragThreshold) {
       press.moved = true;
       clearPressTimer();
       closeMenu();

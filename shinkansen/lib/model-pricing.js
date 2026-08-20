@@ -22,14 +22,18 @@ export const MODEL_PRICING = {
   // (API 不會回報 cached tokens,設 0 讓萬一出現的 cached 部分照全價計,不虛報折扣)
   'gemini-3.5-flash-lite': { inputPerMTok: 0.30, outputPerMTok: 2.50, cachedDiscount: 0 },
   'gemini-3-flash-preview':        { inputPerMTok: 0.50, outputPerMTok: 3.00, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
-  // v2.0.64:gemini-3.5-flash 下架(migrateGemini35FlashModelIfNeeded 遷移至 3.6-flash;
-  // 歷史用量費用寫入當下已存 billedCostUSD,不受查表影響)。cached $0.15 = input 10% → 0.90
-  'gemini-3.6-flash':              { inputPerMTok: 1.50, outputPerMTok: 7.50, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
+  // v2.0.64:gemini-3.5-flash 下架(遷移至 3.6-flash);2026-08-20:gemini-3.6-flash 下架
+  // (migrateGemini36FlashModelIfNeeded 遷移至 3.7-flash;歷史用量費用寫入當下已存
+  // billedCostUSD,不受查表影響)。
+  // gemini-3.7-flash(2026-08-13 GA):官方促銷價 $0.75 / $3.75 至 2026-12-31,
+  // 2027-01-01 起回 $1.50 / $7.50——屆時更新此列 + options 選單價格標示。
+  // context cache $0.075 = input 10% → 折扣走 DEFAULT。
+  'gemini-3.7-flash':              { inputPerMTok: 0.75, outputPerMTok: 3.75, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
 };
 
 // v1.6.14:內建表校準日期。UI 顯示「(YYYY-MM 校準)」提示使用者可能過時。
 // release 時若 Google 公布新價,把這裡更新 + 同步 MODEL_PRICING 數字。
-export const LAST_CALIBRATED_DATE = '2026-07';
+export const LAST_CALIBRATED_DATE = '2026-08';
 
 /**
  * 查模型計價,各欄位獨立 fallback(v1.9.2 起):

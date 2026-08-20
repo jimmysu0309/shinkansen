@@ -99,6 +99,38 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.4.0 <span class="release-date">Released 2026-08-20</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.3.2</p>
+
+  <p class="lead">This release turns two of the most useful features on by default — automatic Simplified ↔ Traditional Chinese conversion and iOS four-finger touch translate — adds the latest Gemini 3.7 Flash to the model lineup, and fixes Chinese-variant conversion being skipped on social-media post pages.</p>
+
+  <ul>
+    <li><strong>Auto Chinese-variant conversion on by default</strong>: when your target language is Traditional (or Simplified) Chinese, pages in the opposite variant now convert automatically on load — free, no API calls, works offline. Turn it off in the toolbar icon menu if you prefer; unchecking reverts the current page immediately.</li>
+
+    <li><strong>iOS / iPadOS four-finger touch translate on by default</strong>: on iPhone / iPad, tap the page with four fingers to translate, long-press with four fingers for the secondary preset — ready out of the box. Turn it off in settings if it triggers accidentally.</li>
+
+    <li><strong>Gemini model lineup updated</strong>: adds the latest <code>gemini-3.7-flash</code> (introductory price $0.75 / $3.75 through the end of 2026 — half the price of the previous Flash generation, and smarter); <code>gemini-3.6-flash</code> is retired, and existing settings that used it migrate to 3.7 automatically.</li>
+
+    <li><strong>Chinese-variant conversion fixed on social-media post pages</strong>: opening a post permalink on X (Twitter) and similar sites could skip the automatic conversion because the content loads late — the conversion now waits for the content and catches up automatically.</li>
+
+    <li><strong>iOS availability notice</strong>: the settings page and the toolbar icon menu now include an App Store install link (pointing to your region's store based on the UI language); the menu notice can be dismissed permanently with its × button.</li>
+
+    <li><strong>Floating button long-press menu fix</strong>: after the long-press menu opens, a slight finger tremble no longer dismisses it or drags the button away; the touch drag threshold is also relaxed, making long-press more reliable.</li>
+  </ul>
+
+  <h2>v2.3.2 <span class="release-date">Released 2026-08-19</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.3.0</p>
+
+  <p class="lead">The iOS / iPadOS version is officially on the App Store! Extension name and store listings are also fully localized.</p>
+
+  <ul>
+    <li><strong>iOS / iPadOS version now available</strong>: Safari extension with four-finger touch translate and the floating button, for both iPhone and iPad → <a href="https://apps.apple.com/us/app/id6776958298" target="_blank" rel="noopener">Get it on the App Store</a>.</li>
+
+    <li><strong>Localized extension name and description</strong>: the name and summary shown in the browser's extension manager and the stores now follow your system language (8 languages).</li>
+
+    <li><strong>iOS onboarding fix</strong>: the API key entered during first-run setup now syncs correctly to the extension.</li>
+  </ul>
+
   <h2>v2.3.0 <span class="release-date">Released 2026-08-06</span></h2>
   <p class="release-meta">Compared with the previous store version v2.0.9</p>
 

@@ -1189,6 +1189,14 @@
     // v1.8.7: options.ignorePartialMode = true 從「翻譯剩餘段落」按鈕觸發，
     // 不走 restorePage 早退，直接重翻整頁（前面已翻好的段落會從 cache fast path 命中）
     if (STATE.translated && !options.ignorePartialMode) {
+      // 2026-08-20：背景 convertOnly 呼叫(init / SPA nav / 補課 watcher 的重入)對
+      // 已翻譯頁一律靜默結束,絕不觸發 toggle 還原——背景動作不得退掉使用者看到的
+      // 譯文 / 轉換結果。「取消簡繁轉換」的還原走 SET_AUTO_CONVERT_ZH off 的
+      // restorePage 獨立路徑,不經過這裡
+      if (options.convertOnly) {
+        SK.sendLog('info', 'translate', 'convertOnly: page already translated, silent exit');
+        return;
+      }
       restorePage();
       return;
     }
@@ -1223,7 +1231,23 @@
       // 確保舊輪收尾不會清掉新一輪的 state，舊輪注入已被自己的 signal guard 擋住）。
       // 否則快速反復按會卡死在「每按都跳已取消、永遠不能重翻」。
       if (STATE.abortController && !STATE.abortController.signal.aborted) {
-        abortInProgressTranslation();
+        // 2026-08-20（autoConvertZh 預設開後的 race）：背景 convertOnly run 不得吃掉
+        // 使用者的手動翻譯——
+        //   - 新呼叫是 convertOnly（載入 init / SPA nav / 晚 render 補課）→ 一律靜默
+        //     讓位，絕不取消使用者的 run
+        //   - in-flight 的是背景 convertOnly、新呼叫是手動翻譯 → 靜默中止背景轉換
+        //     並繼續開新一輪（不 return、不跳「已取消」toast）；沒這條的話使用者在
+        //     頁面載入的轉換窗內按翻譯，第一下會被 toggle 吃掉變成「按了沒反應」
+        if (options.convertOnly) return;
+        if (STATE.translatingConvertOnly) {
+          abortInProgressTranslation({ silent: true });
+          // fall through：往下開新一輪（同 v1.10.20 的 identity guard 保護）
+        } else {
+          abortInProgressTranslation();
+          return;
+        }
+      } else if (options.convertOnly) {
+        // unwind 中的 convertOnly 呼叫也讓位（不跟使用者的取消收尾搶 state）
         return;
       }
     }
@@ -1242,6 +1266,8 @@
     // 翻譯（zombie run：取消只 abort 最後寫入 STATE 的 controller，另一條殺不掉，
     // 且多條 run 的 finally 互踩共用 state）。實測 probe：rapid toggle 下卡死。
     STATE.translating = true;
+    // 本輪是否為背景簡繁轉換 run：上方 toggle 分支靠它判「手動翻譯可以擠掉背景轉換」
+    STATE.translatingConvertOnly = !!options.convertOnly;
     const myAbortController = new AbortController();
     STATE.abortController = myAbortController;
     const abortSignal = myAbortController.signal;
@@ -1886,15 +1912,19 @@
   // （舊輪還在 unwind），boolean 會被錯的 run 消費；WeakSet 各輪認自己的 controller。
   const _earlyRestoredAborts = new WeakSet();
 
-  function abortInProgressTranslation() {
-    SK.sendLog('info', 'translate', 'aborting in-progress translation (immediate restore)');
+  function abortInProgressTranslation({ silent = false } = {}) {
+    SK.sendLog('info', 'translate', 'aborting in-progress translation (immediate restore)', { silent });
     const ac = STATE.abortController;
     if (ac) {
       _earlyRestoredAborts.add(ac);
       ac.abort();
     }
     restoreOriginalHTMLAndReset();
-    SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
+    // silent：手動翻譯擠掉背景 convertOnly run 時不跳「已取消」——使用者按的是
+    // 「翻譯」，看到取消 toast 只會困惑（接著馬上會出現翻譯進度 toast）
+    if (!silent) {
+      SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
+    }
   }
 
   // v1.10.20: run state 釋放走 identity guard——只有「STATE.abortController 還是
@@ -1903,6 +1933,7 @@
   function releaseRunState(myAC) {
     if (STATE.abortController === myAC) {
       STATE.translating = false;
+      STATE.translatingConvertOnly = false;
       STATE.abortController = null;
     }
   }
@@ -2132,6 +2163,62 @@
     });
   };
 
+  // ─── 簡繁自動互轉:首載晚 render 補課(2026-08-20)──────────────────
+  // 症狀:X / Threads 等 React SPA 直開 permalink 時,content script 在
+  // document_idle 初始化,主內容(推文本體)還沒 render → convertOnly 首跑
+  // collect=0(或 0 可轉段)靜默結束;而 SPA observer rescan 只在「成功建立
+  // opencc-local translationContext」(STATE.translated=true)之後才武裝,
+  // 首跑撲空 = 這頁永遠沒人補轉換(實例:X 簡中推文 permalink,2026-08-20)。
+  // 修法:首跑撲空後掛 MutationObserver,DOM 有追加才重跑(debounce 1.2s、
+  // 重試間最短 1.2s),最多再試 MAX_ATTEMPTS 次;任一輪成功(translated=true)
+  // 即停——之後晚到內容交給既有 provider-aware rescan(opencc-local 分支)。
+  // 邊界:
+  //   - target 非中文變體:首跑會在 translatePage 內早退,但會先寫
+  //     STATE.targetLanguage → 這裡看到非中文 target 直接收工,不掛 observer
+  //   - 手動翻譯 / 其他 run 進行中(STATE.translating):讓位收工,頁面所有權
+  //     已移轉(手動整頁翻譯是超集,簡繁段落在 translateUnits 內自動分流)
+  //   - 重試次數有上限:zh target 的「真的沒可轉段」頁(純英文 / 已是 target
+  //     變體)最多多跑 MAX_ATTEMPTS 次 collectParagraphs 就永久收工,常態瀏覽
+  //     不累積 observer
+  let _zhConvertWatch = null; // { obs, timer } 單例:重複武裝時先拆舊的
+  SK.autoConvertZhWithRetry = async function autoConvertZhWithRetry() {
+    const MAX_ATTEMPTS = 4;      // 首跑之外的重試上限
+    const DEBOUNCE_MS = 1200;    // DOM 變動後靜置多久才重跑(等 React 批次 render 完)
+    if (_zhConvertWatch) {       // SPA nav 重入:拆掉上一頁殘留 watcher
+      try { _zhConvertWatch.obs.disconnect(); } catch (_) {}
+      clearTimeout(_zhConvertWatch.timer);
+      _zhConvertWatch = null;
+    }
+    await SK.translatePage({ convertOnly: true });
+    if (STATE.translated || STATE.translating) return; // 首跑成功(或有人接手)→ rescan 接管
+    const t = STATE.targetLanguage;
+    if (t !== 'zh-TW' && t !== 'zh-CN') return; // 非中文 target,重試無意義
+    let attempts = 0;
+    const watch = { obs: null, timer: null };
+    _zhConvertWatch = watch;
+    const finish = () => {
+      try { watch.obs.disconnect(); } catch (_) {}
+      clearTimeout(watch.timer);
+      if (_zhConvertWatch === watch) _zhConvertWatch = null;
+    };
+    const retry = async () => {
+      watch.timer = null;
+      if (STATE.translated || STATE.translating) return finish();
+      attempts += 1;
+      SK.sendLog('info', 'translate', 'convertOnly late-render retry', { attempt: attempts, max: MAX_ATTEMPTS });
+      await SK.translatePage({ convertOnly: true });
+      if (STATE.translated || STATE.translating || attempts >= MAX_ATTEMPTS) return finish();
+      // 沒成又還有額度:繼續等下一波 DOM 變動(observer 沒拆,timer 已清)
+    };
+    watch.obs = new MutationObserver(() => {
+      if (watch.timer != null) return; // debounce 進行中,不重複排程(維持最短間隔)
+      watch.timer = setTimeout(retry, DEBOUNCE_MS);
+    });
+    try {
+      watch.obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    } catch (_) { finish(); }
+  };
+
   // ─── v1.4.0: Google Translate 翻譯整頁 ──────────────────────
   SK.translatePageGoogle = async function translatePageGoogle(gtOptions = {}) {
     // v1.4.12: gtOptions.slot 由 preset 快速鍵注入，供 STICKY_SET
@@ -2156,8 +2243,15 @@
     // v1.10.20: controller 已 aborted = 上一輪取消收尾中 → 放行開新一輪（同 Gemini 路徑）
     if (STATE.translating) {
       if (STATE.abortController && !STATE.abortController.signal.aborted) {
-        abortInProgressTranslation();
-        return;
+        // 2026-08-20：同 translatePage——in-flight 的是背景 convertOnly run 時,
+        // 靜默擠掉並繼續開 Google 翻譯,不被 toggle 吃掉(autoConvertZh 預設開 race)
+        if (STATE.translatingConvertOnly) {
+          abortInProgressTranslation({ silent: true });
+          // fall through：往下開新一輪
+        } else {
+          abortInProgressTranslation();
+          return;
+        }
       }
     }
 
@@ -2173,6 +2267,7 @@
 
     // v1.10.20: run state 在第一個 await 之前同步設定（同 Gemini 路徑，防雙重進入）
     STATE.translating = true;
+    STATE.translatingConvertOnly = false; // Google 路徑永遠是手動翻譯
     const myAbortController = new AbortController();
     STATE.abortController = myAbortController;
     const abortSignal = myAbortController.signal;
@@ -2977,7 +3072,7 @@
         }
       }
 
-      const { autoTranslate = false, autoTranslateSlot, autoConvertZh = false } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot', 'autoConvertZh']);
+      const { autoTranslate = false, autoTranslateSlot, autoConvertZh = true } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot', 'autoConvertZh']);
       if (autoTranslate && await SK.isDomainWhitelisted()) {
         // v1.6.13: 走指定 preset slot 而非裸 translatePage()，讓白名單行為跟使用者
         // 期待的「按下對應快速鍵」一致（走 preset.model 的 modelOverride)。
@@ -2995,10 +3090,12 @@
       }
       // 簡繁自動互轉:toggle 開啟時對可轉換頁自動本地轉換(免費,不打 API)。
       // 適用性判定在 translatePage convertOnly 路徑內——target 非中文變體或頁面
-      // 無相反變體段落時靜默結束,不跳 toast 不留 badge
+      // 無相反變體段落時靜默結束,不跳 toast 不留 badge。
+      // 走 autoConvertZhWithRetry:SPA 首載主內容晚 render 時首跑會撲空,
+      // helper 內以 MutationObserver 有限重試補課(見該函式註解)
       if (autoConvertZh) {
         SK.sendLog('info', 'system', 'autoConvertZh on, trying local zh-convert on load', { url: location.href });
-        SK.translatePage({ convertOnly: true });
+        SK.autoConvertZhWithRetry();
       }
     } catch (err) {
       SK.sendLog('warn', 'system', 'auto-translate check failed on load', { error: err.message });

@@ -99,6 +99,38 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons 與 App Store（iOS / iPadOS Safari）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v2.4.0 <span class="release-date">2026-08-20 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.3.2</p>
+
+  <p class="lead">這版把兩個最實用的功能改為預設開啟：簡繁自動互轉與 iOS 四指觸控翻譯；模型清單加入最新的 Gemini 3.7 Flash，並修正社群網站貼文頁簡繁轉換漏跑的問題</p>
+
+  <ul>
+    <li><strong>簡繁自動互轉預設開啟</strong>：翻譯目標是繁中（或簡中）時，相反變體的中文網頁載入即自動本地轉換——免費、不打 API、離線可用；不需要的話可在工具列圖示選單關閉，取消勾選當下立即還原</li>
+
+    <li><strong>iOS / iPadOS 四指觸控翻譯預設開啟</strong>：iPhone / iPad 上四指輕點頁面即翻譯、四指長按用次要預設，開箱即用；容易誤觸發時可在設定頁關閉</li>
+
+    <li><strong>Gemini 模型清單更新</strong>：加入最新的 <code>gemini-3.7-flash</code>（2026 年底前促銷價 $0.75 / $3.75，比上一代 Flash 便宜一半且更聰明）；<code>gemini-3.6-flash</code> 同步下架，已選用的設定會自動遷移到 3.7，不需手動調整</li>
+
+    <li><strong>社群網站貼文頁簡繁轉換修復</strong>：直接開啟 X（Twitter）等網站的貼文連結時，內容較晚載入導致自動簡繁轉換漏跑的問題已修復——現在會等內容出現後自動補上轉換</li>
+
+    <li><strong>iOS 版上架提示</strong>：設定頁與工具列圖示選單新增 App Store 安裝入口（依介面語言連到對應地區商店），選單內的提示可按 × 永久關閉</li>
+
+    <li><strong>懸浮按鈕長按選單修復</strong>：長按叫出選單後手指稍微抖動，選單不再消失、按鈕也不再跟著手指跑；觸控的拖移判定門檻同步放寬，長按更穩定</li>
+  </ul>
+
+  <h2>v2.3.2 <span class="release-date">2026-08-19 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.3.0</p>
+
+  <p class="lead">iOS / iPadOS 版正式登陸 App Store！另擴充功能名稱與商店資訊完成多語化</p>
+
+  <ul>
+    <li><strong>iOS / iPadOS 版正式上架</strong>：Safari 擴充功能搭配四指觸控翻譯與懸浮按鈕，iPhone / iPad 都能用 → <a href="https://apps.apple.com/tw/app/id6776958298" target="_blank" rel="noopener">App Store 下載</a></li>
+
+    <li><strong>擴充功能名稱與描述多語化</strong>：瀏覽器擴充功能管理頁與各商店顯示的名稱、簡介跟隨系統語言（8 語）</li>
+
+    <li><strong>iOS 版引導頁修復</strong>：初次設定輸入的 API 金鑰未正確同步到擴充功能的問題已修復</li>
+  </ul>
+
   <h2>v2.3.0 <span class="release-date">2026-08-06 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v2.0.9</p>
 

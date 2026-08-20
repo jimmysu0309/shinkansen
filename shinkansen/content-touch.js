@@ -18,8 +18,8 @@
 //   macOS Safari）為 no-op，只有 safari-build-ios.sh override 的 iOS build 啟用。
 //   桌面觸控螢幕（Windows touch laptop 等）不啟用——四指手勢在各桌面 OS 另有
 //   系統手勢語意，誤觸發風險高
-// - Options 提供「四指觸控翻譯」開關（storage.sync.fourFingerGesture），預設關閉——
-//   懸浮按鈕為主要觸控入口，四指手勢易誤觸發，使用者需要時才在 Options 開啟
+// - Options 提供「四指觸控翻譯」開關（storage.sync.fourFingerGesture），預設開啟——
+//   觸控裝置開箱即有手勢入口；易誤觸發的使用者可在 Options 關閉
 (function (SK) {
   'use strict';
   if (!SK) return;
@@ -35,17 +35,21 @@
     if (gesture && gesture.timer) { clearTimeout(gesture.timer); gesture.timer = null; }
   }
 
-  // 使用者可在 Options 開啟四指手勢（storage.sync.fourFingerGesture，預設關——改由懸浮
-  // 按鈕當主要觸控入口，四指易誤觸發故預設關）。不在載入期以 IS_IOS_BUILD gate 訂閱——
+  // 使用者可在 Options 關閉四指手勢（storage.sync.fourFingerGesture，預設開——觸控裝置
+  // 開箱即有手勢入口，易誤觸發者可關閉）。不在載入期以 IS_IOS_BUILD gate 訂閱——
   // isEnabled() 才 gate IS_IOS_BUILD，讓 regression spec 可 runtime 翻 IS_IOS_BUILD 後仍
   // 吃得到這個旗標（且訂閱成本極小）。
-  let fourFingerEnabled = false;
+  // 初始值必須與 lib/storage.js DEFAULT_SETTINGS.fourFingerGesture 同值（此處直接讀
+  // storage.sync，沒 key 時不會經過 DEFAULT_SETTINGS merge）。
+  let fourFingerEnabled = true;
   browser.storage.sync.get(['fourFingerGesture']).then((s) => {
     if (typeof s.fourFingerGesture === 'boolean') fourFingerEnabled = s.fourFingerGesture;
   }).catch(() => {});
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.fourFingerGesture) {
-      fourFingerEnabled = changes.fourFingerGesture.newValue === true;
+      // key 被移除(newValue undefined)= 回預設開;只有明確 boolean 才尊重使用者值
+      const nv = changes.fourFingerGesture.newValue;
+      fourFingerEnabled = (typeof nv === 'boolean') ? nv : true;
     }
   });
   SK.getFourFingerEnabled = () => fourFingerEnabled;   // regression spec 讀取用

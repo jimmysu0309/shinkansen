@@ -5,6 +5,12 @@
 
 ---
 
+## v2.4.x
+
+**v2.4.0**——**iOS 版上架通知（minor 進版）＋兩項預設值改開啟＋模型清單更新**。（1）**minor 進版通知**：升級歡迎泡泡主打「iOS／iPadOS 版正式上架 App Store」，條目帶各語系對應地區的商店連結（`highlightToHtml` 擴充安全 markdown 連結轉換）；順修泡泡在 UI 語系解析前渲染導致非中文使用者看到繁中條目的既有 drift（語系就緒後重渲染）。（2）**簡繁自動互轉預設開啟**（`autoConvertZh` 預設 true，content.js／content-spa.js／popup.js 三處 destructure fallback 同步翻）；並修 SPA 晚 render 首跑撲空後永遠沒人補轉換的結構性缺口（X 簡中推文 permalink 實例）——`autoConvertZhWithRetry` 以 MutationObserver 有限重試（≤4 次、debounce 1.2s），成功後交棒既有 rescan。（3）**iOS 四指觸控翻譯預設開啟**（`fourFingerGesture` 預設 true，content-touch.js 初始值同步；onChanged 對 key 移除回預設開）。（4）**模型清單**：加入 `gemini-3.7-flash`（2026-08-13 GA，促銷價 $0.75／$3.75 至 2026 年底），`gemini-3.6-flash` 下架並一次性遷移（`migrateGemini36FlashModelIfNeeded`，與 35→36 串聯）；修 3.7 世代 `thinkingLevel='minimal'` 下架導致翻譯 400 的問題（`pickThinkingConfig` 版本 gating ≥3.7 → 'low'）。（5）**iOS 上架提示**：options 頁首 pill＋popup 可關閉 banner（× 寫 `iosPromoDismissed` 永久關閉），連結依 UI 語系連對應地區 App Store（`iosAppStoreUrl` 單一資料源），iOS build 本身不顯示；修 banner `display:flex` 蓋掉 `[hidden]` 的坑。（6）**懸浮按鈕長按選單手勢定案修復**：長按選單開出後手指微抖會收選單且按鈕跟著跑（pointer 狀態機沒有終局，長按 fire 後 pointermove 仍會改判成拖移）——`press.longFired` 後位移一律忽略；拖移門檻依輸入型態分開（滑鼠／觸控筆 8px、觸控 16px，`press.dragThreshold` 於 pointerdown 一次決定）。三平台（Chrome／Firefox／Safari macOS／iOS）同中，Safari 鏡像同步。（7）**背景轉換不再吃掉手動翻譯**：autoConvertZh 預設開後，頁面載入的背景 convertOnly run 還在跑時按翻譯會被「翻譯中再按＝取消」toggle 吃掉（第一下沒反應）——`STATE.translatingConvertOnly` 判別後手動呼叫靜默擠掉背景轉換並照常開翻（Gemini 與 Google 路徑皆修）；convertOnly 呼叫遇到任何 in-flight run 或已翻譯頁一律靜默讓位，絕不還原使用者看到的結果。（8）**release 基建**：GitHub release Chrome 包改名 `shinkansen-chrome-vX.Y.Z.zip`；新增 `tools/sync-dist.sh`（release 後 dist/ 只留最新版資產＋source）。**不需清快取**。
+
+---
+
 ## v2.3.x
 
 **v2.3.2**——**商店描述長度修正（Apple 112 字元上限）**。v2.3.1 的 manifest 多語化讓 Apple 開始驗證 Safari extension bundle 內 `_locales/` 的 messages.json（先前未被引用不驗），de／en／es／fr 四語描述雖在 Chrome 132 字元上限內、但超過 Apple 的 112 字元上限（altool ERROR 90862），v2.3.1 的 MAS 與 iOS TestFlight 上傳被拒。四語描述修剪至 ≤112（ja／ko／zh 本就安全），regression forcing function 同步收緊 132 → 112。Chrome／Firefox 功能與 v2.3.1 完全相同。**不需清快取**。
