@@ -613,6 +613,66 @@ export function translatedDocFilename(originalName, kind) {
   return `${base}-shinkansen${ext}`;
 }
 
+// ─── 術語表譯名後的模型自加對照清理（確定性安全網，書籍式文件共用）────
+// 通用 system prompt 的「特殊詞彙首次出現加註原文」規則會讓模型在術語表 target
+// 是純譯名時仍輸出「譯名（原文）」（2026-08-22 實測：字幕 723 則 49 處、同內容
+// 段落版 TXT 91 段 33 處，全是術語表純譯名條目）。術語表是單一事實來源：要對照
+// 就把 target 寫成「譯名（原文）」+「對照一次」選項，純譯名 = 不要對照 → 與
+// 術語表形式不符的「target（source）」一律還原成 target。只動「括號內容等於該
+// 譯名某個 source」的組合（大小寫不敏感、全半形括號皆可），其他括號不碰；
+// target 本身含括號對照（例「撲克牌通緝令（deck of cards）」）的條目視為刻意，不清。
+// EPUB / txt / md / html / subtitle 的 startEpubTranslate 翻完即套；PDF（譯文存
+// translationSegments）與網頁翻譯路徑不同，另案處理。
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * @param {string} text — translationRaw / translation
+ * @param {Array<{source:string,target:string}>|null} glossary
+ * @returns {{ text: string, count: number }}
+ */
+export function stripGlossaryAnnotations(text, glossary) {
+  if (typeof text !== 'string' || !text || !Array.isArray(glossary) || glossary.length === 0) {
+    return { text: text || '', count: 0 };
+  }
+  let out = text;
+  let count = 0;
+  for (const e of glossary) {
+    if (!e || typeof e.source !== 'string' || typeof e.target !== 'string') continue;
+    const target = e.target.trim();
+    const source = e.source.trim();
+    if (!target || !source || /[（(]/.test(target)) continue;
+    const re = new RegExp(`${escapeRe(target)}[ \u3000]?[（(]\\s*${escapeRe(source)}\\s*[）)]`, 'gi');
+    out = out.replace(re, () => { count++; return target; });
+  }
+  return { text: out, count };
+}
+
+/**
+ * 翻譯完成後對 doc 全部 done block 套 stripGlossaryAnnotations（translationRaw
+ * 與 translation 同步；手動編輯過的 block 不動）。快取命中的舊譯文也走這裡，
+ * 重跑翻譯零費用即可治癒。
+ * @returns {number} 清掉的對照數
+ */
+export function applyGlossaryAnnotationCleanup(doc, glossary) {
+  if (!doc || !Array.isArray(doc.chapters) || !Array.isArray(glossary) || glossary.length === 0) return 0;
+  let total = 0;
+  for (const ch of doc.chapters) {
+    for (const b of ch.blocks) {
+      if (b.translationStatus !== 'done') continue;
+      if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) continue;
+      if (typeof b.translationRaw === 'string') {
+        const r = stripGlossaryAnnotations(b.translationRaw, glossary);
+        if (r.count > 0) { b.translationRaw = r.text; total += r.count; }
+      }
+      if (typeof b.translation === 'string') {
+        const r = stripGlossaryAnnotations(b.translation, glossary);
+        if (r.count > 0) b.translation = r.text;
+      }
+    }
+  }
+  return total;
+}
+
 // ─── 術語表 CSV 解析 ──────────────────────────────────────
 // 兩欄「原文,譯名」。容錯：BOM / CRLF / RFC4180 引號跳脫（"a,b" / "" 逃逸）/
 // header 列（首列像欄名時剔除）/ 空列與欄數不足列跳過。

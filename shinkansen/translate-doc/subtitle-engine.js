@@ -359,9 +359,16 @@ export function subtitleMimeType(format) {
 // ─── 字幕專用翻譯提示 ─────────────────────────────────────
 // 隨「本文件額外翻譯指令」一起附加在 translateDoc.systemPrompt 之後（進 cache key
 // _x hash）。字幕是連續片段、螢幕停留數秒：要用前後則當語境、但每則各自成句、
-// 精簡；不可合併 / 拆分、不可加註
-const SUBTITLE_PROMPT_HINT_ZH = `本文件是影片字幕檔：每一段是一則依時間順序排列的字幕，可能只是半句話。翻譯時請參考前後字幕理解語境，但每則字幕只輸出該則對應的譯文，不可把相鄰字幕合併、拆分或調換內容。字幕在螢幕上只停留數秒，譯文務必精簡口語，不加註解或說明。原文的換行可視譯文長度保留或合併為一行。`;
-const SUBTITLE_PROMPT_HINT_EN = `This document is a video subtitle file: each segment is one cue in timeline order and may be only part of a sentence. Use the neighbouring cues for context, but output only the translation of each cue itself — never merge, split, or shift content between cues. Cues stay on screen for a few seconds, so keep the translation concise and conversational, with no notes or explanations. Line breaks in the source may be kept or collapsed to one line depending on length.`;
+// 精簡；不可合併 / 拆分 / 搬動、不可加註。
+// 「不加括號原文對照」必須明講並宣告優先：通用 prompt 有「特殊詞彙首次出現加註
+// 原文」規則，字幕每則各自獨立、一批 50 則，模型把每則都當首次出現 → 滿篇
+//「伊拉克（Iraq）」（2026-08-22 Jimmy 實檔 723 則出現 49 次）
+const SUBTITLE_PROMPT_HINT_ZH = `本文件是影片字幕檔：每一段是一則依時間順序排列的字幕，可能只是半句話。翻譯時請參考前後字幕理解語境，但每則字幕只輸出該則對應的譯文，不可把相鄰字幕合併或拆分，也不可把某則的內容提前或延後到相鄰字幕（即使中文語序不同，每則譯文也要對應該則原文的內容，因為字幕必須對上畫面時間）。字幕在螢幕上只停留數秒，譯文務必精簡口語，不加註解或說明。
+
+字幕專用規則（優先於上方任何「加註原文」規則）：譯名後面一律不要加括號原文對照。人名、地名、組織、作品名翻成中文後就只輸出中文譯名（術語表指定的譯名照表輸出），不可寫成「伊拉克（Iraq）」「海珊（Saddam Hussein）」這種形式；只有術語表的譯名本身已含括號對照時才照表輸出。原文的換行可視譯文長度保留或合併為一行。`;
+const SUBTITLE_PROMPT_HINT_EN = `This document is a video subtitle file: each segment is one cue in timeline order and may be only part of a sentence. Use the neighbouring cues for context, but output only the translation of each cue itself — never merge or split cues, and never move content earlier or later into a neighbouring cue (even when the target language's word order differs, each cue's translation must correspond to that cue's own content, because subtitles must match the picture timing). Cues stay on screen for a few seconds, so keep the translation concise and conversational, with no notes or explanations.
+
+Subtitle-specific rule (takes precedence over any rule above about annotating the original): never append the original term in parentheses after a translated name. Person, place, organisation, and work names are output as the translated name only (glossary targets exactly as given) — never forms like "Iraq (Iraq)"; only when the glossary target itself already contains a parenthesised original should it be output as-is. Line breaks in the source may be kept or collapsed to one line depending on length.`;
 
 export function subtitlePromptHint(targetLanguage) {
   return String(targetLanguage || '').startsWith('zh') ? SUBTITLE_PROMPT_HINT_ZH : SUBTITLE_PROMPT_HINT_EN;

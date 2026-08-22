@@ -153,7 +153,7 @@ Click the Shinkansen toolbar icon → "Translate document" to open a dedicated t
 
 **EPUB book translation** (beta):
 
-- **Book-wide glossary**: before translating, the whole book is scanned to extract a glossary of names / places / terms (including nicknames, short forms, and standalone-surname variants); review and edit it, then it stays frozen for the entire book so translated names remain consistent across chapters. Export / import as JSON, or import an externally curated CSV (two columns: source,translation; header rows and quoted fields are tolerated) — reuse a previous book's glossary for sequels
+- **Book-wide glossary**: before translating, the whole book is scanned to extract a glossary of names / places / terms (including nicknames, short forms, and standalone-surname variants); review and edit it, then it stays frozen for the entire book so translated names remain consistent across chapters. A plain translated name is output as-is (any "(original)" the model adds on its own is stripped) — to show the original alongside, write the target as "translation (original)" and tick "annotate once". Export / import as JSON, or import an externally curated CSV (two columns: source,translation; header rows and quoted fields are tolerated) — reuse a previous book's glossary for sequels
 - **Per-chapter translation**: after parsing, a chapter list shows word counts and estimated cost per chapter; translate a chapter or two to check quality before continuing — finished chapters hit the cache and are never billed again
 - **Post-translation consistency scan**: after each round, drift ("same source term, multiple translations") is detected automatically; unify with one click and feed the fix back into the glossary
 - **Preview and editing**: per-chapter and whole-book preview, click-to-edit paragraphs, search & replace, original-text comparison view
@@ -317,7 +317,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.1 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.2 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

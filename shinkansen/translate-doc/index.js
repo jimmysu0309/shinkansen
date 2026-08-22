@@ -32,6 +32,7 @@ import {
 import {
   detectDocFileKind, preflightDocFile, parseDocFile, DocFileParseError,
   buildTranslatedDocText, buildTranslatedHtmlDoc, translatedDocFilename, parseGlossaryCsv,
+  applyGlossaryAnnotationCleanup,
 } from './doc-file-engine.js';
 // 字幕檔翻譯（srt / vtt / ass）：同樣走書籍式管線，解析 / 下載 / 提示語分流
 import {
@@ -2845,6 +2846,11 @@ async function startEpubTranslate() {
   translateAbortController = null;
   lastTranslateSummary = summary;
   epubCumulativeCostUSD += summary.cumulativeCostUSD || 0;
+
+  // 術語表譯名後模型自加的「（原文）」對照確定性清掉（書籍式文件全套用；
+  // 快取命中的舊譯文重跑也治癒）。在 session 存檔 / 章節清單刷新之前
+  const stripped = applyGlossaryAnnotationCleanup(currentDoc, currentArticleGlossary);
+  if (stripped > 0) console.log('[Shinkansen] 術語表對照清理：', stripped, '處');
 
   // 續翻節奏：整章完成的自動取消勾選，下一輪預設只剩未翻章節
   for (const c of selected) {
