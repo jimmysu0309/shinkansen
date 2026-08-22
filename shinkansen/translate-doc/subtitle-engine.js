@@ -317,10 +317,11 @@ export async function parseSubtitleFile(file, format, opts = {}) {
  * 字幕譯文檔重建。
  * @param {object} doc — parseSubtitleFile 輸出（blocks 已帶翻譯結果）
  * @param {Map|null} dedupe — computeAnnotationDedupe 的 blockId → override map
- * @param {{ bilingual?: boolean }} opts — 雙語：每則字幕譯文在上、原文在下
+ * @param {{ bilingual?: boolean, stripPeriod?: boolean }} opts — 雙語：每則字幕譯文在上、
+ *   原文在下；stripPeriod：譯文行尾「。」去除（stripCueTrailingPeriod，只動譯文不動原文）
  * @returns {string}
  */
-export function buildTranslatedSubtitleText(doc, dedupe = null, { bilingual = false } = {}) {
+export function buildTranslatedSubtitleText(doc, dedupe = null, { bilingual = false, stripPeriod = false } = {}) {
   const format = doc.subtitleFormat;
   const lineBreak = format === 'ass' ? '\\N' : '\n';
   const parts = [];
@@ -334,7 +335,7 @@ export function buildTranslatedSubtitleText(doc, dedupe = null, { bilingual = fa
       parts.push(seg.src);
       continue;
     }
-    const tr = restoreCueText(out, seg.block.tagSlots || [], format);
+    const tr = restoreCueText(stripPeriod ? stripCueTrailingPeriod(out) : out, seg.block.tagSlots || [], format);
     parts.push(bilingual ? tr + lineBreak + seg.src : tr);
   }
   let text = parts.join('');
@@ -343,13 +344,22 @@ export function buildTranslatedSubtitleText(doc, dedupe = null, { bilingual = fa
   return text;
 }
 
-/** 下載檔名：<原檔名>-shinkansen[-dual].<原副檔名>（與 EPUB / 文字檔慣例一致） */
-export function translatedSubtitleFilename(originalName, format, { bilingual = false } = {}) {
+/**
+ * 下載檔名：<原檔名>[.dual].<語言>.<原副檔名>（2026-08-22 Jimmy 指定，例
+ * `Show S01E01.srt` → `Show S01E01.zh.srt`）。語言後綴是字幕檔的通行慣例：播放器
+ *（VLC / Plex / Jellyfin / mpv）靠緊貼副檔名的語言碼把字幕自動對到影片並標出語言，
+ * 所以語言碼一律放最後一節；雙語版的 `.dual` 放語言碼前面（不佔掉播放器讀的那一節）。
+ * 語言碼取 target 的主要子標籤小寫（zh-TW / zh-CN → zh、en → en、ja → ja），播放器
+ * 普遍認 2 字母碼；不沿用文件翻譯的 `-shinkansen` 後綴（那會被當成檔名的一部分，
+ * 播放器對不到語言）
+ */
+export function translatedSubtitleFilename(originalName, format, { bilingual = false, targetLanguage = 'zh-TW' } = {}) {
   const name = originalName || 'subtitle';
   const m = name.match(/\.(srt|vtt|ass|ssa)$/i);
   const ext = m ? m[0] : `.${format || 'srt'}`;
   const base = m ? name.slice(0, -m[0].length) : name;
-  return `${base}-shinkansen${bilingual ? '-dual' : ''}${ext}`;
+  const lang = (String(targetLanguage || 'zh').split(/[-_]/)[0] || 'zh').toLowerCase();
+  return `${base}${bilingual ? '.dual' : ''}.${lang}${ext}`;
 }
 
 export function subtitleMimeType(format) {
@@ -370,6 +380,24 @@ const SUBTITLE_PROMPT_HINT_EN = `This document is a video subtitle file: each se
 
 Subtitle-specific rule (takes precedence over any rule above about annotating the original): never append the original term in parentheses after a translated name. Person, place, organisation, and work names are output as the translated name only (glossary targets exactly as given) — never forms like "Iraq (Iraq)"; only when the glossary target itself already contains a parenthesised original should it be output as-is. Line breaks in the source may be kept or collapsed to one line depending on length.`;
 
-export function subtitlePromptHint(targetLanguage) {
-  return String(targetLanguage || '').startsWith('zh') ? SUBTITLE_PROMPT_HINT_ZH : SUBTITLE_PROMPT_HINT_EN;
+// 「句末不加句號」（2026-08-22）：與 YouTube 字幕 prompt 同款要求。只對中文 target、且
+// translateDoc.subtitleStripPeriod 開啟時附加（關掉就不進 prompt，也不進 cache key）；
+// 模型服從度不可靠，另有 stripCueTrailingPeriod 確定性安全網在輸出端
+const SUBTITLE_PROMPT_HINT_ZH_NO_PERIOD = `字幕句末不加句號：每則譯文的結尾不要加「。」（問號、驚嘆號照常保留），字幕是口語片段，句號會讓畫面看起來生硬。`;
+
+export function subtitlePromptHint(targetLanguage, { stripPeriod = false } = {}) {
+  if (!String(targetLanguage || '').startsWith('zh')) return SUBTITLE_PROMPT_HINT_EN;
+  return stripPeriod ? `${SUBTITLE_PROMPT_HINT_ZH}\n\n${SUBTITLE_PROMPT_HINT_ZH_NO_PERIOD}` : SUBTITLE_PROMPT_HINT_ZH;
+}
+
+// ─── 句末句號去除（確定性後處理）───────────────────────────
+// 每行行尾的「。」去掉；「。」後面只剩閉合引號 / 括號 / 佔位符標記 / 空白也算行尾
+//（「他說：『走吧。』」→ 『走吧』；「你好。⟦/1⟧」→ 「你好⟦/1⟧」）。問號 / 驚嘆號 /
+// 刪節號不動。只處理全形「。」：toggle 只對中文 target 生效，半形「.」在英文等
+// target 有縮寫（Mr. / etc.）語意，不可一刀切。在輸出端（下載 / 預覽）套用、不改寫
+// 存在 session 的譯文 → 關掉 toggle 即回到模型原始輸出
+const CUE_TRAILING_PERIOD_RE = /。+(?=(?:[」』）】〕》〉\]\)"'”’]|⟦[*＊]?[/／]?[0-9０-９]+⟧|[ \t\u3000])*$)/gm;
+export function stripCueTrailingPeriod(text) {
+  if (typeof text !== 'string' || !text.includes('。')) return text;
+  return text.replace(CUE_TRAILING_PERIOD_RE, '');
 }

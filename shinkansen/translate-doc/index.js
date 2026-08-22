@@ -33,11 +33,12 @@ import {
   detectDocFileKind, preflightDocFile, parseDocFile, DocFileParseError,
   buildTranslatedDocText, buildTranslatedHtmlDoc, translatedDocFilename, parseGlossaryCsv,
   applyGlossaryAnnotationCleanup,
+  editedHtmlToPlain,
 } from './doc-file-engine.js';
 // 字幕檔翻譯（srt / vtt / ass）：同樣走書籍式管線，解析 / 下載 / 提示語分流
 import {
   detectSubtitleFormat, parseSubtitleFile, buildTranslatedSubtitleText,
-  translatedSubtitleFilename, subtitleMimeType, subtitlePromptHint,
+  translatedSubtitleFilename, subtitleMimeType, subtitlePromptHint, stripCueTrailingPeriod,
   fixCjkSpacingAroundPlaceholders, SUBTITLE_FORMAT_LABELS,
 } from './subtitle-engine.js';
 import { getSettings } from '../lib/storage.js';
@@ -888,6 +889,8 @@ async function openSettingsDialog() {
   if (scanSection) scanSection.hidden = !isBookDoc(currentDoc);
   const autofixSection = $('settings-epub-autofix-spacing')?.closest('.settings-section');
   if (autofixSection) autofixSection.hidden = !isBookDoc(currentDoc);
+  const periodSection = $('settings-subtitle-strip-period')?.closest('.settings-section');
+  if (periodSection) periodSection.hidden = currentDoc?.kind !== 'subtitle';
   try {
     const s = await getSettings();
     $('settings-epub-paragraph-spacing').checked = s.translateDoc?.epubParagraphSpacing === true;
@@ -897,6 +900,9 @@ async function openSettingsDialog() {
     // 空格自動校正預設開啟（缺值 = 開）
     const fixCb = $('settings-epub-autofix-spacing');
     if (fixCb) fixCb.checked = s.translateDoc?.epubAutoFixSpacing !== false;
+    // 字幕句末不加句號預設開啟（缺值 = 開）
+    const periodCb = $('settings-subtitle-strip-period');
+    if (periodCb) periodCb.checked = s.translateDoc?.subtitleStripPeriod !== false;
   } catch (_) { /* 預設不勾 */ }
   dlg.showModal();
 }
@@ -923,7 +929,12 @@ function bindSettingsDialogUI() {
       if (scanCb) merged.consistencyScan = scanCb.checked === true;
       const fixCb = $('settings-epub-autofix-spacing');
       if (fixCb) merged.epubAutoFixSpacing = fixCb.checked === true;
+      const periodCb = $('settings-subtitle-strip-period');
+      if (periodCb) merged.subtitleStripPeriod = periodCb.checked === true;
       await chrome.storage.sync.set({ translateDoc: merged });
+      // 預覽開著時立即反映句號 toggle（輸出端套用、不改寫譯文，切換可逆）
+      await refreshSubtitleStripPeriod();
+      if (currentDoc?.kind === 'subtitle' && epubPreviewScope && stages.epubPreview && !stages.epubPreview.hidden) renderEpubPreview();
     } catch (_) { /* ignore */ }
     // 本文件額外翻譯指令（2026-07-27）：per-document state，不進 chrome.storage
     //（換文件不該帶著走）；EPUB 隨工作階段落地，匯出工作階段也帶
@@ -2947,9 +2958,10 @@ async function downloadTranslatedDocFile() {
     if (kind === 'subtitle') {
       // 雙語字幕（writer 層下載時選項：譯文資料不變，切換模式重新下載零重翻費用）
       const bilingual = !$('epub-dual-wrap').hidden && $('epub-dual-mode').value === 'dual';
-      text = buildTranslatedSubtitleText(currentDoc, dedupe, { bilingual });
+      await refreshSubtitleStripPeriod();
+      text = buildTranslatedSubtitleText(currentDoc, dedupe, { bilingual, stripPeriod: subtitleStripPeriodOn });
       mime = subtitleMimeType(currentDoc.subtitleFormat);
-      filename = translatedSubtitleFilename(currentDoc.meta.filename, currentDoc.subtitleFormat, { bilingual });
+      filename = translatedSubtitleFilename(currentDoc.meta.filename, currentDoc.subtitleFormat, { bilingual, targetLanguage: settings.targetLanguage || 'zh-TW' });
     } else {
       text = kind === 'html'
         ? await buildTranslatedHtmlDoc(currentDoc, settings.targetLanguage || 'zh-TW', dedupe)
@@ -2985,6 +2997,7 @@ async function openEpubPreview(scope) {
   // 中英空格自動修正後再渲染，結果直接反映在預覽（2026-07-11 Jimmy 指示：
   // 由按鈕改為預覽 / 下載時機自動執行）
   const fixed = await autoFixCjkSpacing(currentDoc);
+  await refreshSubtitleStripPeriod();
   renderEpubPreview();
   showStage('epubPreview');
   if (fixed.hits > 0) {
@@ -3009,8 +3022,23 @@ async function docExtraPromptForLlm() {
   if (currentDoc?.kind !== 'subtitle') return user || null;
   let targetLanguage = 'zh-TW';
   try { targetLanguage = (await getSettings()).targetLanguage || 'zh-TW'; } catch (_) { /* 預設 */ }
-  const hint = subtitlePromptHint(targetLanguage);
+  await refreshSubtitleStripPeriod();
+  const hint = subtitlePromptHint(targetLanguage, { stripPeriod: subtitleStripPeriodOn });
   return user ? `${hint}\n\n${user}` : hint;
+}
+
+// 字幕句末不加句號（2026-08-22，翻譯設定 modal）：只對中文 target、且
+// translateDoc.subtitleStripPeriod !== false（缺值 = 開）時生效。結果快取在模組變數供
+// 同步的 renderBlockContent 讀；送翻（prompt hint）/ 下載 / 開預覽 / 存設定各自先刷新
+let subtitleStripPeriodOn = false;
+async function refreshSubtitleStripPeriod() {
+  let on = false;
+  try {
+    const s = await getSettings();
+    on = String(s.targetLanguage || '').startsWith('zh') && s.translateDoc?.subtitleStripPeriod !== false;
+  } catch (_) { /* 預設關 */ }
+  subtitleStripPeriodOn = on;
+  return on;
 }
 
 async function autoFixCjkSpacing(doc) {
@@ -3066,8 +3094,7 @@ async function autoFixCjkSpacing(doc) {
       if (blockHits > 0) {
         blocks++;
         hits += blockHits;
-        b.editedHtml = el.innerHTML;
-        b.translation = el.textContent;
+        commitEditedBlock(b, el);
       }
     }
   }
@@ -3181,8 +3208,7 @@ function appendPreviewBlock(content, b, SK, dedupe) {
       // 永久烙進 editedHtml——之後取消 dedupe 勾選 / 改術語表都回不到未處理狀態，
       // computeAnnotationDedupe 的「首次出現」判定跟著位移
       if (el.innerHTML === before) return;
-      b.editedHtml = el.innerHTML;
-      b.translation = el.textContent;
+      commitEditedBlock(b, el);
       el.classList.add('is-edited');
       scheduleEpubSessionSave();
     });
@@ -3277,8 +3303,7 @@ function bindEpubPreviewUI() {
       }
       if (changed) {
         blocks++;
-        b.editedHtml = el.innerHTML;
-        b.translation = el.textContent;
+        commitEditedBlock(b, el);
         el.classList.add('is-edited');
       }
     }
@@ -3901,8 +3926,7 @@ function applyComplianceFixes(doc, violations, blockByIdArg = null) {
     // 「譯名（原文）」對照協定的一部分，不是殘留待譯詞，不可替換
     hits += replaceInTextNodes(el, v.source, v.expected, { skipAnnotated: true });
     if (hits === 0) continue;
-    b.editedHtml = el.innerHTML;
-    b.translation = el.textContent;
+    commitEditedBlock(b, el);
     changed = true;
     const key = v.source + '\u0000' + v.expected;
     let g = groups.get(key);
@@ -3950,8 +3974,7 @@ function repairComplianceMangles(doc, glossary) {
         if (!el) continue;
         const hits = replaceInTextNodes(el, sig, replacement);
         if (hits === 0) continue;
-        b.editedHtml = el.innerHTML;
-        b.translation = el.textContent;
+        commitEditedBlock(b, el);
         changed = true;
         const key = entry.source.trim() + '\u0000' + base;
         let g = groups.get(key);
@@ -4031,8 +4054,7 @@ function customComplianceReplace(group, term, statusEl) {
       if (!el) continue;
       const blockHits = replaceInTextNodes(el, term, group.expected);
       if (blockHits === 0) continue;
-      b.editedHtml = el.innerHTML;
-      b.translation = el.textContent;
+      commitEditedBlock(b, el);
       hits += blockHits;
       blocks++;
       chapters.add(ch.index + 1);
@@ -4111,8 +4133,7 @@ function applyScanCase(scCase, keep) {
       if (changed) {
         blocks++;
         undo.push({ block: b, prevEditedHtml, prevTranslation, chapterIndex: ch.index });
-        b.editedHtml = el.innerHTML;
-        b.translation = el.textContent;
+        commitEditedBlock(b, el);
       }
     }
   }
@@ -4210,6 +4231,15 @@ function buildAddGlossaryActions(scCase, getKeep) {
 // (computeAnnotationDedupe 的 entry:編輯過段落 { editedHtml }、未編輯段落
 // { translation, translationRaw },缺的欄位 fallback 回 block 本體)。
 // 下載端 applyBlockTranslation(epub-writer.js)同優先序但操作 xhtmlDoc 環境,刻意分開。
+// 預覽 / 掃描編輯的「DOM → block」存回單一出口（2026-08-22）：editedHtml = innerHTML、
+// translation 走 editedHtmlToPlain（<br> → \n）而不是 textContent——字幕 block 的多行譯文
+// 以 <br> 渲染（下方純文字分支），textContent 會把行併掉，下載 / 掃描拿到的 translation
+// 就失去換行。blockOutputText 的 editedHtml 分支本就走 editedHtmlToPlain，這裡對齊
+function commitEditedBlock(b, el) {
+  b.editedHtml = el.innerHTML;
+  b.translation = editedHtmlToPlain(el.innerHTML);
+}
+
 function renderBlockContent(b, SK, override = null) {
   const edited = override?.editedHtml ?? b.editedHtml;
   if (typeof edited === 'string' && edited.length > 0) {
@@ -4227,10 +4257,20 @@ function renderBlockContent(b, SK, override = null) {
       return { el, usedEdited: false };
     }
   }
-  const plain = override?.translation ?? b.translation;
+  let plain = override?.translation ?? b.translation;
   if (typeof plain === 'string' && plain) {
+    // 字幕 block（slots=null、tagSlots 字串級對映）走這裡；句末句號去除在輸出端套用，
+    // 與下載 buildTranslatedSubtitleText 同一條規則（所見即所得）
+    if (subtitleStripPeriodOn && Array.isArray(b.tagSlots)) plain = stripCueTrailingPeriod(plain);
+    // 純文字內的 \n（字幕一則多行）渲染成 <br>：textContent 塞進 white-space:normal 的段落
+    // 會把換行折疊成一個空格（「將海珊 趕下台」），預覽與下載檔不一致。<br> 與
+    // editedHtmlToPlain 的 <br> → \n 對偶，編輯存回換行不丟
     const el = document.createElement('div');
-    el.textContent = plain;
+    const lines = plain.split('\n');
+    lines.forEach((line, i) => {
+      if (i > 0) el.appendChild(document.createElement('br'));
+      el.appendChild(document.createTextNode(line));
+    });
     return { el, usedEdited: false };
   }
   return null;

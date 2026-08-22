@@ -173,8 +173,10 @@ Click the Shinkansen toolbar icon → "Translate document" to open a dedicated t
 - **Cue by cue**: each cue is one translation unit; neighbouring cues provide context, but cues are never merged or split, and translations stay concise and conversational
 - **Timing and structure preserved**: cue numbers, timestamps, the WEBVTT header, NOTE / STYLE blocks, and ASS style sections and `Comment:` lines are left untouched — the translated file has the same cues and timing as the original
 - **Inline tags preserved**: `<i>` / `<b>` / `<c>` tags, speaker tags, and ASS `{\an8}` positioning and `\N` line breaks are restored as-is
+- **No trailing period**: each translated cue ends without a "。" (question and exclamation marks are kept), matching YouTube subtitle translation; it can be turned off in the translation settings, applies to both preview and download, and turning it off restores the AI's original output (only when the target language is Chinese)
 - **Monolingual or bilingual subtitles**: "Translated content" lets you choose translation-only cues, or bilingual cues with the translation on top and the original below (great for side-by-side viewing or language learning); switching re-downloads without re-translating
-- **Same pipeline**: book-wide glossary (consistent name translations across the whole film), post-translation consistency scan, preview editing, and automatic session saving all carry over; downloads as `<filename>-shinkansen.<ext>` (`-dual` added for bilingual)
+- **Same pipeline**: book-wide glossary (consistent name translations across the whole film), post-translation consistency scan, preview editing, and automatic session saving all carry over
+- **Player-friendly file names**: downloads as `<filename>.<lang>.<ext>` (e.g. `Show S01E01.srt` → `Show S01E01.zh.srt`), so VLC / Plex / Jellyfin pick it up next to the video and label the language automatically; the bilingual version is `<filename>.dual.<lang>.<ext>`
 - **Encoding auto-detected, always saved as UTF-8**: subtitle files in legacy encodings (Big5 / GBK / Shift_JIS / EUC-KR …) load without mojibake, and the translated file is always written as UTF-8 (also applies to TXT / Markdown / HTML files)
 
 Document translation shares the same translation cache and usage tracking as web translation. The "Translation settings" dialog also lets you set the batch size and a per-document extra prompt (e.g., "this is a 19th-century novel — keep the tone classical").
@@ -317,7 +319,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.2 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.3 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

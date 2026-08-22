@@ -515,7 +515,7 @@ export async function parseDocFile(file, kind, opts = {}) {
 // ─── 譯文輸出（txt / md）──────────────────────────────────
 // editedHtml（預覽頁手動編輯 / 掃描替換 / 空格自動校正的存回形態）→ 純文字。
 // <br> 與 block 元素邊界視為換行;真實頁面走 DOM,node 測試環境 fallback regex
-function editedHtmlToPlain(html) {
+export function editedHtmlToPlain(html) {
   try {
     if (typeof document !== 'undefined' && document.createElement) {
       const div = document.createElement('div');

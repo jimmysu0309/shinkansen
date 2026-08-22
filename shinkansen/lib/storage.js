@@ -641,6 +641,10 @@ export const DEFAULT_SETTINGS = {
     // 預設帶 applyFixedGlossary=true)。關掉後 cache key 會因 fixedGlossary entries 從 prompt
     // 移除而換新 hash,不主動清舊快取,使用者可在「進階設定 → 清除所有文件翻譯記憶」手動清。
     applyFixedGlossary: true,
+    // 2026-08-22：字幕檔譯文句末不加句號（與 YouTube 字幕 prompt 同款）。開啟時字幕提示
+    // 加「句末不加「。」」+ 輸出端（下載 / 預覽）確定性去掉行尾「。」。只對中文 target
+    // 生效（半形「.」在其他語言有縮寫語意，不動）。預設開；關掉 = 模型原始輸出
+    subtitleStripPeriod: true,
   },
   // v1.2.11: YouTube 字幕翻譯設定
   ytSubtitle: {
