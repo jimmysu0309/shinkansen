@@ -1,9 +1,9 @@
-// doc-file-translate-harness.js — txt / md / html 文件翻譯端到端自驗 harness（v2.0.87）
+// doc-file-translate-harness.js — txt / md / html / 字幕檔文件翻譯端到端自驗 harness（v2.0.87）
 //
 // 用法：
-//   node tools/doc-file-translate-harness.js [--kind txt|md|html] [--csv-only]
+//   node tools/doc-file-translate-harness.js [--kind txt|md|html|srt|vtt|ass[,…]] [--csv-only]
 //
-//   省略 --kind 時三種格式全跑。--csv-only 只驗術語表 CSV 匯入（不打翻譯 API）。
+//   省略 --kind 時六種格式全跑（逗號可列多種）。--csv-only 只驗術語表 CSV 匯入（不打翻譯 API）。
 //
 // 行為（每種格式）：
 //   1. fresh profile 載入 unpacked extension，注入 ~/.shinkansen-test-key、
@@ -11,6 +11,7 @@
 //   2. 產生內建小 fixture（txt 兩段落 / md 兩章含清單引用 fence / html 三段落）
 //   3. 上傳 → 章節清單（驗單章 txt/html 不出章節勾選 UI）→ 真翻譯 →
 //      點下載攔 download 存 .playwright-mcp/docfile-translated.<ext> → dump 內容
+//      （字幕檔再切「雙語對照」下載一次，驗譯文在上原文在下）
 //   4. md 流程加驗術語表 CSV 匯入（匯入 → 覆蓋 → 驗表格條目）
 //
 // 驗的層次：真實 Gemini API + 完整 UI 路徑（上傳→翻譯→下載）+ 輸出檔結構
@@ -25,7 +26,7 @@ const OUT_DIR = path.resolve(import.meta.dirname, '../.playwright-mcp');
 const KEY_PATH = path.join(os.homedir(), '.shinkansen-test-key');
 
 const kindArgIdx = process.argv.indexOf('--kind');
-const ONLY_KIND = kindArgIdx !== -1 ? process.argv[kindArgIdx + 1] : null;
+const ONLY_KINDS = kindArgIdx !== -1 ? new Set(process.argv[kindArgIdx + 1].split(',')) : null;
 const CSV_ONLY = process.argv.includes('--csv-only');
 
 if (!fs.existsSync(KEY_PATH)) {
@@ -49,7 +50,31 @@ const FIXTURES = {
     name: 'sample-page.html',
     content: '<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="utf-8"><title>The Lighthouse</title></head>\n<body>\n<h1>The Lighthouse</h1>\n<p>The keeper climbed the <em>spiral stairs</em> every evening.</p>\n<p>He carried a small lantern in his left hand.</p>\n<script>console.log("script preserved");</script>\n</body>\n</html>\n',
   },
+  // 字幕檔：行內標記（<i> / {\an8} / <c.cls> / <v>）、純音符字幕、半句接續
+  srt: {
+    name: 'sample-episode.srt',
+    content: '1\n00:00:01,000 --> 00:00:03,000\nThe keeper climbed the stairs\n\n2\n00:00:03,200 --> 00:00:05,000\nevery single evening.\n\n3\n00:00:05,500 --> 00:00:07,000\n♪ ♪\n\n4\n00:00:07,500 --> 00:00:10,000\n{\\an8}<i>Outside,</i> the waves crashed\nagainst the rocks below.\n',
+  },
+  vtt: {
+    name: 'sample-episode.vtt',
+    content: 'WEBVTT\nKind: captions\n\nNOTE\nharness fixture\n\nintro\n00:01.000 --> 00:04.000 align:start position:10%\n<v Keeper>I climb these stairs <c.yellow>every evening</c>.\n\n00:05.000 --> 00:08.000\nAt dawn he wrote a single line.\n',
+  },
+  ass: {
+    name: 'sample-episode.ass',
+    content: '[Script Info]\nTitle: Harness\nScriptType: v4.00+\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize\nStyle: Default,Arial,20\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nComment: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,fixture comment\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\an8}The keeper climbed the stairs,\\Nevery single evening.\nDialogue: 0,0:00:04.00,0:00:06.00,Default,,0,0,0,,{\\i1}At dawn{\\i0} he wrote a single line.\n',
+  },
 };
+// Big5 編碼的 SRT（bytes）：驗「舊編碼自動判斷 → 輸出 UTF-8」。內容：
+// 「你好嗎」「我很好，謝謝」
+const BIG5_SRT_BYTES = Buffer.concat([
+  Buffer.from('1\r\n00:00:01,000 --> 00:00:02,000\r\n', 'latin1'),
+  Buffer.from([0xA7, 0x41, 0xA6, 0x6E, 0xB6, 0xDC]),
+  Buffer.from('\r\n\r\n2\r\n00:00:03,000 --> 00:00:04,000\r\n', 'latin1'),
+  Buffer.from([0xA7, 0xDA, 0xAB, 0xDC, 0xA6, 0x6E, 0xA1, 0x41, 0xC1, 0xC2, 0xC1, 0xC2]),
+  Buffer.from('\r\n', 'latin1'),
+]);
+FIXTURES['srt-big5'] = { name: 'sample-big5.srt', bytes: BIG5_SRT_BYTES };
+const SUBTITLE_KINDS = new Set(['srt', 'vtt', 'ass', 'srt-big5']);
 
 const CSV_FIXTURE = {
   name: 'glossary.csv',
@@ -59,7 +84,7 @@ const CSV_FIXTURE = {
 const tmpFixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sk-docfile-fixtures-'));
 function fixtureFile(spec) {
   const p = path.join(tmpFixtureDir, spec.name);
-  fs.writeFileSync(p, spec.content);
+  fs.writeFileSync(p, spec.bytes || spec.content);
   return p;
 }
 
@@ -143,6 +168,31 @@ async function runKind(kind) {
     console.log('[harness] 譯文檔：', dl.suggestedFilename(), '→', outPath);
     console.log('[harness] ── 譯文檔內容 ──');
     console.log(fs.readFileSync(outPath, 'utf-8'));
+    if (kind === 'srt-big5') {
+      // 輸出必為合法 UTF-8（fatal 解碼不拋）且原文字幕（雙語 / 未翻露出）不含亂碼
+      const bytes = fs.readFileSync(outPath);
+      let utf8Ok = true;
+      try { new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (_) { utf8Ok = false; }
+      const srcOk = await page.evaluate(() => window.__skEpubDoc.chapters[0].blocks.map((b) => b.plainText).join('|'));
+      console.log('[harness] Big5 → UTF-8 驗證：', utf8Ok ? 'UTF-8 OK' : 'UTF-8 FAIL', '| 解碼原文：', srcOk);
+      if (!utf8Ok || !srcOk.includes('你好嗎') || !srcOk.includes('謝謝')) process.exitCode = 1;
+    }
+
+    // 字幕檔：切「雙語對照」再下載一次（譯文資料不變，零重翻）
+    if (SUBTITLE_KINDS.has(kind)) {
+      const dualWrapHidden = await page.evaluate(() => document.getElementById('epub-dual-wrap').hidden);
+      console.log('[harness] 字幕雙語 select 顯示：', !dualWrapHidden);
+      if (dualWrapHidden) process.exitCode = 1;
+      await page.selectOption('#epub-dual-mode', 'dual');
+      const dl2Promise = page.waitForEvent('download', { timeout: 60_000 });
+      await page.click('#chapters-download-btn');
+      const dl2 = await dl2Promise;
+      const outPath2 = path.join(OUT_DIR, `docfile-translated-${kind}-dual${path.extname(dl2.suggestedFilename())}`);
+      await dl2.saveAs(outPath2);
+      console.log('[harness] 雙語譯文檔：', dl2.suggestedFilename(), '→', outPath2);
+      console.log('[harness] ── 雙語譯文檔內容 ──');
+      console.log(fs.readFileSync(outPath2, 'utf-8'));
+    }
 
     // 工作階段還原：同 profile 重新上傳同檔,IndexedDB session 應載回翻譯進度
     await page.click('#chapters-reupload-btn');
@@ -205,10 +255,10 @@ async function runCsvImport() {
 }
 
 if (!CSV_ONLY) {
-  for (const kind of ['txt', 'md', 'html']) {
-    if (ONLY_KIND && kind !== ONLY_KIND) continue;
+  for (const kind of ['txt', 'md', 'html', 'srt', 'vtt', 'ass', 'srt-big5']) {
+    if (ONLY_KINDS && !ONLY_KINDS.has(kind)) continue;
     await runKind(kind);
   }
 }
-if (!ONLY_KIND || CSV_ONLY) await runCsvImport();
+if (!ONLY_KINDS || CSV_ONLY) await runCsvImport();
 console.log('\n[harness] 完成');

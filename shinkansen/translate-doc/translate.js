@@ -380,8 +380,8 @@ export async function translateDocument(doc, options = {}) {
   // 全 cache hit 場景 background 端 shouldSkipUsageRecord 會自動跳過，不污染列表
   try {
     const filename = (doc.meta && doc.meta.filename) || 'unknown.pdf';
-    // 書籍式文件（epub / txt / md / html）以 kind 當 scheme,PDF 與未知維持 pdf
-    const urlScheme = ['epub', 'txt', 'md', 'html'].includes(doc.kind) ? doc.kind : 'pdf';
+    // 書籍式文件（epub / txt / md / html / subtitle）以 kind 當 scheme,PDF 與未知維持 pdf
+    const urlScheme = ['epub', 'txt', 'md', 'html', 'subtitle'].includes(doc.kind) ? doc.kind : 'pdf';
     await chrome.runtime.sendMessage({
       type: 'LOG_USAGE',
       payload: {

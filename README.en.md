@@ -12,6 +12,7 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 - **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with four-finger touch translate and the floating button, ready out of the box.
 - Added **EPUB book translation** (beta) — drop a whole ebook into the "Translate document" page; a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters, you can translate a chapter or two first to check quality, and the translated book can be downloaded in monolingual or bilingual format.
+- Added **subtitle file translation** — drop an SRT / WebVTT / ASS file into the "Translate document" page to translate the whole file; timing and style tags are preserved, and you can download monolingual or bilingual subtitles.
 - Added **TXT / Markdown / HTML file** translation — translate plain-text or Markdown novels and saved web pages in one go; the translated file keeps the same format as the original. Glossary import also **accepts CSV** (two columns: source,translation), so externally curated term lists can be imported directly.
 - Added **Simplified ↔ Traditional Chinese page conversion (free)** — Simplified (or Traditional) Chinese content is converted locally with built-in dictionaries: no API key, no API calls, works offline.
 - **Several YouTube subtitle fixes** — youtube.com/live/ live-stream links now get subtitle translation, English words are no longer split in half, Taiwanese videos are no longer thrown off by the auto-translated English track, and overall reliability is improved.
@@ -37,7 +38,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
-- **Document translation (PDF / EPUB / TXT / Markdown / HTML)**: upload a file and translate the whole thing — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output; TXT / Markdown / HTML files reuse the same chapter pipeline, and the translated file keeps the same format as the original. Details in "Document translation" below.
+- **Document translation (PDF / EPUB / TXT / Markdown / HTML / subtitles)**: upload a file and translate the whole thing — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output; TXT / Markdown / HTML files reuse the same chapter pipeline, and the translated file keeps the same format as the original; SRT / WebVTT / ASS subtitle files are translated cue by cue with timing preserved, with optional bilingual output. Details in "Document translation" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with Traditional Chinese; styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
 - **Bilingual subtitles**: when the display mode is set to "Bilingual", subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. Applies to both YouTube and Google Drive videos. Details in "Bilingual subtitles" below.
 - **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
@@ -139,9 +140,9 @@ Google Docs renders text via Canvas, so generic web translation extensions can't
 
 Notes: you must have view access to the document. Mobile reading view is read-only and does not affect the original document.
 
-## Document translation (PDF / EPUB / TXT / Markdown / HTML)
+## Document translation (PDF / EPUB / TXT / Markdown / HTML / subtitles)
 
-Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF, EPUB, TXT, Markdown, or HTML file onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine.
+Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF, EPUB, TXT, Markdown, HTML, or subtitle file (SRT / WebVTT / ASS) onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine.
 
 **PDF translation**:
 
@@ -166,6 +167,15 @@ Click the Shinkansen toolbar icon → "Translate document" to open a dedicated t
 - **Markdown**: split into chapters by headings (`#` / `##`) with the same chapter checklist as EPUB; headings, lists, quotes, and other markup are preserved, and code blocks are passed through untranslated
 - **HTML**: saved web pages (`.htm` / `.html`) reuse the EPUB chapter serialization engine — inline bold / italic / link markup is preserved, and `<script>` / styles pass through untouched
 - **Output format matches the input**: txt in, txt out; Markdown in, Markdown out; HTML in, HTML out — downloads as `<filename>-shinkansen.<ext>`
+
+**Subtitle file translation** (SRT / WebVTT / ASS):
+
+- **Cue by cue**: each cue is one translation unit; neighbouring cues provide context, but cues are never merged or split, and translations stay concise and conversational
+- **Timing and structure preserved**: cue numbers, timestamps, the WEBVTT header, NOTE / STYLE blocks, and ASS style sections and `Comment:` lines are left untouched — the translated file has the same cues and timing as the original
+- **Inline tags preserved**: `<i>` / `<b>` / `<c>` tags, speaker tags, and ASS `{\an8}` positioning and `\N` line breaks are restored as-is
+- **Monolingual or bilingual subtitles**: "Translated content" lets you choose translation-only cues, or bilingual cues with the translation on top and the original below (great for side-by-side viewing or language learning); switching re-downloads without re-translating
+- **Same pipeline**: book-wide glossary (consistent name translations across the whole film), post-translation consistency scan, preview editing, and automatic session saving all carry over; downloads as `<filename>-shinkansen.<ext>` (`-dual` added for bilingual)
+- **Encoding auto-detected, always saved as UTF-8**: subtitle files in legacy encodings (Big5 / GBK / Shift_JIS / EUC-KR …) load without mojibake, and the translated file is always written as UTF-8 (also applies to TXT / Markdown / HTML files)
 
 Document translation shares the same translation cache and usage tracking as web translation. The "Translation settings" dialog also lets you set the batch size and a per-document extra prompt (e.g., "this is a 19th-century novel — keep the tone classical").
 
@@ -307,7 +317,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.0 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.1 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

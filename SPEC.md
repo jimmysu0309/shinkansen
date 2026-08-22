@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.0
+- 目前 Extension 版本：2.4.1
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.0 為止）
+### 2.1 已實作（v2.4.1 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -60,7 +60,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 自動翻譯網站 | ✅ | 網域白名單（支援萬用字元）；`autoTranslate` 總開關 |
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
-| 文件翻譯（PDF / EPUB / TXT / Markdown / HTML） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；詳見 §17 |
+| 文件翻譯（PDF / EPUB / TXT / Markdown / HTML / 字幕檔） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；字幕檔（SRT / WebVTT / ASS）每則字幕為翻譯單位、時間軸原樣保留、可輸出雙語字幕；詳見 §17 |
 | iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；四指輕點觸發；popup／options 觸控調整；不含 PDF 翻譯 |
 
 ### 2.3 明確不做
@@ -332,7 +332,7 @@ shinkansen/
 │   ├── update-check.js       # 版本更新檢查
 │   ├── zh-convert.js         # 簡繁本地互轉（§3.12）
 │   └── vendor/               # 第三方程式庫（pdfjs／pdf-lib + fontkit／chart.min.js／fflate／Noto Sans TC 字型／opencc 簡繁字典）
-├── translate-doc/            # 文件翻譯：PDF + EPUB + TXT / MD / HTML（§17，web_accessible_resources）
+├── translate-doc/            # 文件翻譯：PDF + EPUB + TXT / MD / HTML + 字幕檔（§17，web_accessible_resources）
 │   ├── index.html / index.js / index.css
 │   ├── settings.html / settings.js
 │   ├── block-types.js        # block type 共用常數
@@ -344,6 +344,7 @@ shinkansen/
 │   ├── epub-writer.js        # 譯本 EPUB 重建（§17.10）
 │   ├── epub-session-db.js    # 書籍式文件翻譯工作階段存檔（IndexedDB）
 │   ├── doc-file-engine.js    # TXT / Markdown / HTML 解析與譯文檔重建 + 術語表 CSV 解析（§17.11）
+│   ├── subtitle-engine.js    # 字幕檔（SRT / WebVTT / ASS）解析、行內標記佔位符對映與譯文檔重建（§17.12）
 │   ├── dev-verify.js         # dev 驗證 harness hook（production 不載入）
 │   ├── reader.js             # 線上閱讀器（雙頁並排，§17.6）
 │   └── translate.js          # 文件翻譯 pipeline 協調
@@ -651,14 +652,14 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 
 ---
 
-## 17. 文件翻譯（PDF / EPUB / TXT / Markdown / HTML）
+## 17. 文件翻譯（PDF / EPUB / TXT / Markdown / HTML / 字幕檔）
 
 ### 17.1 功能總覽
 
-使用者透過 popup 點選「翻譯文件」開啟獨立分頁，本機上傳 PDF、EPUB、TXT、Markdown（`.md` / `.markdown`）或 HTML（`.htm` / `.html`）檔案，選擇翻譯 preset（沿用既有三組 preset），系統解析、批次送翻、提供：
+使用者透過 popup 點選「翻譯文件」開啟獨立分頁，本機上傳 PDF、EPUB、TXT、Markdown（`.md` / `.markdown`）、HTML（`.htm` / `.html`）或字幕檔（`.srt` / `.vtt` / `.ass` / `.ssa`），選擇翻譯 preset（沿用既有三組 preset），系統解析、批次送翻、提供：
 
 1. **線上閱讀器**（PDF）：雙頁並排顯示（左原 / 右譯），雙向 scroll sync（同頁同比例定位）、zoom 控制、同步捲動開關
-2. **下載譯文檔**：PDF 輸出 `<原檔名>-shinkansen.pdf`（譯文直接寫在原頁面版面上，頁數與原檔相同）；EPUB 輸出譯本 EPUB（單語 / 雙語對照可選）；TXT / Markdown / HTML 輸出 `<原檔名>-shinkansen.<原副檔名>`（譯文輸出格式 = 輸入格式）
+2. **下載譯文檔**：PDF 輸出 `<原檔名>-shinkansen.pdf`（譯文直接寫在原頁面版面上，頁數與原檔相同）；EPUB 輸出譯本 EPUB（單語 / 雙語對照可選）；TXT / Markdown / HTML 輸出 `<原檔名>-shinkansen.<原副檔名>`（譯文輸出格式 = 輸入格式）；字幕檔輸出同格式字幕檔（單語 / 雙語字幕可選，§17.12）
 
 ### 17.2 限制與上限（PDF）
 
@@ -736,6 +737,20 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - **Markdown**：按 ATX 標題（`#` / `##`）切章，比照 EPUB 出章節勾選清單；標題 / 清單 / 引用的標記前綴由重建端保留，fenced code block 不翻譯原樣帶過；無標題檔視同單章
 - **HTML**：整份單一章節，段落偵測與行內標記序列化沿用 EPUB 章節引擎（粗斜體 / 連結等 inline 標記保留），`<script>` / 樣式 / 其餘結構原樣帶過；輸出時更新 `<html lang>` 為目標語言，來源未宣告 charset 時補 `<meta charset="utf-8">`
 - **限制**：檔案硬上限與 EPUB 相同（100 MB）；已選字數超過 50 萬字時顯示成本警告
+- **檔案編碼**：讀入時自動判斷編碼——UTF-8（含 BOM）/ UTF-16（BOM）/ Big5 / GBK / Shift_JIS / EUC-KR / Windows-1252（以目標語言決定舊編碼的優先順序，並以常用字比例防止 Big5 ⇄ GBK 互判錯）；譯文檔一律以 **UTF-8** 輸出（來源有 BOM 才帶 UTF-8 BOM）
 - **格式列**：章節清單資訊列的「格式」欄顯示 EPUB 版本或 TXT / Markdown / HTML
-- 雙語對照譯本輸出為 EPUB 專屬，TXT / Markdown / HTML 不提供
+- 雙語對照譯本輸出為 EPUB 與字幕檔提供，TXT / Markdown / HTML 不提供
 - **整份未翻輸出 === 輸入**（重建不變量）：未翻 / 失敗段落在譯文檔中以原文原樣輸出
+
+### 17.12 字幕檔翻譯（SRT / WebVTT / ASS）
+
+與 TXT / Markdown / HTML 共用同一條「書籍式文件」管線（全書術語表 / 譯後一致性掃描 / 預覽編輯 / 工作階段存檔 / 費用預估全部沿用），整份單一「章節」不出章節勾選 UI：
+
+- **支援格式**：SubRip（`.srt`）、WebVTT（`.vtt`）、Advanced SubStation Alpha（`.ass` / `.ssa`）
+- **翻譯單位**：每則字幕（cue）一個翻譯單位；同一批內相鄰字幕一起送翻，LLM 以前後字幕為語境但逐則輸出（內建字幕專用提示：不合併 / 不拆分相鄰字幕、譯文精簡口語、不加註解；使用者的「本文件額外翻譯指令」接在其後）
+- **原樣保留**：序號、時間軸（含 VTT cue 設定）、WEBVTT 標頭、NOTE / STYLE / REGION 區塊、ASS 的 `[Script Info]` / `[V4+ Styles]` 區段與 `Comment:` 行、純音符 / 純標點字幕（♪ ♪）全部原樣帶過
+- **行內標記保留**：`<i>` / `<b>` / `<c.class>` 等配對標記、`<v 說話者>` / VTT 時間標記 `<00:01.000>` / ASS 覆寫 `{\an8}` / ASS 換行 `\N` 以佔位符協定保護，譯文回來還原原標記；LLM 吃掉的 ASS 覆寫標記補回該行行首
+- **輸出**：下載 `<原檔名>-shinkansen.<原副檔名>`（`.srt` / `.vtt` / `.ass`），譯文檔與原檔同格式、同則數、同時間軸；「譯本內容」select 可選**單語字幕**（每則只有譯文）或**雙語字幕**（每則譯文在上、原文在下，ASS 以 `\N` 分行；檔名加 `-dual`）；切換模式重新下載零重翻費用
+- **限制**：檔案硬上限與 EPUB 相同（100 MB）；格式列顯示 SRT / WebVTT / ASS；整份未翻輸出 === 輸入
+- **檔案編碼**：讀入時自動判斷編碼——UTF-8（含 BOM）/ UTF-16（BOM）/ Big5 / GBK / Shift_JIS / EUC-KR / Windows-1252（以目標語言決定舊編碼的優先順序，並以常用字比例防止 Big5 ⇄ GBK 互判錯）；字幕檔常見的舊編碼來源不再亂碼，譯文字幕檔一律以 **UTF-8** 輸出（來源有 BOM 才帶 UTF-8 BOM）
+- 解析 / 佔位符對映 / 重建細節見 SPEC-PRIVATE §32

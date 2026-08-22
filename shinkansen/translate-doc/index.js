@@ -6,7 +6,7 @@
 
 import { parsePdf, preflightFile, renderPageToCanvas, closeDocument, PdfParseError } from './pdf-engine.js';
 import { analyzeLayout } from './layout-analyzer.js';
-import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts, clearTcCacheForTexts } from './translate.js';
+import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts, clearTcCacheForTexts, stripPlaceholderTokens } from './translate.js';
 import { TRANSLATABLE_TYPES } from './block-types.js';
 import { renderReader, buildPlainTextDump } from './reader.js';
 import { downloadBilingualPdf, buildBilingualPdf } from './pdf-renderer.js';
@@ -33,6 +33,12 @@ import {
   detectDocFileKind, preflightDocFile, parseDocFile, DocFileParseError,
   buildTranslatedDocText, buildTranslatedHtmlDoc, translatedDocFilename, parseGlossaryCsv,
 } from './doc-file-engine.js';
+// 字幕檔翻譯（srt / vtt / ass）：同樣走書籍式管線，解析 / 下載 / 提示語分流
+import {
+  detectSubtitleFormat, parseSubtitleFile, buildTranslatedSubtitleText,
+  translatedSubtitleFilename, subtitleMimeType, subtitlePromptHint,
+  fixCjkSpacingAroundPlaceholders, SUBTITLE_FORMAT_LABELS,
+} from './subtitle-engine.js';
 import { getSettings } from '../lib/storage.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -40,10 +46,11 @@ const DEBUG_RENDER_SCALE = 1.5;
 
 const $ = (id) => document.getElementById(id);
 
-// 書籍式文件 kind 集合：EPUB 之外的 txt / md / html（v2.0.87）走同一條
-// 章節清單 / 全書術語表 / 工作階段 / 一致性掃描管線（單一資料源），
-// 只有解析與譯文檔下載端按 kind 分流。PDF（kind 缺省）不在此列
-const BOOK_DOC_KINDS = new Set(['epub', 'txt', 'md', 'html']);
+// 書籍式文件 kind 集合：EPUB 之外的 txt / md / html（v2.0.87）與字幕檔
+// subtitle（srt / vtt / ass）走同一條章節清單 / 全書術語表 / 工作階段 /
+// 一致性掃描管線（單一資料源），只有解析與譯文檔下載端按 kind 分流。
+// PDF（kind 缺省）不在此列
+const BOOK_DOC_KINDS = new Set(['epub', 'txt', 'md', 'html', 'subtitle']);
 const isBookDoc = (doc) => !!doc && BOOK_DOC_KINDS.has(doc.kind);
 
 // i18n shortcut。lib/i18n.js 由 index.html `<script src>` 載入,attach 到
@@ -244,6 +251,11 @@ async function handleFile(file) {
   if (/\.epub$/i.test(file.name || '') || (file.type || '') === 'application/epub+zip') {
     return handleBookFile(file, 'epub');
   }
+  // 字幕檔分流：每則字幕一個 block，時間軸 / 樣式區塊原樣保留。
+  // 必須排在 txt / md / html 偵測之前——瀏覽器常給 .srt 掛 text/plain MIME，
+  // detectDocFileKind 的 MIME fallback 會把字幕檔誤判成 txt
+  const subtitleFormat = detectSubtitleFormat(file);
+  if (subtitleFormat) return handleBookFile(file, 'subtitle', subtitleFormat);
   // txt / md / html 分流（v2.0.87）：與 EPUB 共用章節管線
   const docFileKind = detectDocFileKind(file);
   if (docFileKind) return handleBookFile(file, docFileKind);
@@ -1808,7 +1820,7 @@ async function _startTranslateImpl() {
       signal: translateAbortController.signal,
       onProgress: setProgress,
       batchSize: await resolveDocBatchSize(),
-      extraPrompt: currentDocExtraPrompt || null,
+      extraPrompt: await docExtraPromptForLlm(),
     });
   } catch (err) {
     console.error('[Shinkansen] translateDocument 失敗', err);
@@ -2460,9 +2472,9 @@ function clearChaptersError() {
   el.hidden = true;
 }
 
-// 書籍式文件共同入口（v2.0.87 起 EPUB / txt / md / html 共用）：
+// 書籍式文件共同入口（v2.0.87 起 EPUB / txt / md / html 共用；字幕檔亦同）：
 // 解析分流後,工作階段還原 / 章節清單等後續流程完全同一條
-async function handleBookFile(file, kind) {
+async function handleBookFile(file, kind, subtitleFormat = null) {
   const pre = kind === 'epub' ? preflightEpubFile(file) : preflightDocFile(file);
   if (pre.level === 'error') {
     showError(t('doc.epub.error.' + pre.code));
@@ -2479,6 +2491,10 @@ async function handleBookFile(file, kind) {
   showStage('parsing');
   setParsingDetail(kind === 'epub' ? t('doc.epub.parsing.unzip') : t('doc.parsing.detail.fileContent'));
 
+  // 文字類檔案編碼自動判斷：目標語言決定舊編碼候選順序（zh-CN → GBK 優先等）
+  let decodeOpts = {};
+  try { decodeOpts = { targetLanguage: (await getSettings()).targetLanguage || '' }; } catch (_) { /* 預設順序 */ }
+
   try {
     const doc = kind === 'epub'
       ? await parseEpub(file, (p) => {
@@ -2487,7 +2503,9 @@ async function handleBookFile(file, kind) {
           setParsingDetail(t('doc.epub.parsing.chapters', { current: p.current, total: p.total }));
         }
       }, { signal: parseSignal })
-      : await parseDocFile(file, kind);
+      : kind === 'subtitle'
+        ? await parseSubtitleFile(file, subtitleFormat, decodeOpts)
+        : await parseDocFile(file, kind, decodeOpts);
     if (myGen !== parseGeneration) return;
 
     currentDoc = doc;
@@ -2593,7 +2611,9 @@ async function renderChapterList() {
   // 「格式」列：EPUB 帶版本號，其他 kind 顯示格式名（v2.0.87）
   $('chapters-epub-version').textContent = doc.kind === 'epub'
     ? (doc.meta.epubVersion ? `EPUB ${doc.meta.epubVersion}` : 'EPUB')
-    : ({ txt: 'TXT', md: 'Markdown', html: 'HTML' }[doc.kind] || '—');
+    : doc.kind === 'subtitle'
+      ? (SUBTITLE_FORMAT_LABELS[doc.subtitleFormat] || '—')
+      : ({ txt: 'TXT', md: 'Markdown', html: 'HTML' }[doc.kind] || '—');
   $('chapters-count').textContent = String(doc.meta.chapterCount);
   $('chapters-chars').textContent = doc.stats.totalChars.toLocaleString('en-US');
 
@@ -2688,8 +2708,13 @@ async function renderChapterList() {
   const isEpub2 = /^2(\.|$)/.test(doc.meta.epubVersion || '');
   $('epub-output-format-wrap').hidden = !(isEpub2 && epubHasAnyTranslation());
   // 譯本內容（單語 / 雙語對照）：有任何翻譯（= 下載按鈕出現）才顯示。
-  // EPUB 專屬（txt / md 是純文字輸出、html 維持輸出 = 輸入格式,不做交錯對照）
-  $('epub-dual-wrap').hidden = !(doc.kind === 'epub' && epubHasAnyTranslation());
+  // EPUB 與字幕檔提供（txt / md 是純文字輸出、html 維持輸出 = 輸入格式,
+  // 不做交錯對照）；字幕的雙語 = 每則字幕譯文在上、原文在下，title 說明分流
+  const dualWrap = $('epub-dual-wrap');
+  const dualTitleKey = doc.kind === 'subtitle' ? 'doc.subtitle.dual.title' : 'doc.epub.dual.title';
+  dualWrap.setAttribute('data-i18n-attr-title', dualTitleKey);
+  dualWrap.title = t(dualTitleKey);
+  dualWrap.hidden = !((doc.kind === 'epub' || doc.kind === 'subtitle') && epubHasAnyTranslation());
   const cumRow = $('chapters-cumulative-row');
   if (epubCumulativeCostUSD > 0) {
     cumRow.hidden = false;
@@ -2801,7 +2826,7 @@ async function startEpubTranslate() {
       // _b hash 由合併後清單計算 → 書級清單變更快取自動失效
       extraForbiddenTerms: currentBookForbidden.length > 0 ? currentBookForbidden : null,
       batchSize: await resolveDocBatchSize(),
-      extraPrompt: currentDocExtraPrompt || null,
+      extraPrompt: await docExtraPromptForLlm(),
     });
   } catch (err) {
     console.error('[Shinkansen] translateDocument(epub) 失敗', err);
@@ -2910,15 +2935,27 @@ async function downloadTranslatedDocFile() {
     const settings = await getSettings();
     const dedupe = computeAnnotationDedupe(currentDoc, currentArticleGlossary);
     const kind = currentDoc.kind;
-    const text = kind === 'html'
-      ? await buildTranslatedHtmlDoc(currentDoc, settings.targetLanguage || 'zh-TW', dedupe)
-      : buildTranslatedDocText(currentDoc, dedupe);
-    const mime = kind === 'html' ? 'text/html' : kind === 'md' ? 'text/markdown' : 'text/plain';
+    let text;
+    let mime;
+    let filename;
+    if (kind === 'subtitle') {
+      // 雙語字幕（writer 層下載時選項：譯文資料不變，切換模式重新下載零重翻費用）
+      const bilingual = !$('epub-dual-wrap').hidden && $('epub-dual-mode').value === 'dual';
+      text = buildTranslatedSubtitleText(currentDoc, dedupe, { bilingual });
+      mime = subtitleMimeType(currentDoc.subtitleFormat);
+      filename = translatedSubtitleFilename(currentDoc.meta.filename, currentDoc.subtitleFormat, { bilingual });
+    } else {
+      text = kind === 'html'
+        ? await buildTranslatedHtmlDoc(currentDoc, settings.targetLanguage || 'zh-TW', dedupe)
+        : buildTranslatedDocText(currentDoc, dedupe);
+      mime = kind === 'html' ? 'text/html' : kind === 'md' ? 'text/markdown' : 'text/plain';
+      filename = translatedDocFilename(currentDoc.meta.filename, kind);
+    }
     const blob = new Blob([text], { type: `${mime};charset=utf-8` });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = translatedDocFilename(currentDoc.meta.filename, kind);
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
@@ -2958,6 +2995,18 @@ async function openEpubPreview(scope) {
 //（inline 標記保留、跨節點相鄰靠 prevChar context）→ 有改動才寫回 editedHtml
 //（= 手動編輯語意，下載 / session 存檔都吃得到；dedupe 後處理對 edited block
 // 照樣生效）
+// 送 LLM 的「額外翻譯指令」：字幕檔固定前置字幕專用提示（連續片段 / 精簡 /
+// 不合併），再接使用者的本文件額外指令；其他 kind 維持使用者指令原樣。
+// 兩者都隨 _x hash 進 cache key
+async function docExtraPromptForLlm() {
+  const user = currentDocExtraPrompt || '';
+  if (currentDoc?.kind !== 'subtitle') return user || null;
+  let targetLanguage = 'zh-TW';
+  try { targetLanguage = (await getSettings()).targetLanguage || 'zh-TW'; } catch (_) { /* 預設 */ }
+  const hint = subtitlePromptHint(targetLanguage);
+  return user ? `${hint}\n\n${user}` : hint;
+}
+
 async function autoFixCjkSpacing(doc) {
   const none = { hits: 0, blocks: 0 };
   if (!doc || !Array.isArray(doc.chapters)) return none;
@@ -2975,6 +3024,20 @@ async function autoFixCjkSpacing(doc) {
   for (const ch of doc.chapters) {
     for (const b of ch.blocks) {
       if (b.translationStatus !== 'done') continue;
+      // 字幕 block（tagSlots 字串級佔位符）：DOM 路徑會把佔位符剝掉存成
+      // editedHtml、行內標記全丟 → 改在 translationRaw 逐文字片段校正，
+      // 佔位符原位保留（手動編輯過的 block 仍走下方 editedHtml 路徑）
+      if (Array.isArray(b.tagSlots) && typeof b.translationRaw === 'string'
+          && !(typeof b.editedHtml === 'string' && b.editedHtml.length > 0)) {
+        const r = fixCjkSpacingAroundPlaceholders(b.translationRaw, addCjkLatinSpacing);
+        if (r.count > 0) {
+          b.translationRaw = r.text;
+          b.translation = stripPlaceholderTokens(r.text);
+          blocks++;
+          hits += r.count;
+        }
+        continue;
+      }
       // 批次 8 G7:渲染統一走 renderBlockContent(無譯文 = 無可校正,跳過)
       const rendered = renderBlockContent(b, SK);
       if (!rendered) continue;
