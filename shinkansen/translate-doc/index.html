@@ -72,12 +72,12 @@
     <section id="stage-chapters" class="stage" hidden>
       <h2 class="result-title" id="chapters-book-title"></h2>
       <div class="result-summary">
-        <div class="result-row"><span data-i18n="doc.epub.row.author">作者</span><span id="chapters-author"></span></div>
+        <div class="result-row" id="chapters-author-row"><span data-i18n="doc.epub.row.author">作者</span><span id="chapters-author"></span></div>
         <div class="result-row"><span data-i18n="doc.epub.row.version">格式</span><span id="chapters-epub-version"></span></div>
-        <div class="result-row"><span data-i18n="doc.epub.row.chapters">章節數</span><span id="chapters-count"></span></div>
+        <div class="result-row" id="chapters-count-row"><span data-i18n="doc.epub.row.chapters">章節數</span><span id="chapters-count"></span></div>
         <div class="result-row"><span data-i18n="doc.epub.row.chars">可翻譯字數</span><span id="chapters-chars"></span></div>
         <div class="result-row"><span data-i18n="doc.epub.row.selected">已勾選</span><span id="chapters-selected-summary"></span></div>
-        <div class="result-row" id="chapters-cumulative-row" hidden><span data-i18n="doc.epub.row.cumulativeCost">本書累計費用</span><span id="chapters-cumulative-cost"></span></div>
+        <div class="result-row" id="chapters-cumulative-row" hidden><span id="chapters-cumulative-label" data-i18n="doc.epub.row.cumulativeCost">本書累計費用</span><span id="chapters-cumulative-cost"></span></div>
       </div>
       <div id="chapters-error" class="error-banner" hidden></div>
       <button id="chapters-scan-btn" class="scan-findings-btn" type="button" hidden></button>
@@ -93,10 +93,10 @@
         <button id="chapters-preview-all-btn" class="secondary-btn" type="button" hidden data-i18n="doc.epub.btn.previewAll">全書預覽</button>
         <button id="chapters-download-btn" class="secondary-btn" type="button" hidden data-i18n="doc.epub.btn.download">下載譯本 EPUB</button>
         <label id="epub-dual-wrap" class="epub-output-format" hidden title="單語譯文：譯文取代原文。雙語對照：原文段落保留（縮小顯示），譯文接在每段後面，適合對照閱讀或語言學習" data-i18n-attr-title="doc.epub.dual.title">
-          <span data-i18n="doc.epub.dual.label">譯本內容</span>
+          <span id="epub-dual-label" data-i18n="doc.epub.dual.label">譯本內容</span>
           <select id="epub-dual-mode">
-            <option value="single" data-i18n="doc.epub.dual.single">單語譯文</option>
-            <option value="dual" data-i18n="doc.epub.dual.dual">雙語對照</option>
+            <option value="single" id="epub-dual-opt-single" data-i18n="doc.epub.dual.single">單語譯文</option>
+            <option value="dual" id="epub-dual-opt-dual" data-i18n="doc.epub.dual.dual">雙語對照</option>
           </select>
         </label>
         <label id="epub-output-format-wrap" class="epub-output-format" hidden>
@@ -137,7 +137,7 @@
           <span id="epub-sr-status" class="settings-hint"></span>
         </div>
       </div>
-      <div class="edit-help" data-i18n="doc.epub.preview.editHint">已翻譯的段落可直接點擊編輯，修改會即時存入譯本；重新翻譯該章會覆蓋手動修改</div>
+      <div class="edit-help" id="epub-preview-edit-help" data-i18n="doc.epub.preview.editHint">已翻譯的段落可直接點擊編輯，修改會即時存入譯本；重新翻譯該章會覆蓋手動修改</div>
       <div id="epub-preview-content" class="epub-preview-content"></div>
     </section>
 
@@ -372,8 +372,8 @@
       </div>
       <!-- 本書獨立禁用詞（EPUB 才顯示，v2.0.11）：與「設定 → 禁用詞清單」合併注入 -->
       <div id="book-forbidden-section" class="book-forbidden-section" hidden>
-        <div class="glossary-toolbar-title" data-i18n="doc.epub.forbidden.title">本書禁用詞</div>
-        <p class="settings-hint" data-i18n="doc.epub.forbidden.hint">只套用在這本書的禁用詞，與「設定 → 禁用詞清單」的共通清單合併使用。替換詞留空 = 請 AI 自行改寫</p>
+        <div class="glossary-toolbar-title" id="book-forbidden-title" data-i18n="doc.epub.forbidden.title">本書禁用詞</div>
+        <p class="settings-hint" id="book-forbidden-hint" data-i18n="doc.epub.forbidden.hint">只套用在這本書的禁用詞，與「設定 → 禁用詞清單」的共通清單合併使用。替換詞留空 = 請 AI 自行改寫</p>
         <div id="book-forbidden-grid" class="book-forbidden-grid">
           <div class="g-header" data-i18n="doc.epub.forbidden.col.forbidden">禁用詞</div>
           <div class="g-header" data-i18n="doc.epub.forbidden.col.replacement">替換詞（可留空）</div>
