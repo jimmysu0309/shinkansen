@@ -85,6 +85,7 @@
         "content-drive.js",
         "content-touch.js",
         "content.js",
+        "content-hover.js",
         "content-shortcuts.js",
         "content-floating-icon.js"
       ],

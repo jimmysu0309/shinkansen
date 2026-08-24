@@ -62,6 +62,41 @@ let _currentTargetLang = DEFAULT_SETTINGS.targetLanguage;
 // (連帶 refreshExchangeRateDisplay 的 sendMessage 放大)。此旗標確保只訂閱一次。
 let _uiLangChangeSubscribed = false;
 
+// 修飾鍵標籤依平台顯示：Mac 用符號，Windows / Linux 用鍵名（isMac 判定沿用 popup.js 同一句）
+const _IS_MAC = /Mac/i.test((typeof navigator !== 'undefined' && navigator.platform) || '');
+const HOVER_MOD_LABELS = _IS_MAC
+  ? { alt: '⌥ Option', shift: '⇧ Shift', ctrl: '⌃ Control', meta: '⌘ Command' }
+  : { alt: 'Alt', shift: 'Shift', ctrl: 'Ctrl', meta: 'Win / Super' };
+
+function _labelHoverModKeys() {
+  for (const el of document.querySelectorAll('[data-modkey]')) {
+    const label = HOVER_MOD_LABELS[el.dataset.modkey];
+    if (label) el.textContent = label;
+  }
+}
+
+// 懸停翻譯的兩組修飾鍵 radio 共用讀寫（name = hoverMod / hoverInlineMod）
+function _hoverModRadios(name) {
+  return document.querySelectorAll(`input[name="${name}"]`);
+}
+
+function _fillHoverMod(name, m) {
+  const key = window.__SKShortcuts.hoverModifierKey(m);
+  for (const r of _hoverModRadios(name)) r.checked = (r.value === key);
+}
+
+function _readHoverMod(name) {
+  return document.querySelector(`input[name="${name}"]:checked`)?.value || '';
+}
+
+// 兩種顯示方式不能綁同一個鍵——把對方已選的那個選項停用
+function _syncHoverModExclusion() {
+  const picked = { hoverMod: _readHoverMod('hoverMod'), hoverInlineMod: _readHoverMod('hoverInlineMod') };
+  for (const [name, other] of [['hoverMod', 'hoverInlineMod'], ['hoverInlineMod', 'hoverMod']]) {
+    for (const r of _hoverModRadios(name)) r.disabled = !!r.value && r.value === picked[other];
+  }
+}
+
 async function load() {
   const saved = await browser.storage.sync.get(null);
   // v0.62 起：apiKey 改存 browser.storage.local，不跟 Google 帳號同步
@@ -159,6 +194,11 @@ async function load() {
   $('floatingIconOpacity').value = floatingOpacityPct;
   _renderFloatingOpacityLabel(floatingOpacityPct);
   _renderFloatingSizeDemo();
+
+  _labelHoverModKeys();
+  _fillHoverMod('hoverMod', window.__SKShortcuts.sanitizeHoverModifier(s.hoverTranslateModifier));
+  _fillHoverMod('hoverInlineMod', window.__SKShortcuts.sanitizeHoverModifier(s.hoverTranslateInlineModifier));
+  _syncHoverModExclusion();
 
   // 四指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
   // 預設關（=== true 才開）；改由懸浮按鈕當主要觸控入口，四指易誤觸發故預設關。
@@ -1007,6 +1047,8 @@ async function _saveImpl() {
     floatingIcon: $('floatingIcon').checked,
     floatingIconSize: (() => { const v = document.querySelector('input[name="floatingIconSize"]:checked')?.value; return ['16', '24', '32'].includes(v) ? Number(v) : 24; })(),
     floatingIconOpacity: parseUserNum($('floatingIconOpacity').value, (DEFAULTS.floatingIconOpacity ?? 0.7) * 100) / 100,
+    hoverTranslateModifier: window.__SKShortcuts.sanitizeHoverModifier(_readHoverMod('hoverMod')),
+    hoverTranslateInlineModifier: window.__SKShortcuts.sanitizeHoverModifier(_readHoverMod('hoverInlineMod')),
     // 四指觸控手勢 enable（iOS only；桌面 checkbox 隱藏但維持 loaded 值，不誤寫）
     fourFingerGesture: $('fourFingerGesture').checked,
     // v1.5.0: 雙語對照視覺標記
@@ -1502,6 +1544,9 @@ function markDirty() {
 // 監聽設定分頁與 Gemini 分頁內所有 input / select / textarea 的變更
 document.getElementById('tab-settings').addEventListener('input', markDirty);
 document.getElementById('tab-settings').addEventListener('change', markDirty);
+document.getElementById('tab-settings').addEventListener('change', (e) => {
+  if (e.target?.name === 'hoverMod' || e.target?.name === 'hoverInlineMod') _syncHoverModExclusion();
+});
 document.getElementById('tab-gemini').addEventListener('input', markDirty);
 document.getElementById('tab-gemini').addEventListener('change', markDirty);
 document.getElementById('tab-glossary').addEventListener('input', markDirty);

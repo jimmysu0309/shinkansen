@@ -2,9 +2,9 @@
 
 > 一款專注於隱私的網頁翻譯 Chrome Extension。
 
-- 文件版本：v2.0
+- 文件版本：v2.1
 - 建立日期：2026-04-08
-- 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
+- 最後更新：2026-09-04（新增 §10.5 懸停翻譯）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
 - 目前 Extension 版本：2.4.8
@@ -51,6 +51,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 設定頁 | ✅ | 8 Tab：一般設定 / YouTube 字幕 / Gemini / 自訂模型 / 術語表 / 禁用詞清單 / 用量紀錄 / Debug；匯入匯出 |
 | Popup 面板 | ✅ | 翻譯/還原；快取/費用統計；自動翻譯開關；YouTube 字幕 toggle |
 | Toast 提示 | ✅ | 進度條 + 計時器；可調透明度與位置；`toastAutoHide` 自動關閉選項 |
+| 懸停翻譯 | ✅ | 按住修飾鍵把指標移到文字上，翻譯游標所在段落；浮動提示（不改頁面）與就地套用兩種顯示方式各綁一個鍵；預設關閉；詳見 §10.5 |
 | 懸浮按鈕 | ✅ | 頁面邊緣可拖移「新」icon；短按翻譯、長按選引擎或功能選單；可調透明度與大小；手機／平板預設開、桌面預設關 |
 | 用量紀錄 | ✅ | IndexedDB + 折線圖 + CSV 匯出；日期/模型/網域/文字搜尋篩選 |
 | Debug 工具 | ✅ | Log buffer 1000 筆 + 持久化 100 筆（跨 SW 重啟）；設定頁 Debug 分頁瀏覽 |
@@ -297,6 +298,7 @@ shinkansen/
 ├── content.js                # 主協調層（translatePage、Debug API、初始化）
 ├── content-shortcuts.js      # 自訂快速鍵 keydown capture 比對 → 本地 dispatch（§10.1）
 ├── content-floating-icon.js  # 懸浮翻譯控制按鈕
+├── content-hover.js          # 懸停翻譯：修飾鍵 + 指標懸停翻譯單一段落（§10.5）
 ├── content.css
 ├── background.js             # Service Worker（ES module）
 ├── privacy-policy.html       # 隱私權政策（繁中）
@@ -462,6 +464,8 @@ shinkansen/
   "floatingIconOpacity": 0.7,
   "floatingIconSize": 24,
   "floatingIconPos": { "edge": "right", "offsetY": 1 },
+  "hoverTranslateModifier": { "alt": false, "shift": false, "ctrl": false, "meta": false },
+  "hoverTranslateInlineModifier": { "alt": false, "shift": false, "ctrl": false, "meta": false },
   "fourFingerGesture": true,
   "iosPromoDismissed": false,
   "autoTranslateSlot": 2,
@@ -574,6 +578,26 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - 啟用步驟文案對齊 iOS 26 Safari 實際字串（「頁面選單」→「管理延伸功能」→ 開關；再點「Shinkansen」→「永遠允許⋯」→「一律在每個網站允許」），附真實畫面裁圖
 - API Key 步主按鈕直達金鑰頁（在系統 Safari 開啟），貼上金鑰自動檢查；沒金鑰可略過，預設翻譯方式自動落在免費 Google 翻譯，填了金鑰則自動落在 Gemini Flash Lite（與擴充功能出廠預設同一組，最省），親手改選過就以使用者的選擇為準
 - 主畫面狀態卡同時顯示 API Key 是否已設定（真值來自延伸功能回填）
+
+### 10.5 懸停翻譯（修飾鍵 + 指標）
+
+按住修飾鍵並把指標移到文字上，翻譯**游標所在的區塊元素**（整個段落，非單一句子）。桌面限定（觸控指標不觸發）。
+
+**兩種顯示方式**，各綁一個修飾鍵，按下哪個就用哪一種：
+
+| 顯示方式 | 行為 |
+|---------|------|
+| 浮動提示 | 譯文顯示在 closed shadow DOM 浮層，**完全不修改頁面 DOM**；段落上限 1200 字 |
+| 就地套用 | 譯文寫進頁面，取代原文或雙語對照**跟隨 §4.1 顯示模式設定**，與整頁翻譯同一套注入行為；段落上限 4000 字 |
+
+- 修飾鍵**單選**（Alt / Shift / Ctrl / Command 四選一），兩種方式**不得綁同一個鍵**；設定頁兩組選項互相停用對方已選的鍵。
+- 兩種方式各可設為「不使用」。**兩者皆不使用即功能關閉，此為預設值**——本功能不另設總開關。
+- 段落超過上限時顯示提示而非靜默略過。
+- 已被翻譯過的段落（整頁翻譯或先前的就地套用）不再觸發。
+- 翻譯引擎沿用主設定（`TRANSLATE_BATCH`），與整頁翻譯共用 §9 翻譯快取。
+- 指標停止移動 300ms 後才送出請求；譯文於分頁內快取（上限 200 段）；收到 429 後冷卻 60 秒。
+- 就地套用的譯文只要目標段落還在頁面上就會寫入，不因請求送出後放開修飾鍵而丟棄（已付費的翻譯不浪費）。
+- 就地套用留下的譯文與整頁翻譯共用同一組注入痕跡：頁面上有任何譯文時，翻譯快速鍵／懸浮按鈕的第一次按下是「還原」（§10 開頭「已翻譯按任一 → 還原原文」），再按一次才翻整頁。
 
 ---
 
