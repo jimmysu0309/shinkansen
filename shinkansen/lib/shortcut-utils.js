@@ -178,6 +178,48 @@
     return table;
   }
 
+  // 懸停翻譯修飾鍵：單選。兩種顯示方式各綁一個鍵，所以只認一個 true；
+  // 「一個都沒選」是合法值＝停用該種顯示方式（兩種都沒選就是整個功能關閉）。
+  var HOVER_MOD_KEYS = ['alt', 'shift', 'ctrl', 'meta'];
+
+  function hoverModifierFromKey(key) {
+    return {
+      alt: key === 'alt',
+      shift: key === 'shift',
+      ctrl: key === 'ctrl',
+      meta: key === 'meta'
+    };
+  }
+
+  // 取出這組修飾鍵對應的鍵名，沒選任何鍵回空字串
+  function hoverModifierKey(m) {
+    if (!m || typeof m !== 'object') return '';
+    for (var i = 0; i < HOVER_MOD_KEYS.length; i++) {
+      if (m[HOVER_MOD_KEYS[i]] === true) return HOVER_MOD_KEYS[i];
+    }
+    return '';
+  }
+
+  function sanitizeHoverModifier(raw) {
+    var key = (typeof raw === 'string') ? raw : hoverModifierKey(raw);
+    return hoverModifierFromKey(HOVER_MOD_KEYS.indexOf(key) === -1 ? '' : key);
+  }
+
+  // 懸停翻譯：比對目前鍵盤修飾鍵是否與設定一致（不要求一般鍵 code）
+  function modifiersMatchEvent(e, m) {
+    if (!e || !m) return false;
+    // 一個都沒勾 = 該組停用,不比對(否則「沒按任何修飾鍵」會被判成命中)
+    if (!(m.alt || m.shift || m.ctrl || m.meta)) return false;
+    return !!e.altKey === !!m.alt &&
+      !!e.shiftKey === !!m.shift &&
+      !!e.ctrlKey === !!m.ctrl &&
+      !!e.metaKey === !!m.meta;
+  }
+
+  function isModifierKeyCode(code) {
+    return !!MODIFIER_CODES[code];
+  }
+
   var api = {
     SLOTS: SLOTS,
     MANIFEST_DEFAULTS: MANIFEST_DEFAULTS,
@@ -189,7 +231,12 @@
     macifyCommandShortcut: macifyCommandShortcut,
     validate: validate,
     sanitize: sanitize,
-    sanitizeTable: sanitizeTable
+    sanitizeTable: sanitizeTable,
+    sanitizeHoverModifier: sanitizeHoverModifier,
+    hoverModifierKey: hoverModifierKey,
+    HOVER_MOD_KEYS: HOVER_MOD_KEYS,
+    modifiersMatchEvent: modifiersMatchEvent,
+    isModifierKeyCode: isModifierKeyCode
   };
   if (typeof window !== 'undefined') window.__SKShortcuts = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
