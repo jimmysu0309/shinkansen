@@ -68,12 +68,15 @@ export async function clearTcCacheForTexts(texts) {
  *
  * @param {LayoutDoc} doc
  * @param {number}    maxChars
+ * @param {(page) => boolean} [pageFilter] — 只從回 true 的頁取樣（PDF 翻譯頁數範圍）
  * @returns {string[]} parts — caller 自行 join('\n')
  */
-export function collectGlossaryInputParts(doc, maxChars) {
+export function collectGlossaryInputParts(doc, maxChars, pageFilter = null) {
   const parts = [];
   let acc = 0;
   for (const page of doc.pages) {
+    // pageFilter：PDF 翻譯頁數範圍（index.js pageInCurrentRange）。省略 = 全份取樣
+    if (pageFilter && !pageFilter(page)) continue;
     for (const b of page.blocks) {
       if (!TRANSLATABLE_TYPES.has(b.type)) continue;
       const t = b.plainText && b.plainText.trim();

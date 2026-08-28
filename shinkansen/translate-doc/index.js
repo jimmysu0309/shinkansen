@@ -119,6 +119,11 @@ let readerGeneration = 0;
 let currentModelOverride = null;
 let currentEngine = 'gemini';
 let currentOriginalArrayBuffer = null; // W6：留 PDF 原 ArrayBuffer 給 pdf-lib 重組譯文 PDF 用
+// 翻譯頁數範圍（1-based、含頭含尾）。解析完成時 resetPageRange() 設成整份文件，
+// 使用者可在 stage-result 縮小範圍只翻其中幾頁（大型報告 / 手冊的成本控制）。
+// 只影響「哪些 block 送去翻」——閱讀器與下載仍是完整文件，範圍外的頁維持原文。
+// PDF 專用：EPUB / TXT / 字幕走章節勾選管線（startEpubTranslate），不吃這個範圍
+let currentPageRange = null;
 let lastTranslateSummary = null;       // 翻譯紀錄 modal 顯示用
 // 翻譯設定：選定 preset slot(1 / 2 / 3)，從 storage.local.translateDocPresetSlot 讀，
 // 預設 1。對應 storage.sync.translatePresets[slot - 1] 的 model 當 modelOverride
@@ -242,6 +247,9 @@ function releaseCurrentDoc() {
   currentModelOverride = null;
   currentEngine = 'gemini';
   currentOriginalArrayBuffer = null;
+  // 換檔清頁數範圍：留著上一份 PDF 的範圍會讓下一份文件（尤其非 PDF 的 EPUB /
+  // 字幕，它們根本沒有頁數 UI）被無聲過濾掉一部分內容
+  currentPageRange = null;
   lastTranslateSummary = null;
   currentArticleGlossary = null;
   epubCumulativeCostUSD = 0;
@@ -385,6 +393,7 @@ async function handleFile(file) {
     $('result-filename').textContent = doc.meta.filename || t('doc.result.unnamed');
     $('result-pages').textContent = t('doc.result.pageCount', { n: doc.meta.pageCount });
     $('result-chars').textContent = doc.stats.totalChars.toLocaleString('en-US');
+    resetPageRange(doc.meta.pageCount);
 
     if (doc.warnings.length > 0) {
       const warnEl = $('upload-error');
@@ -722,6 +731,75 @@ function bindResultUI() {
     showStage('upload');
   });
   $('translate-btn').addEventListener('click', () => startTranslate());
+  bindPageRangeUI();
+}
+
+// ---------- 翻譯頁數範圍（PDF）----------
+//
+// 解析完成 → resetPageRange 把 min / max / value 設成整份文件；使用者改動 → clamp
+// 成合法區間寫回 currentPageRange。送翻時由 pageInCurrentRange() 當
+// translateDocument 的 blockFilter（EPUB 章節選翻用的同一個介面）。
+function resetPageRange(pageCount) {
+  const total = Number.isInteger(pageCount) && pageCount > 0 ? pageCount : 1;
+  currentPageRange = { from: 1, to: total, total };
+  syncPageRangeInputs();
+}
+
+function syncPageRangeInputs() {
+  const fromEl = $('page-range-from');
+  const toEl = $('page-range-to');
+  if (!fromEl || !toEl || !currentPageRange) return;
+  const { from, to, total } = currentPageRange;
+  fromEl.max = String(total);
+  toEl.max = String(total);
+  fromEl.value = String(from);
+  toEl.value = String(to);
+}
+
+// 使用者輸入 → clamp。空字串 / 非數字回退到目前值（不在打字中途搶著改寫輸入框，
+// 只在 change / blur 時同步顯示），from > to 時把另一端一起推齊
+function applyPageRangeInput(which) {
+  if (!currentPageRange) return;
+  const { total } = currentPageRange;
+  const raw = parseInt($(which === 'from' ? 'page-range-from' : 'page-range-to').value, 10);
+  if (!Number.isFinite(raw)) return;
+  const v = Math.min(Math.max(raw, 1), total);
+  if (which === 'from') {
+    currentPageRange.from = v;
+    if (currentPageRange.to < v) currentPageRange.to = v;
+  } else {
+    currentPageRange.to = v;
+    if (currentPageRange.from > v) currentPageRange.from = v;
+  }
+}
+
+function bindPageRangeUI() {
+  const fromEl = $('page-range-from');
+  const toEl = $('page-range-to');
+  const allBtn = $('page-range-all-btn');
+  if (!fromEl || !toEl || !allBtn) return;
+  fromEl.addEventListener('change', () => { applyPageRangeInput('from'); syncPageRangeInputs(); });
+  toEl.addEventListener('change', () => { applyPageRangeInput('to'); syncPageRangeInputs(); });
+  allBtn.addEventListener('click', () => {
+    if (!currentPageRange) return;
+    currentPageRange.from = 1;
+    currentPageRange.to = currentPageRange.total;
+    syncPageRangeInputs();
+  });
+}
+
+// 目前範圍是不是整份文件（全選時不必掛 blockFilter，行為與加本功能前完全一致）
+function pageRangeIsFullDoc() {
+  if (!currentPageRange) return true;
+  const { from, to, total } = currentPageRange;
+  return from <= 1 && to >= total;
+}
+
+// page.pageIndex 是 0-based，範圍是 1-based 含頭含尾
+function pageInCurrentRange(page) {
+  if (!currentPageRange) return true;
+  const n = (page && Number.isInteger(page.pageIndex)) ? page.pageIndex + 1 : 1;
+  return n >= currentPageRange.from && n <= currentPageRange.to;
 }
 
 function bindTranslatingUI() {
@@ -742,7 +820,10 @@ const GLOSSARY_INPUT_MAX_CHARS = 60_000;
 // 取樣邏輯抽到 translate.js collectGlossaryInputParts(可 unit 測;原 inline 版有
 // slice(0, 負值) 邊界 bug:acc 含 join 分隔符預算可超過 MAX,後續 block 算出負 room)
 async function extractGlossaryForDoc(doc, { forceRefresh = false } = {}) {
-  const parts = collectGlossaryInputParts(doc, GLOSSARY_INPUT_MAX_CHARS);
+  // 術語表取樣跟著翻譯頁數範圍走：只翻第 60-90 頁卻拿全書抽術語，抽出來的多半
+  // 用不到（還多花一次 API）。EPUB / 書籍文件不吃 currentPageRange，pageInCurrentRange
+  // 對它們恆真
+  const parts = collectGlossaryInputParts(doc, GLOSSARY_INPUT_MAX_CHARS, pageInCurrentRange);
   const compressedText = parts.join('\n');
   if (compressedText.length < 200) {
     console.log('[Shinkansen] glossary skipped (text too short)', { chars: compressedText.length });
@@ -1858,6 +1939,8 @@ async function _startTranslateImpl() {
       onProgress: setProgress,
       batchSize: await resolveDocBatchSize(),
       extraPrompt: await docExtraPromptForLlm(),
+      // 頁數範圍縮過才掛 filter：全選時不掛，行為與加本功能前逐字相同
+      blockFilter: pageRangeIsFullDoc() ? undefined : ((block, page) => pageInCurrentRange(page)),
     });
   } catch (err) {
     console.error('[Shinkansen] translateDocument 失敗', err);

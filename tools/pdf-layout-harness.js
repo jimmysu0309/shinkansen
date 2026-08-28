@@ -9,6 +9,7 @@
 //
 // 用法:
 //   PDF_PATH=/path/to/your.pdf npm run pdf-layout
+//   PDF_PATH=... PAGE_RANGE=1-3 node tools/pdf-layout-harness.js --translate  # 只翻 1-3 頁
 //   PDF_PATH=/path/to/your.pdf node tools/pdf-layout-harness.js
 //   PDF_PATH=... node tools/pdf-layout-harness.js --keep              # 不關 browser
 //   PDF_PATH=... SHINKANSEN_HEADED=1 node tools/pdf-layout-harness.js # 顯示視窗
@@ -40,6 +41,9 @@ const PDF_PATH = process.env.PDF_PATH;
 const HEADED = process.env.SHINKANSEN_HEADED === '1';
 const KEEP = process.argv.includes('--keep');
 const RUN_TRANSLATE = process.argv.includes('--translate');
+// PAGE_RANGE=<from>-<to>（1-based 含頭含尾）：填 stage-result 的「翻譯頁數」輸入，
+// 只翻其中幾頁。大型 PDF 驗證頁數範圍功能 / 省 API 成本用，省略 = 整份翻
+const PAGE_RANGE = (process.env.PAGE_RANGE || '').trim();
 const PARSE_TIMEOUT_MS = 60_000;
 const TRANSLATE_TIMEOUT_MS = 10 * 60_000;
 
@@ -188,6 +192,22 @@ async function main() {
       console.log('[harness] --translate 啟動翻譯(用 ~/.shinkansen-test-key)');
     } else {
       console.log('[harness] --translate 啟動翻譯(無 ~/.shinkansen-test-key,需環境內已設 apiKey)');
+    }
+    if (PAGE_RANGE) {
+      const m = PAGE_RANGE.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (!m) {
+        console.error(`[harness] PAGE_RANGE 格式錯誤（要 <from>-<to>，例 1-3）:${PAGE_RANGE}`);
+        process.exit(5);
+      }
+      await page.fill('#page-range-from', m[1]);
+      await page.dispatchEvent('#page-range-from', 'change');
+      await page.fill('#page-range-to', m[2]);
+      await page.dispatchEvent('#page-range-to', 'change');
+      const applied = await page.evaluate(() => ({
+        from: document.getElementById('page-range-from').value,
+        to: document.getElementById('page-range-to').value,
+      }));
+      console.log(`[harness] 翻譯頁數範圍：${applied.from}-${applied.to}`);
     }
     await page.click('#translate-btn');
     try {

@@ -149,7 +149,8 @@ Click the Shinkansen toolbar icon → "Translate document" to open a dedicated t
 - **Layout preserved**: the PDF layout is analyzed to rebuild paragraphs (columns, tables, lists, captions), and the translation is rendered at the original positions
 - **Online reader**: side-by-side original / translation view with synchronized scrolling
 - **Download translated PDF**: the translation is written directly onto the original page layout (with an embedded CJK font); downloads as `<filename>-shinkansen.pdf` for offline reading or archiving
-- **Limits**: 50 pages / 10 MB; scanned-image PDFs (OCR required) and encrypted PDFs are not supported
+- **Choose which pages to translate**: after parsing, enter a first / last page to translate just part of a long report or manual; the reader and the downloaded PDF still contain the whole document, with pages outside the range left in the original language
+- **Limits**: 300 pages / 50 MB; scanned-image PDFs (OCR required) and encrypted PDFs are not supported
 
 **EPUB book translation** (beta):
 
@@ -319,7 +320,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.4 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.5 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

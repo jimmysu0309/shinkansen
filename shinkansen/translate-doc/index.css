@@ -261,6 +261,49 @@ body {
   word-break: break-all;       /* 長檔名(右側值)允許在英數中間斷行 */
 }
 
+/* 翻譯頁數範圍(result-row 內的右側值區)。.result-row span:last-child 的
+   font-weight / tabular-nums 由 .page-range 內的 input 自己繼承即可 */
+.page-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-range-input {
+  width: 56px;                 /* 4 位數頁碼 + spinner 放得下 */
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page-range-sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.page-range-all-btn {
+  margin-left: 2px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.page-range-all-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
 .result-hint {
   margin: 12px 0 20px;
   padding: 10px 14px;

@@ -10,13 +10,17 @@ import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/vendor/pdfjs/pdf.worker.min.mjs');
 
 // 上限依 SPEC §17.2
+// 頁數 / 檔案大小硬上限只擋「解析階段吃不消」的極端檔；真正的成本維度（API token）
+// 由 stage-result 的「翻譯頁數」範圍輸入把關——使用者可在解析後只挑要翻的頁。
+// 實測：109 頁 / 10 MB 財報解析（含瀏覽器啟動）11 秒、354 頁操作手冊 3 秒，解析本身
+// 不是瓶頸，故 300 頁的門檻是給 reader render / pdf-lib 重組留的安全邊界。
 // v2.0.86：原本另有 softWarnPages / softWarnBytes 兩個「軟警告」門檻，但頁數門檻
 // 全專案零引用、bytes 門檻只回一句 level:'warn' 訊息而唯一 caller（translate-doc/
 // index.js handleFile）直接忽略 → 使用者從來看不到。依 MVP 原則移除死常數與死分支，
 // 日後真要做大檔提示再連同 UI 一起設計（訊息也要走 i18n，不能像舊分支硬編繁中）
 export const LIMITS = Object.freeze({
-  hardMaxPages: 50,
-  hardMaxBytes: 10 * 1024 * 1024,
+  hardMaxPages: 300,
+  hardMaxBytes: 50 * 1024 * 1024,
 });
 
 // 已知不支援的 PDF 樣態（SPEC §17.2）——抽完文字後再判斷
@@ -64,7 +68,7 @@ export function preflightFile(file) {
   }
   if (file.size > LIMITS.hardMaxBytes) {
     const mb = (file.size / 1024 / 1024).toFixed(1);
-    return { level: 'error', message: `檔案 ${mb} MB 超過 ${LIMITS.hardMaxBytes / 1024 / 1024} MB 上限,請先拆分後再上傳` };
+    return { level: 'error', message: `檔案 ${mb} MB 超過 ${LIMITS.hardMaxBytes / 1024 / 1024} MB 上限，請先拆分後再上傳` };
   }
   return { level: 'ok' };
 }
