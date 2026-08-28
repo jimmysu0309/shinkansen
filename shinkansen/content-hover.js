@@ -31,6 +31,9 @@
   // null / 'tooltip' / 'inline'——按下的是哪一組修飾鍵
   let armedMode = null;
   let displayMode = 'single';
+  // 引擎跟隨「主要預設」(translatePresets slot 2，同 popup 翻譯鈕 / Alt+S)
+  let engine = 'gemini';
+  let modelOverride = null;
   let markStyle = null;
   let dualAccent = null;
 
@@ -265,10 +268,17 @@
     showState('loading', null, x, y);
 
     try {
-      const resp = await SK.safeSendMessage({
-        type: 'TRANSLATE_BATCH',
-        payload: { texts: [sentence] },
-      });
+      // 三種引擎各有自己的 handler，回傳形狀都是 { result, usage }
+      const payload = { texts: [text] };
+      let type = 'TRANSLATE_BATCH';
+      if (engine === 'google') {
+        type = 'TRANSLATE_BATCH_GOOGLE';
+      } else if (engine === 'openai-compat') {
+        type = 'TRANSLATE_BATCH_CUSTOM';
+      } else if (modelOverride) {
+        payload.modelOverride = modelOverride;
+      }
+      const resp = await SK.safeSendMessage({ type, payload });
       // 先存快取再判丟棄——被丟棄的回應仍是有效譯文，丟掉等於白花一次配額
       if (resp?.ok && resp.result?.[0]) {
         if (cache.size >= CACHE_MAX) cache.clear();
@@ -367,6 +377,11 @@
       inlineModifier = SC.sanitizeHoverModifier(null);
     }
     enabled = !!(tipKey || SC.hoverModifierKey(inlineModifier));
+    // 主要預設決定引擎與模型，跟全頁翻譯的 slot 2 走同一條路
+    const preset = Array.isArray(st.translatePresets)
+      ? st.translatePresets.find((p) => p && p.slot === 2) : null;
+    engine = preset?.engine || 'gemini';
+    modelOverride = (engine === 'gemini' && preset?.model) ? preset.model : null;
     displayMode = st.displayMode === 'dual' ? 'dual' : 'single';
     markStyle = st.translationMarkStyle || null;
     dualAccent = st.dualAccentColor || null;
@@ -377,7 +392,7 @@
     if (!browser?.storage?.sync) return;
     browser.storage.sync.get([
       'hoverTranslateModifier', 'hoverTranslateInlineModifier',
-      'displayMode', 'translationMarkStyle', 'dualAccentColor',
+      'translatePresets', 'displayMode', 'translationMarkStyle', 'dualAccentColor',
     ]).then((st) => { applySettings(st || {}); }).catch(() => {});
   }
 
@@ -391,7 +406,8 @@
     browser.storage.onChanged.addListener((ch, area) => {
       if (area !== 'sync') return;
       if ('hoverTranslateModifier' in ch || 'hoverTranslateInlineModifier' in ch
-        || 'displayMode' in ch || 'translationMarkStyle' in ch || 'dualAccentColor' in ch) loadSettings();
+        || 'translatePresets' in ch || 'displayMode' in ch
+        || 'translationMarkStyle' in ch || 'dualAccentColor' in ch) loadSettings();
     });
   }
 
