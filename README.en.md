@@ -12,6 +12,7 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 - **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with four-finger touch translate and the floating button, ready out of the box.
 - Added **EPUB book translation** (beta) — drop a whole ebook into the "Translate document" page; a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters, you can translate a chapter or two first to check quality, and the translated book can be downloaded in monolingual or bilingual format.
+- Added **Word (.docx) document translation** — drop a whole Word document into the "Translate document" page; the translation is written back into the original file with layout, styles, tables, images, and comment anchors fully preserved, with optional bilingual output.
 - Added **subtitle file translation** — drop an SRT / WebVTT / ASS file into the "Translate document" page to translate the whole file; timing and style tags are preserved, and you can download monolingual or bilingual subtitles.
 - Added **TXT / Markdown / HTML file** translation — translate plain-text or Markdown novels and saved web pages in one go; the translated file keeps the same format as the original. Glossary import also **accepts CSV** (two columns: source,translation), so externally curated term lists can be imported directly.
 - Added **Simplified ↔ Traditional Chinese page conversion (free)** — Simplified (or Traditional) Chinese content is converted locally with built-in dictionaries: no API key, no API calls, works offline.
@@ -38,7 +39,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
-- **Document translation (PDF / EPUB / TXT / Markdown / HTML / subtitles)**: upload a file and translate the whole thing — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output; TXT / Markdown / HTML files reuse the same chapter pipeline, and the translated file keeps the same format as the original; SRT / WebVTT / ASS subtitle files are translated cue by cue with timing preserved, with optional bilingual output. Details in "Document translation" below.
+- **Document translation (PDF / EPUB / Word / TXT / Markdown / HTML / subtitles)**: upload a file and translate the whole thing — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output; Word (.docx) files get the translation written back into the original file with layout, styles, and tables fully preserved, with optional bilingual output; TXT / Markdown / HTML files reuse the same chapter pipeline, and the translated file keeps the same format as the original; SRT / WebVTT / ASS subtitle files are translated cue by cue with timing preserved, with optional bilingual output. Details in "Document translation" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with Traditional Chinese; styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
 - **Bilingual subtitles**: when the display mode is set to "Bilingual", subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. Applies to both YouTube and Google Drive videos. Details in "Bilingual subtitles" below.
 - **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
@@ -140,9 +141,9 @@ Google Docs renders text via Canvas, so generic web translation extensions can't
 
 Notes: you must have view access to the document. Mobile reading view is read-only and does not affect the original document.
 
-## Document translation (PDF / EPUB / TXT / Markdown / HTML / subtitles)
+## Document translation (PDF / EPUB / Word / TXT / Markdown / HTML / subtitles)
 
-Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF, EPUB, TXT, Markdown, HTML, or subtitle file (SRT / WebVTT / ASS) onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine.
+Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF, EPUB, Word (.docx), TXT, Markdown, HTML, or subtitle file (SRT / WebVTT / ASS) onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine.
 
 **PDF translation**:
 
@@ -160,6 +161,15 @@ Click the Shinkansen toolbar icon → "Translate document" to open a dedicated t
 - **Preview and editing**: per-chapter and whole-book preview, click-to-edit paragraphs, search & replace, original-text comparison view
 - **Automatic session saving**: translation progress, glossary, and accumulated cost are saved locally as a bundle; closing and reopening the page restores everything, and sessions can be exported to a file and imported on another computer
 - **Translated book download**: the translation is written back into the original book structure (CSS / images / fonts and untranslated chapters preserved as-is), in monolingual or bilingual format; 100 MB limit, DRM-protected books are rejected
+
+**Word (.docx) file translation**:
+
+- **Translation written back into the original file**: layout, styles, fonts, images, and tables are all maintained by Word itself — bold / italic, underline, colored text, highlights, hyperlinks, list numbering, and bookmarks are preserved as-is; download `<filename>-shinkansen.docx` and open it straight in Word for further editing
+- **Per-chapter translation**: chapters are split by heading styles (Heading 1 / Heading 2) with the same chapter checklist as EPUB; headers & footers, footnotes, and document comments each appear as their own selectable chapter, and comment text is translated too
+- **TOC and page-number fields stay intact**: PAGE / TOC and other Word fields are preserved untouched — update fields in Word after translating and the TOC recalculates with the translated headings
+- **Monolingual or bilingual output**: the bilingual version keeps each original paragraph and inserts the translation right after it (`-shinkansen-dual.docx`); switching modes just re-downloads with no re-translation cost
+- **Same pipeline as EPUB**: book-wide glossary, post-translation consistency scan, preview editing, automatic session saving, and cost estimates all carry over
+- **Limits**: 100 MB max; password-protected files and files with unaccepted tracked changes are rejected with a clear message; legacy `.doc` is not supported
 
 **TXT / Markdown / HTML file translation**:
 
@@ -320,7 +330,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.5 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.6 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

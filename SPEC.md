@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.5
+- 目前 Extension 版本：2.4.6
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.5 為止）
+### 2.1 已實作（v2.4.6 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -60,7 +60,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 自動翻譯網站 | ✅ | 網域白名單（支援萬用字元）；`autoTranslate` 總開關 |
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
-| 文件翻譯（PDF / EPUB / TXT / Markdown / HTML / 字幕檔） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；字幕檔（SRT / WebVTT / ASS）每則字幕為翻譯單位、時間軸原樣保留、可輸出雙語字幕；詳見 §17 |
+| 文件翻譯（PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；Word（.docx）譯文寫回原檔格式與版面全保留、可輸出雙語對照；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；字幕檔（SRT / WebVTT / ASS）每則字幕為翻譯單位、時間軸原樣保留、可輸出雙語字幕；詳見 §17 |
 | iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；四指輕點觸發；popup／options 觸控調整；不含 PDF 翻譯 |
 
 ### 2.3 明確不做
@@ -344,6 +344,7 @@ shinkansen/
 │   ├── epub-writer.js        # 譯本 EPUB 重建（§17.10）
 │   ├── epub-session-db.js    # 書籍式文件翻譯工作階段存檔（IndexedDB）
 │   ├── doc-file-engine.js    # TXT / Markdown / HTML 解析與譯文檔重建 + 術語表 CSV 解析（§17.11）
+│   ├── docx-engine.js        # Word（.docx）解析與譯本 docx 重建（§17.13）
 │   ├── subtitle-engine.js    # 字幕檔（SRT / WebVTT / ASS）解析、行內標記佔位符對映與譯文檔重建（§17.12）
 │   ├── dev-verify.js         # dev 驗證 harness hook（production 不載入）
 │   ├── reader.js             # 線上閱讀器（雙頁並排，§17.6）
@@ -652,14 +653,14 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 
 ---
 
-## 17. 文件翻譯（PDF / EPUB / TXT / Markdown / HTML / 字幕檔）
+## 17. 文件翻譯（PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔）
 
 ### 17.1 功能總覽
 
-使用者透過 popup 點選「翻譯文件」開啟獨立分頁，本機上傳 PDF、EPUB、TXT、Markdown（`.md` / `.markdown`）、HTML（`.htm` / `.html`）或字幕檔（`.srt` / `.vtt` / `.ass` / `.ssa`），選擇翻譯 preset（沿用既有三組 preset），系統解析、批次送翻、提供：
+使用者透過 popup 點選「翻譯文件」開啟獨立分頁，本機上傳 PDF、EPUB、Word（`.docx`）、TXT、Markdown（`.md` / `.markdown`）、HTML（`.htm` / `.html`）或字幕檔（`.srt` / `.vtt` / `.ass` / `.ssa`），選擇翻譯 preset（沿用既有三組 preset），系統解析、批次送翻、提供：
 
 1. **線上閱讀器**（PDF）：雙頁並排顯示（左原 / 右譯），雙向 scroll sync（同頁同比例定位）、zoom 控制、同步捲動開關
-2. **下載譯文檔**：PDF 輸出 `<原檔名>-shinkansen.pdf`（譯文直接寫在原頁面版面上，頁數與原檔相同）；EPUB 輸出譯本 EPUB（單語 / 雙語對照可選）；TXT / Markdown / HTML 輸出 `<原檔名>-shinkansen.<原副檔名>`（譯文輸出格式 = 輸入格式）；字幕檔輸出同格式字幕檔 `<原檔名>.<語言>.<原副檔名>`（單語 / 雙語字幕可選，§17.12）
+2. **下載譯文檔**：PDF 輸出 `<原檔名>-shinkansen.pdf`（譯文直接寫在原頁面版面上，頁數與原檔相同）；EPUB 輸出譯本 EPUB（單語 / 雙語對照可選）；Word 輸出 `<原檔名>-shinkansen.docx`（雙語版 `-shinkansen-dual.docx`，§17.13）；TXT / Markdown / HTML 輸出 `<原檔名>-shinkansen.<原副檔名>`（譯文輸出格式 = 輸入格式）；字幕檔輸出同格式字幕檔 `<原檔名>.<語言>.<原副檔名>`（單語 / 雙語字幕可選，§17.12）
 
 ### 17.2 限制與上限（PDF）
 
@@ -680,7 +681,7 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - **只影響「哪些頁送去翻譯」**：閱讀器與下載的譯文 PDF 仍是完整文件，範圍外的頁維持原文
 - 「先建立文章術語表」的取樣範圍跟著頁數範圍走
 - 換檔（重新上傳 / 切換檔案）後範圍重設為整份文件
-- EPUB / TXT / Markdown / HTML / 字幕檔走章節勾選（§17.6），不使用頁數範圍
+- EPUB / Word / TXT / Markdown / HTML / 字幕檔走章節勾選（§17.6），不使用頁數範圍
 
 ### 17.3 入口 UI
 
@@ -770,3 +771,17 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - **限制**：檔案硬上限與 EPUB 相同（100 MB）；格式列顯示 SRT / WebVTT / ASS；整份未翻輸出 === 輸入
 - **檔案編碼**：讀入時自動判斷編碼——UTF-8（含 BOM）/ UTF-16（BOM）/ Big5 / GBK / Shift_JIS / EUC-KR / Windows-1252（以目標語言決定舊編碼的優先順序，並以常用字比例防止 Big5 ⇄ GBK 互判錯）；字幕檔常見的舊編碼來源不再亂碼，譯文字幕檔一律以 **UTF-8** 輸出（來源有 BOM 才帶 UTF-8 BOM）
 - 解析 / 佔位符對映 / 重建細節見 SPEC-PRIVATE §32
+
+### 17.13 Word（.docx）檔案翻譯
+
+與 EPUB 共用同一條「書籍式文件」管線（章節清單 / 全書術語表 / 譯後一致性掃描 / 預覽編輯 / 工作階段存檔 / 費用預估 / 術語表譯名不被加註原文的後處理全部沿用），譯文寫回原 .docx 檔案結構——版面、樣式、字型、圖片、表格全部由 Word 自身維持，不做版面重排：
+
+- **章節切分**：內文依標題樣式（Heading 1 / Heading 2）切章，比照 Markdown 出章節勾選清單；無標題檔視同單章。頁首與頁尾、註腳與章節附註、文件註解各自成附加章節，可獨立勾選
+- **格式保留**：段落樣式、對齊、清單編號、粗斜體 / 底線 / 刪除線 / 上下標 / 色字 / 螢光標記 / 字型等行內格式，以及超連結（外部與文件內錨點）全數往返；行內圖片、定位鍵、分頁符、數學公式、內容控制項原樣保留不送翻
+- **欄位（field）**：PAGE / TOC 等 Word 欄位整塊原樣保留不翻譯——目錄在 Word 內更新欄位後即以譯後標題重算
+- **書籤與註解錨點**：書籤、註解範圍錨點與參照全數保留；註解（comments）內容一併翻譯，在 Word 註解面板顯示譯文
+- **雙語對照**（下載時「譯本內容」select 可選）：原文段落原樣保留，譯文段落接在每段後面（清單項的譯文段不重複編號；頁首頁尾 / 註腳 / 註解維持單語）；切換模式重新下載零重翻費用
+- **不支援場景**（上傳時偵測 + 明確提示）：加密（密碼保護）docx 擋下；含未接受追蹤修訂的檔案擋下並提示先在 Word 接受修訂；`.doc` 舊格式與 `.docm` 巨集檔不支援
+- **限制**：檔案硬上限與 EPUB 相同（100 MB）；已選字數超過 50 萬字時顯示成本警告；格式列顯示「Word (DOCX)」
+- **重建不變量**：未翻 / 失敗段落與所有未動檔案區塊逐位元組保留；重複下載輸出一致
+- 解析 / OOXML 寫回 / island 協定等實作細節見 SPEC-PRIVATE §32
