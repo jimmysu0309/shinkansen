@@ -91,6 +91,12 @@ button.secondary:hover { background: #f0f4ff; }
   min-height: 16px;
 }
 
+/* 未設 API Key 時狀態列可點（開設定頁）：色 + 底線雙通道標示可點 */
+.status.status-cta {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 footer {
   display: flex;
   align-items: center;

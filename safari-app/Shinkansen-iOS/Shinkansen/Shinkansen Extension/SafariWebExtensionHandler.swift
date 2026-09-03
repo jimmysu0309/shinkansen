@@ -30,6 +30,11 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         // 回傳 host app 寫進 App Group 的設定。
         // pushExtSettings { action, apiKey, model } 則反過來把 extension 現值寫進 App Group,
         // 供 host app 設定畫面回填真值（避免顯示舊值、儲存時覆寫）。其餘訊息維持 echo。
+        // 心跳：任何來自 extension 的訊息都代表「擴充功能已在 Safari 啟用且 background 有跑」。
+        // 寫進 App Group 的 extLastSeen，host app onboarding 讀它顯示「已啟用 ✓」——iOS 沒有
+        // macOS 那種 getStateOfSafariExtension API，這是唯一能讓使用者確認自己做對了的訊號。
+        markExtensionSeen()
+
         var payload: [String: Any]
         if let dict = message as? [String: Any],
            let action = dict["action"] as? String {
@@ -71,6 +76,11 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         return out
     }
 
+    private func markExtensionSeen() {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
+        defaults.set(Date().timeIntervalSince1970, forKey: "extLastSeen")
+    }
+
     // 把 extension 推來的現值寫進 App Group 的 extApiKey / extModel（與 host* 分開,
     // 不碰 seq → 不觸發 host→ext 的 pull 迴圈）。供 ViewController.sendSettingsToPage 優先讀取。
     // apiKey 一律寫（含空字串=已清空,要如實反映）；model 僅接受三選一,空字串 / 非法 →
@@ -86,6 +96,10 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             defaults.set(model, forKey: "extModel")
         } else {
             defaults.removeObject(forKey: "extModel")
+        }
+        // 「所有網站」存取權狀態（background 用 permissions.contains 查得）。訊息沒帶 = 未知，不動舊值。
+        if let allUrls = dict["allUrls"] as? Bool {
+            defaults.set(allUrls, forKey: "extAllUrls")
         }
         return ["ok": true]
     }

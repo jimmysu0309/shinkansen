@@ -213,6 +213,21 @@ function extModelToken(settings) {
   return '';
 }
 
+// 「所有網站」存取權是否已授予（iOS Safari 使用者在「管理擴充功能」把網站存取設為
+// 允許 → <all_urls> 進入 granted 集合）。host app onboarding 用它顯示「已啟用 / 還差權限」
+// 狀態，讓使用者不用猜自己有沒有做對。API 缺席 / 例外回 null（host 端當「未知」不顯示）。
+// 用 permissions.getAll() 的 origins 判斷，不用 permissions.contains()——iOS 26 Safari 實測
+// 使用者選「一律在每個網站允許」後 contains({origins:['<all_urls>']}) 仍回 false，
+// getAll().origins 卻正確含 '<all_urls>'（2026-09-03 模擬器實測）。
+async function queryAllUrlsGranted() {
+  try {
+    if (!browser.permissions || typeof browser.permissions.getAll !== 'function') return null;
+    const all = await browser.permissions.getAll();
+    const origins = Array.isArray(all?.origins) ? all.origins : [];
+    return origins.some((o) => o === '<all_urls>' || o === '*://*/*' || o === 'https://*/*');
+  } catch (e) { return null; }
+}
+
 async function pushExtSettings(trigger) {
   if (!IS_IOS_BUILD) return;                                   // 桌面 / 非 iOS build 不走
   if (!browser.runtime || typeof browser.runtime.sendNativeMessage !== 'function') return;
@@ -220,8 +235,11 @@ async function pushExtSettings(trigger) {
     const settings = await getSettings();
     const apiKey = typeof settings.apiKey === 'string' ? settings.apiKey : '';  // 真值（含空字串=已清空）
     const model = extModelToken(settings);
-    await sendNativeMessageAsync('app.shinkansen.ios', { action: 'pushExtSettings', apiKey, model });
-    debugLog('info', 'host-settings', 'pushed ext settings to App Group', { trigger, hasKey: !!apiKey, model: model || null });
+    const allUrls = await queryAllUrlsGranted();
+    const msg = { action: 'pushExtSettings', apiKey, model };
+    if (allUrls !== null) msg.allUrls = allUrls;
+    await sendNativeMessageAsync('app.shinkansen.ios', msg);
+    debugLog('info', 'host-settings', 'pushed ext settings to App Group', { trigger, hasKey: !!apiKey, model: model || null, allUrls });
   } catch (e) {
     debugLog('warn', 'host-settings', 'native push failed', { trigger, error: e.message });
   }
@@ -256,6 +274,12 @@ if (IS_IOS_BUILD) {
       pushExtSettings('storage-changed');
     }
   });
+  // 網站存取權變動（使用者在 Safari「管理擴充功能」按「允許」）→ 立刻把 allUrls 推給 host，
+  // host app onboarding 的狀態列才能即時翻綠。API 缺席時（舊 Safari）靠 content-init 那條補。
+  try {
+    browser.permissions?.onAdded?.addListener(() => pushExtSettings('permissions-added'));
+    browser.permissions?.onRemoved?.addListener(() => pushExtSettings('permissions-removed'));
+  } catch (e) { /* permissions 事件不支援時忽略 */ }
 }
 
 // 累計用量（grand total）由 IndexedDB usage-db.js 透過 QUERY_USAGE_STATS 提供。
@@ -2845,6 +2869,17 @@ browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
     debugLog('info', 'system', 'welcome notice written', {
       from: previousVersion, to: currentVersion,
     });
+  }
+
+  // 首次安裝直接開設定頁：新使用者第一眼就看到「Gemini API Key」欄位與直達 AI Studio 的連結，
+  // 不用自己找工具列圖示 → 設定。iOS 由 host app onboarding 負責（Safari 突然彈分頁反而打斷
+  // host app 的引導流程），不開；更新（reason=update）不開，避免每次 patch 打擾既有使用者。
+  if (reason === 'install' && !IS_IOS_BUILD) {
+    try {
+      await browser.runtime.openOptionsPage();
+    } catch (e) {
+      debugLog('warn', 'system', 'openOptionsPage on install failed', { error: e.message });
+    }
   }
 
   // v0.62 起：API Key 從 browser.storage.sync 搬到 browser.storage.local，

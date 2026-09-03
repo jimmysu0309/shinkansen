@@ -522,3 +522,187 @@ body {
     color: var(--fg-secondary);
     text-align: start;
 }
+
+/* ===== 2026-09 onboarding 改版：啟用狀態列 / 步驟小標 / 功能列 / 主畫面狀態卡 ===== */
+/* 步驟小標「第 1 步，共 4 步」：比標題弱一階，讓使用者知道還有幾步 */
+.ob-kicker {
+    margin: 0 0 -8px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--fg-secondary);
+}
+
+/* 擴充功能狀態 pill：三態（unknown 灰 / partial 橘 / ok 綠），host 推狀態時即時翻色 */
+.ext-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--card-bg);
+    color: var(--fg-secondary);
+}
+
+.ext-status-dot,
+.key-status-dot {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #a1a1a6;
+}
+
+.ext-status[data-state="partial"] { color: #c25d00; }
+.ext-status[data-state="partial"] .ext-status-dot { background: #ff9500; }
+.ext-status[data-state="ok"] { color: #1f8a46; }
+.ext-status[data-state="ok"] .ext-status-dot { background: #34c759; }
+
+/* 主畫面狀態卡：兩列（延伸功能 / API Key），左 dot + 標籤 + 右側狀態值 */
+.status-card {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--card-bg);
+    border-radius: 14px;
+    padding: 4px 16px;
+    text-align: start;
+}
+
+.status-card .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+    font-size: 15px;
+    /* 覆寫 pill 樣式：在卡片內是列，不是膠囊 */
+    background: none;
+    border-radius: 0;
+    color: var(--fg);
+    font-weight: 500;
+}
+
+.status-card .status-row + .status-row {
+    border-top: 1px solid var(--divider);
+}
+
+.status-card .status-label {
+    flex: 0 0 auto;
+}
+
+.status-card .status-value {
+    flex: 1 1 auto;
+    text-align: end;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--fg-secondary);
+}
+
+.status-card .ext-status[data-state="ok"] .status-value,
+.status-card .key-status[data-state="ok"] .status-value { color: #1f8a46; }
+.status-card .ext-status[data-state="partial"] .status-value { color: #c25d00; }
+.key-status[data-state="ok"] .key-status-dot { background: #34c759; }
+.key-status[data-state="missing"] .key-status-dot { background: #ff9500; }
+
+.home-enable-guide[hidden] {
+    display: none;
+}
+
+/* API Key 步：主按鈕是 <a>（ViewController 攔 http(s) 開系統 Safari），外觀比照 .ob-btn */
+.ob-link {
+    display: inline-block;
+    text-decoration: none;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+/* 迷你步驟（登入 → Create API key → 複製），比一般 .steps 更緊湊 */
+.steps-mini {
+    padding: 14px 18px;
+}
+
+.steps-mini ol {
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.steps-mini li + li {
+    margin-top: 8px;
+}
+
+/* 「怎麼翻譯」步：三個功能列（圖示 + 標題 + 說明）垂直排，取代原本三張獨立卡 */
+.ob-features {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ob-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    text-align: start;
+}
+
+.ob-feature .ob-glyph {
+    flex: 0 0 80px;
+    width: 80px;
+    justify-content: center;
+    padding-top: 2px;
+}
+
+.ob-feature .ob-fab-screen {
+    width: 74px;
+    height: 48px;
+}
+
+.ob-feature-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ob-feature-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+.ob-feature .ob-note {
+    max-width: none;
+}
+
+/* 啟用步的真實畫面裁圖：直欄排列，每張最寬 340px、圓角 + 細框；說明文字弱一階 */
+.ob-shots {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.ob-shot {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.ob-shot img {
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px var(--divider);
+}
+
+.ob-shot figcaption {
+    font-size: 13px;
+    color: var(--fg-secondary);
+}

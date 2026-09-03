@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.6
+- 目前 Extension 版本：2.4.7
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.6 為止）
+### 2.1 已實作（v2.4.7 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -556,6 +556,25 @@ shinkansen/
 
 iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持背景存活）。
 
+### 10.4 首次設定（onboarding）
+
+目標：新使用者從安裝到第一次翻譯成功的摩擦最小化，每一步都讓使用者知道「做對了沒」。
+
+**Chrome／Firefox／macOS Safari**
+
+- 首次安裝（`onInstalled` reason=install）自動開啟設定頁；更新不開
+- 設定頁「Gemini API Key」欄位下方直達 [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)（登入後即金鑰頁，附「Create API key → Create key → 複製貼上」三步提示），另附詳細教學連結
+- 貼上看起來完整的金鑰（`AIza` 開頭、30 字元以上）自動測試一次，不必另按「測試」；設定自動儲存
+- Popup 未設 API Key 時狀態列可點，直接開設定頁
+
+**iOS／iPadOS（host app）**
+
+- 首次啟動 4 步導覽：① 在 Safari 啟用 → ② 取得 Gemini API Key → ③ 選預設翻譯方式 → ④ 怎麼翻譯（懸浮按鈕／四指輕點／YouTube 字幕）。啟用排第一步：延伸功能沒啟用其他設定都白做，且是最容易卡關的一步
+- 「在 Safari 啟用」步與主畫面都有**即時狀態列**三態：尚未偵測到啟用／已啟用但還沒允許「每個網站」／已啟用可以翻譯了。狀態來自延伸功能經 App Group 回報（延伸功能只要在 Safari 跑過就會被偵測到；「所有網站」存取權由延伸功能查 `permissions` 得知），使用者切回 App 即更新。主畫面已啟用時收起啟用步驟
+- 啟用步驟文案對齊 iOS 26 Safari 實際字串（「頁面選單」→「管理延伸功能」→ 開關；再點「Shinkansen」→「永遠允許⋯」→「一律在每個網站允許」），附真實畫面裁圖
+- API Key 步主按鈕直達金鑰頁（在系統 Safari 開啟），貼上金鑰自動檢查；沒金鑰可略過，預設翻譯方式自動落在免費 Google 翻譯
+- 主畫面狀態卡同時顯示 API Key 是否已設定（真值來自延伸功能回填）
+
 ---
 
 ## 11. 翻譯狀態提示（Toast）
@@ -614,7 +633,7 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - Drive 影片字幕翻譯 toggle（Drive 影片頁顯示）
 - 快取統計 + 清除快取按鈕
 - 累計費用 / token 顯示 +「清除」按鈕（只重設顯示基準點，不刪用量紀錄）
-- 狀態列
+- 狀態列（未設 Gemini API Key 且有 preset 用 Gemini 時顯示提示，該列可點，點了直接開設定頁）
 - Footer：設定按鈕 +「翻譯文件」按鈕（§17）+ 快捷鍵提示（動態讀取）
 
 ### 13.2 版本顯示

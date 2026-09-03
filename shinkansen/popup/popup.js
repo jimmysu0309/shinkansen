@@ -440,9 +440,14 @@ async function init() {
 
   // v1.8.12: 只有當 translatePresets 中有任一 slot 用 Gemini engine 時，才提醒未設 API Key。
   // 使用者若三組 preset 都改成 Google MT / 自訂模型，popup 不再嘮叨他沒填 Gemini Key。
+  // 沒 key 時狀態列本身就是入口：點一下直接開設定頁（新使用者第一眼就知道下一步做什麼）
+  statusEl.classList.remove('status-cta');
+  statusEl.onclick = null;
   if (!apiKey && presetsRequireGemini(translatePresets)) {
     statusEl.textContent = t('popup.status.noApiKey');
     statusEl.style.color = '#ff3b30';
+    statusEl.classList.add('status-cta');
+    statusEl.onclick = () => $('options-btn').click();
   }
 
   refreshCacheInfo();

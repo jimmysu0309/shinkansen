@@ -1614,6 +1614,17 @@ async function runApiTest({ btn, resultEl, sendMessage }) {
   }
 }
 
+// 貼上看起來完整的 Gemini Key（AIza 開頭、30+ 字元）→ 自動測試一次，省掉「貼了不知道
+// 對不對、還要再找測試按鈕」這一步。同一把 key 只自動測一次；手動按「測試」不受影響。
+let _lastAutoTestedKey = '';
+$('apiKey').addEventListener('input', () => {
+  const v = $('apiKey').value.trim();
+  if (/^AIza[0-9A-Za-z_-]{30,}$/.test(v) && v !== _lastAutoTestedKey) {
+    _lastAutoTestedKey = v;
+    setTimeout(() => $('test-api-key').click(), 400);
+  }
+});
+
 // v1.5.7: Gemini API Key 測試
 $('test-api-key').addEventListener('click', async () => {
   await runApiTest({

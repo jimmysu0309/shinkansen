@@ -78,7 +78,7 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
 
 ## First-time setup
 
-1. Get a Gemini API key — see the [API key setup guide](docs/API-KEY-SETUP.en.md) for step-by-step instructions
+1. Get a Gemini API key — open [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys), sign in and click "Create API key"; see the [API key setup guide](docs/API-KEY-SETUP.en.md) for step-by-step instructions
 2. Click the Shinkansen icon in the toolbar → "Settings"
 3. Paste your Gemini API key
 4. Default model is `gemini-3.1-flash-lite`, Service Tier `DEFAULT`
@@ -330,7 +330,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.6 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.7 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

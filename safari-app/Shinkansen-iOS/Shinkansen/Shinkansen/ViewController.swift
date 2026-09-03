@@ -29,6 +29,15 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
         self.webView.configuration.userContentController.add(self, name: "controller")
 
         self.webView.loadFileURL(Bundle.main.url(forResource: "Main", withExtension: "html")!, allowingReadAccessTo: Bundle.main.resourceURL!)
+
+        // 使用者去 Safari / 系統設定啟用擴充功能後切回本 App → 重新讀 App Group 的擴充功能狀態，
+        // onboarding「在 Safari 啟用」步驟與主畫面的狀態列即時翻綠，不用重開 App。
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive),
+                                               name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    @objc private func appDidBecomeActive() {
+        sendExtStatusToPage()
     }
 
     // 外部 http(s) 連結（API Key 教學 / 隱私權 / 主頁 / 版本紀錄）改用系統 Safari 開啟，
@@ -46,7 +55,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Override point for customization.
+        // 頁面載好先推一次擴充功能狀態（之後由 didBecomeActive 與頁面主動 getExtStatus 更新）
+        sendExtStatusToPage()
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -59,6 +69,8 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
             sendSettingsToPage()
         case "openSettings":
             openAppSettings()
+        case "getExtStatus":
+            sendExtStatusToPage()
         default:
             break
         }
@@ -98,6 +110,18 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
         let apiKey = defaults.string(forKey: "extApiKey") ?? defaults.string(forKey: "hostApiKey") ?? ""
         let model = defaults.string(forKey: "extModel") ?? defaults.string(forKey: "hostModel") ?? ""
         let js = "window.__skApplySettings && window.__skApplySettings(\(jsStringLiteral(apiKey)), \(jsStringLiteral(model)))"
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // 擴充功能狀態 → 頁面。extLastSeen 由 appex handler 在收到任何 extension 訊息時寫入
+    // （= 擴充功能已在 Safari 啟用且跑過），extAllUrls 是 background 查到的「所有網站」存取權。
+    // iOS 沒有 macOS 的 SFSafariExtensionManager.getStateOfSafariExtension，這是唯一可行的偵測。
+    private func sendExtStatusToPage() {
+        guard let defaults = sharedDefaults else { return }
+        let lastSeen = defaults.double(forKey: "extLastSeen")
+        let allUrls: String
+        if let v = defaults.object(forKey: "extAllUrls") as? Bool { allUrls = v ? "true" : "false" } else { allUrls = "null" }
+        let js = "window.__skApplyExtStatus && window.__skApplyExtStatus({enabled: \(lastSeen > 0), lastSeen: \(lastSeen), allUrls: \(allUrls)})"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 

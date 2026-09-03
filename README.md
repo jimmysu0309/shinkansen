@@ -78,7 +78,7 @@
 
 ## 首次設定
 
-1. 申請 Gemini API Key — 詳細步驟見 [API Key 申請教學](docs/API-KEY-SETUP.md)
+1. 申請 Gemini API Key — 直接開 [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys) 登入後按「Create API key」，詳細步驟見 [API Key 申請教學](docs/API-KEY-SETUP.md)
 2. 點工具列的 Shinkansen 圖示 → 「設定」
 3. 貼上你的 Gemini API Key
 4. 預設模型 `gemini-3.1-flash-lite`、Service Tier `DEFAULT`
@@ -334,7 +334,7 @@ LLM 在翻譯長文時，前後文的人名、地名翻譯容易出現不一致�
 
 ## 目前版本
 
-v2.4.6 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
+v2.4.7 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 
 ## 授權
 
