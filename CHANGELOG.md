@@ -7,6 +7,8 @@
 
 ## v2.4.x
 
+**v2.4.8**——**Gemini 模型清單更新（3.7 Flash → 3.8 Flash）＋ iOS 首次設定的預設翻譯方式對齊**。（1）**模型清單**：`gemini-3.7-flash` 下架、加入 `gemini-3.8-flash`（官方定價頁核對：促銷價 $0.75／$3.75 至 2026-12-31，2027-01-01 起 $1.50／$7.50，context cache 命中折扣 90%）；存了舊 ID 的設定一次性遷移（`migrateGemini37FlashModelIfNeeded`，與 3.5→3.6→3.7 串聯，翻譯模型／術語表／YouTube 字幕／快速鍵 preset／自訂計價覆蓋五處欄位都跟著改寫），dropdown 不會變空白、費用照樣算得出來。取樣參數與 thinkingLevel 兩條版本 gating 皆為版本號判定，3.8 自動命中不需另外接線；內建計價表校準日期更新為 2026-09。（2）**iOS 首次設定的預設翻譯方式改為 Flash Lite**：引導填完 API Key 後，模型選卡原本自動落在 Gemini Flash，與延伸功能出廠的預設（Flash Lite）不一致——走引導的人被默默升到單價貴一倍的模型。改為兩者一致落在 Flash Lite；親手點選過的仍以使用者的選擇為準。已走完引導的既有使用者不受影響。**不需清快取**。
+
 **v2.4.7**——**首次設定（onboarding）摩擦改版**。起因：幫朋友裝 iOS 版時發現「取得 API Key」連到 GitHub 教學、教學第一個連結又是 AI Studio 首頁（聊天介面）而非金鑰頁，朋友直接迷路；「在 Safari 啟用並給權限」排在 7 步導覽最後一步、純文字，做完也不知道有沒有做對。上網研究後整條重做：
 
 - **所有「取得 API Key」入口直達金鑰頁** `aistudio.google.com/api-keys`（未登入會先登入再自動回到該頁）：iOS 導覽與設定畫面、Chrome／Firefox／macOS 設定頁提示（8 語）、API Key 申請教學中英版（第一步就是直達連結，加「不要從首頁進」警語與 iPhone 段）、README 兩語、官網安裝步驟。設定頁提示附「Create API key → Create key → 複製貼上」三步

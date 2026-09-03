@@ -480,8 +480,10 @@
 
             // ===== 設定狀態（API Key + 預設 slot），onboarding 與 settings 共用 =====
             // explicit：使用者是否親手點過某張卡（或 host 回填過存值）。false 時預設值跟著
-            // 有無 API Key 自動推導（有 key→Flash、沒 key→Google），這樣「填了 key 再回到
-            // 選模型步」會自動升級到 Flash；一旦親手點過就尊重使用者選擇不再自動改。
+            // 有無 API Key 自動推導（有 key→Flash Lite、沒 key→Google），這樣「填了 key 再回到
+            // 選模型步」會自動切到 Flash Lite；一旦親手點過就尊重使用者選擇不再自動改。
+            // 為何預設 Flash Lite：與擴充功能出廠的 translatePresets slot 2（lib/storage.js）
+            // 同一組模型，走不走 onboarding 得到的預設翻譯方式一致，且成本只有 Flash 一半。
             // model：'flash'（Gemini Flash）/ 'lite'（Gemini Flash Lite）/ 'google'（Google 翻譯）。
             // background 會把它寫進 translatePresets slot 2 的 engine+model（四指 tap / Alt+S /
             // 工具列按鈕都走 slot 2，改 slot 2 = 改預設翻譯方式）。
@@ -509,13 +511,13 @@
                 var hasKey = state.apiKey.trim().length > 0;
                 var cards = Array.prototype.slice.call(picker.querySelectorAll('.model-card'));
                 if (!state.explicit) {
-                    // 沒親手選過 → 預設跟著 key：有 key 用 Flash，沒 key 用 Google
-                    state.model = hasKey ? 'flash' : 'google';
+                    // 沒親手選過 → 預設跟著 key：有 key 用 Flash Lite，沒 key 用 Google
+                    state.model = hasKey ? 'lite' : 'google';
                 } else if (!hasKey && (state.model === 'flash' || state.model === 'lite')) {
                     // 親手選了需 key 的 Gemini 但 key 又被清掉 → 退回 Google 翻譯
                     state.model = 'google';
                 }
-                if (state.model == null) state.model = hasKey ? 'flash' : 'google';
+                if (state.model == null) state.model = hasKey ? 'lite' : 'google';
                 cards.forEach(function (c) {
                     var model = c.getAttribute('data-model');
                     var needsKey = c.getAttribute('data-needs-key') === '1';

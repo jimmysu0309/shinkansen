@@ -178,7 +178,7 @@
               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（$0.25 / $1.50）</option>
               <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite（$0.30 / $2.50）</option>
               <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
-              <option value="gemini-3.7-flash">gemini-3.7-flash（$0.75 / $3.75）</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash（$0.75 / $3.75）</option>
             </select>
           </label>
         </div>
@@ -209,7 +209,7 @@
               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（$0.25 / $1.50）</option>
               <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite（$0.30 / $2.50）</option>
               <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
-              <option value="gemini-3.7-flash">gemini-3.7-flash（$0.75 / $3.75）</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash（$0.75 / $3.75）</option>
             </select>
           </label>
         </div>
@@ -240,7 +240,7 @@
               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite（$0.25 / $1.50）</option>
               <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite（$0.30 / $2.50）</option>
               <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
-              <option value="gemini-3.7-flash">gemini-3.7-flash（$0.75 / $3.75）</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash（$0.75 / $3.75）</option>
             </select>
           </label>
         </div>
@@ -457,7 +457,7 @@
     <section>
       <h2 data-i18n="options.gemini.pricing.heading">模型計價</h2>
       <p class="muted" data-i18n-html="options.gemini.pricing.intro.html">
-        Shinkansen 內建已知 Gemini 模型的標準層級單價（<strong id="pricing-calibrated-date">2026-08</strong> 校準），
+        Shinkansen 內建已知 Gemini 模型的標準層級單價（<strong id="pricing-calibrated-date">2026-09</strong> 校準），
         用於計算翻譯成本顯示在翻譯完成通知與「用量紀錄」分頁。Google 改價時可在下方覆蓋對應模型，空白表示用內建價。
         詳細費率見 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a>
       </p>
@@ -496,15 +496,15 @@
           <input type="number" id="override-flash-output" step="0.01" min="0" placeholder="3.00" aria-label="Flash output 覆蓋">
           <input type="number" id="override-flash-discount" step="1" min="0" max="100" placeholder="90" aria-label="Flash cache hit discount %" class="cached-discount-input">
         </div>
-        <div class="model-pricing-row" data-model="gemini-3.7-flash">
+        <div class="model-pricing-row" data-model="gemini-3.8-flash">
           <div class="model-pricing-label">
-            <strong>Flash 3.7</strong>
-            <small class="muted model-id">gemini-3.7-flash</small>
-            <small class="muted" data-i18n="options.gemini.pricing.flash37.builtin">內建 $0.75 / $3.75（2026 促銷價）</small>
+            <strong>Flash 3.8</strong>
+            <small class="muted model-id">gemini-3.8-flash</small>
+            <small class="muted" data-i18n="options.gemini.pricing.flash38.builtin">內建 $0.75 / $3.75（2026 促銷價）</small>
           </div>
-          <input type="number" id="override-flash37-input" step="0.01" min="0" placeholder="0.75" aria-label="Flash 3.7 input 覆蓋">
-          <input type="number" id="override-flash37-output" step="0.01" min="0" placeholder="3.75" aria-label="Flash 3.7 output 覆蓋">
-          <input type="number" id="override-flash37-discount" step="1" min="0" max="100" placeholder="90" aria-label="Flash 3.7 cache hit discount %" class="cached-discount-input">
+          <input type="number" id="override-flash38-input" step="0.01" min="0" placeholder="0.75" aria-label="Flash 3.8 input 覆蓋">
+          <input type="number" id="override-flash38-output" step="0.01" min="0" placeholder="3.75" aria-label="Flash 3.8 output 覆蓋">
+          <input type="number" id="override-flash38-discount" step="1" min="0" max="100" placeholder="90" aria-label="Flash 3.8 cache hit discount %" class="cached-discount-input">
         </div>
       </div>
       <p class="muted" style="font-size: 12px; margin-top: 6px;" data-i18n-html="options.gemini.pricing.cachedDiscountHint.html">
@@ -669,7 +669,7 @@
         <select id="glossaryModel">
           <option value="gemini-3.1-flash-lite" data-i18n="options.glossary.auto.modelLite">Gemini 3.1 Flash Lite（預設，快又便宜）</option>
           <option value="gemini-3-flash-preview" data-i18n="options.glossary.auto.modelFlash">Gemini 3 Flash（較慢但語意理解較強）</option>
-          <option value="gemini-3.7-flash" data-i18n="options.glossary.auto.modelPro">Gemini 3.7 Flash（$0.75 / $3.75）</option>
+          <option value="gemini-3.8-flash" data-i18n="options.glossary.auto.modelPro">Gemini 3.8 Flash（$0.75 / $3.75）</option>
           <option value="" data-i18n="options.glossary.auto.modelSame">與主翻譯模型相同</option>
         </select>
         <small class="muted" data-i18n="options.glossary.auto.modelHint">術語擷取是任務簡單的單次請求，Flash Lite 通常已夠用，且比 Flash 快 1.5-3 倍、便宜 5 倍</small>
@@ -1137,7 +1137,7 @@
               <option value="" data-i18n="options.yt.gemini.modelSame">（與網頁翻譯主要預設相同）</option>
               <option value="gemini-3.1-flash-lite" data-i18n="options.yt.gemini.modelLite">gemini-3.1-flash-lite（$0.25 / $1.50）— 便宜，字幕品質足夠</option>
               <option value="gemini-3-flash-preview" data-i18n="options.yt.gemini.modelFlash">gemini-3-flash-preview（$0.50 / $3.00）— 推薦</option>
-              <option value="gemini-3.7-flash" data-i18n="options.yt.gemini.modelPro">gemini-3.7-flash（$0.75 / $3.75）</option>
+              <option value="gemini-3.8-flash" data-i18n="options.yt.gemini.modelPro">gemini-3.8-flash（$0.75 / $3.75）</option>
             </select>
             <small class="muted" data-i18n="options.yt.gemini.modelHint">選擇模型後，下方計價會自動帶入參考價；你也可以手動修改</small>
           </label>

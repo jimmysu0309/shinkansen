@@ -942,6 +942,16 @@ export async function migrateGemini36FlashModelIfNeeded(syncSaved) {
   return _migrateGeminiModelId(syncSaved, GEMINI_36_FLASH_OLD_ID, GEMINI_36_FLASH_NEW_ID);
 }
 
+// 一次性遷移(2026-09-03):gemini-3.7-flash 自模型清單下架,由新一代 gemini-3.8-flash
+// 接替(同促銷價 $0.75 / $3.75 至 2026 年底,2027-01-01 起 $1.50 / $7.50)。
+// 存了舊 ID 的使用者設定改寫成 3.8-flash,避免 dropdown 選不到 / pricing 查不到。
+// 與 35→36→37 遷移串聯:存極舊 ID 的設定逐段接力,最終都落在 3.8-flash。
+export const GEMINI_37_FLASH_OLD_ID = 'gemini-3.7-flash';
+export const GEMINI_37_FLASH_NEW_ID = 'gemini-3.8-flash';
+export async function migrateGemini37FlashModelIfNeeded(syncSaved) {
+  return _migrateGeminiModelId(syncSaved, GEMINI_37_FLASH_OLD_ID, GEMINI_37_FLASH_NEW_ID);
+}
+
 // 共用實作:掃 saved 設定裡所有可能存模型 ID 的欄位(geminiConfig.model /
 // glossary.model / ytSubtitle.model / translatePresets[*].model /
 // modelPricingOverrides key)把 OLD 改寫成 NEW 後 storage.sync.set 寫回。
@@ -1028,6 +1038,7 @@ export async function getSettings() {
   await migrateGeminiFlashLiteModelIfNeeded(saved);
   await migrateGemini35FlashModelIfNeeded(saved);
   await migrateGemini36FlashModelIfNeeded(saved);
+  await migrateGemini37FlashModelIfNeeded(saved);
   // 從 local 讀 apiKey（v0.62 起的正規位置）
   const { [API_KEY_STORAGE_KEY]: apiKey = '' } = await browser.storage.local.get(API_KEY_STORAGE_KEY);
   // P1: 先決定 targetLanguage,後面 forbiddenTerms 預設依此分歧。

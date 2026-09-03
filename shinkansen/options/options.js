@@ -49,7 +49,7 @@ const MODEL_OVERRIDE_FIELDS = [
   { model: 'gemini-3.1-flash-lite', input: 'override-lite-input',   output: 'override-lite-output',   discount: 'override-lite-discount' },
   { model: 'gemini-3.5-flash-lite', input: 'override-lite35-input', output: 'override-lite35-output', discount: 'override-lite35-discount' },
   { model: 'gemini-3-flash-preview', input: 'override-flash-input', output: 'override-flash-output',  discount: 'override-flash-discount' },
-  { model: 'gemini-3.7-flash',      input: 'override-flash37-input', output: 'override-flash37-output', discount: 'override-flash37-discount' },
+  { model: 'gemini-3.8-flash',      input: 'override-flash38-input', output: 'override-flash38-output', discount: 'override-flash38-discount' },
 ];
 
 // 翻譯目標語言已從 options 搬到 popup(v1.9.16),options 不再有 #targetLanguage
