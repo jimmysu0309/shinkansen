@@ -191,6 +191,17 @@ if (window.__shinkansen_loaded) {
     return !!document.querySelector(SK.TRANSLATED_MARKER_SELECTOR);
   };
 
+  // 懸停翻譯就地套用留下的零星譯文額外帶 data-shinkansen-hover（content-hover.js 注入後標記）。
+  // 判定「整頁是否已翻譯」時排除它們：只 hover 翻過幾段就按翻譯鍵,使用者要的是翻整頁,
+  // 不是把那幾段還原掉。還原流程仍走 TRANSLATED_MARKER_SELECTOR,hover 段落一併清乾淨。
+  SK.HOVER_MARKER_ATTR = 'data-shinkansen-hover';
+  SK.FULLRUN_MARKER_SELECTOR = SK.TRANSLATED_MARKER_SELECTOR
+    .split(', ').map(function (sel) { return sel + ':not([' + SK.HOVER_MARKER_ATTR + '])'; })
+    .join(', ');
+  SK.isPageTranslatedByFullRun = function isPageTranslatedByFullRun() {
+    return !!document.querySelector(SK.FULLRUN_MARKER_SELECTOR);
+  };
+
   // v2.0.85: 無主殭屍 marker 掃除。還原流程把所有還原 Map 內的節點處理完、Map 清空後,
   // DOM 上仍掛注入痕跡的節點都是「簿記追不到的無主殘留」——站點 framework 可能 clone
   // 已翻譯節點(cloneNode 連 data-* attribute 一起複製)或把持有的舊譯文節點換回 DOM。

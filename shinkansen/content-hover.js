@@ -240,12 +240,28 @@
     return { text: (block.innerText || block.textContent || '').trim(), slots: [] };
   }
 
+  // 標記這輪 hover 注入留下的痕跡，讓 SK.isPageTranslatedByFullRun 能把它們排除——
+  // 只 hover 翻過幾段時，翻譯鍵要翻整頁而不是還原那幾段。dual 的 wrapper 可能落在
+  // 段落內也可能是 sibling，所以用「注入前後的 wrapper 差集」抓，不猜插入位置。
+  function markHoverInjected(el, prevWrappers) {
+    const attr = SK.HOVER_MARKER_ATTR;
+    if (!attr) return;
+    if (el.matches?.(SK.TRANSLATED_MARKER_SELECTOR)) el.setAttribute(attr, '1');
+    el.querySelectorAll?.(SK.TRANSLATED_MARKER_SELECTOR)
+      .forEach((n) => n.setAttribute(attr, '1'));
+    document.querySelectorAll(SK.TRANSLATION_WRAPPER_TAG).forEach((n) => {
+      if (!prevWrappers.has(n)) n.setAttribute(attr, '1');
+    });
+  }
+
   // 套用全文翻譯的顯示模式：single = 取代原文，dual = 雙語對照
   function injectInline(target, translation) {
     if (!target?.el?.isConnected) return;
     const unit = { kind: 'element', el: target.el };
+    const prevWrappers = new Set(document.querySelectorAll(SK.TRANSLATION_WRAPPER_TAG));
     if (displayMode !== 'dual') {
       SK.injectTranslation?.(unit, translation, target.slots);
+      markHoverInjected(target.el, prevWrappers);
       return;
     }
     // 使用者沒跑過全文翻譯時，這兩個全域還沒被 content.js 設過
@@ -254,6 +270,7 @@
     SK.currentDualAccent = SK.sanitizeDualAccent?.(dualAccent) ?? 'auto';
     SK.ensureDualWrapperStyle?.();
     SK.injectDual?.(unit, translation, target.slots);
+    markHoverInjected(target.el, prevWrappers);
   }
 
   async function requestTranslate(text, x, y, target) {
