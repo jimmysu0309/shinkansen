@@ -2684,7 +2684,9 @@
     //   - 一般入口：任意 preset 觸發皆還原（toggle）
     //   - force（長按選單選引擎）：先還原既有譯文，再 fall through 用新 preset 重新翻譯，
     //     避免在已注入的譯文上再疊一層；換引擎=重譯，不是 toggle 回原文。
-    if (SK.isPageTranslated()) {
+    // 頁面上只有懸停翻譯就地套用的零星段落（帶 data-shinkansen-hover）時不算已翻譯：使用者按鍵
+    // 是要翻整頁，不是還原那幾段（那些段落已有 marker，整頁翻譯會自然跳過）。
+    if (SK.isPageTranslatedByFullRun()) {
       restorePage();
       if (!force) return;
     }
@@ -2733,7 +2735,8 @@
     if (msg?.type === 'GET_STATE') {
       // v1.10.57: popup / icon 顯示狀態以 DOM 注入痕跡為準,不信記憶體 STATE.translated
       // (SPA 子頁導航殘留 marker 時 STATE.translated 會說謊)。
-      sendResponse({ ok: true, translated: SK.isPageTranslated(), editing: editModeActive });
+      // 與快速鍵 toggle 用同一判準：只有 hover 段落時 popup 顯示「翻譯」而非「還原」
+      sendResponse({ ok: true, translated: SK.isPageTranslatedByFullRun(), editing: editModeActive });
       return true;
     }
     // 送到 Instapaper:擷取當前頁面完整 HTML（含已就地替換的譯文）。
