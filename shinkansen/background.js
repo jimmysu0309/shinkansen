@@ -2055,7 +2055,16 @@ async function testCustomProvider(payload) {
       body: JSON.stringify(reqBody),
     }, 10000);
     if (resp.ok) {
-      const j = await resp.json().catch(() => ({}));
+      let j;
+      try {
+        j = await resp.json();
+      } catch {
+        return {
+          ok: false,
+          status: resp.status,
+          message: `HTTP ${resp.status}，但 Provider 回應不是有效的 JSON。請確認 Base URL 是否為正確的 OpenAI-compatible API endpoint。`,
+        };
+      }
       const used = j?.usage?.total_tokens || j?.usage?.prompt_tokens || 0;
       const modelLabel = model || j?.model || 'server-default';
       return { ok: true, status: resp.status, message: `連線成功（${modelLabel}，本次用量約 ${used} tokens）` };
