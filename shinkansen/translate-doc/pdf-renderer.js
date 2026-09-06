@@ -53,6 +53,11 @@ const FONT_PATH_BOLD = 'lib/vendor/fonts/NotoSansTC-Bold.ttf';
 
 async function loadFontBytes(path, cacheRef) {
   if (cacheRef.value) return cacheRef.value;
+  // 安全限制：path 只能是擴充套件內建的相對資源路徑，禁止協定字串（http:、data: 等）
+  // 或路徑穿越，避免未來若 path 受外部輸入影響時發生 SSRF / 資源外洩
+  if (typeof path !== 'string' || /^[a-z][a-z0-9+.-]*:/i.test(path) || path.includes('..')) {
+    throw new Error(`不合法的字型路徑：${path}`);
+  }
   const url = chrome.runtime.getURL(path);
   const res = await fetch(url);
   if (!res.ok) throw new Error(`字型載入失敗：${res.status} (${path})`);
