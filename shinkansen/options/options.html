@@ -394,6 +394,29 @@
       </label>
     </section>
 
+    <section>
+      <h2 data-i18n="options.hover.heading">懸停翻譯</h2>
+      <p class="muted" data-i18n="options.hover.intro">在桌面瀏覽器按住修飾鍵並把滑鼠移到文字上，翻譯游標所在的整個段落。兩種顯示方式各綁一個鍵，都選「不使用」就是關閉此功能；翻譯引擎沿用主設定</p>
+      <div class="hover-modifier-options">
+        <span data-i18n="options.hover.modifierLegend">浮動提示：按住以下修飾鍵</span>
+        <label><input type="radio" name="hoverMod" value="" checked><span data-i18n="options.hover.modifierNone">不使用</span></label>
+        <label><input type="radio" name="hoverMod" value="alt"><span data-modkey="alt">⌥ Option / Alt</span></label>
+        <label><input type="radio" name="hoverMod" value="shift"><span data-modkey="shift">⇧ Shift</span></label>
+        <label><input type="radio" name="hoverMod" value="ctrl"><span data-modkey="ctrl">⌃ Control</span></label>
+        <label><input type="radio" name="hoverMod" value="meta"><span data-modkey="meta">⌘ Command</span></label>
+        <small class="muted" data-i18n="options.hover.modifierHint">每種方式綁一個鍵，兩者不能相同；選「不使用」就停用該方式</small>
+      </div>
+      <div class="hover-modifier-options">
+        <span data-i18n="options.hover.inlineModifierLegend">套用到段落：按住以下修飾鍵</span>
+        <label><input type="radio" name="hoverInlineMod" value="" checked><span data-i18n="options.hover.modifierNone">不使用</span></label>
+        <label><input type="radio" name="hoverInlineMod" value="alt"><span data-modkey="alt">⌥ Option / Alt</span></label>
+        <label><input type="radio" name="hoverInlineMod" value="shift"><span data-modkey="shift">⇧ Shift</span></label>
+        <label><input type="radio" name="hoverInlineMod" value="ctrl"><span data-modkey="ctrl">⌃ Control</span></label>
+        <label><input type="radio" name="hoverInlineMod" value="meta"><span data-modkey="meta">⌘ Command</span></label>
+        <small class="muted" data-i18n="options.hover.inlineModifierHint">取代原文或雙語對照跟隨「顯示模式」設定</small>
+      </div>
+    </section>
+
     <!-- 四指觸控翻譯：iOS / iPadOS only，由 options.js 依 IS_IOS_BUILD 控制 hidden -->
     <section id="four-finger-section" hidden>
       <h2 data-i18n="options.fourFinger.heading">四指觸控翻譯</h2>

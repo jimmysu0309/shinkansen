@@ -811,6 +811,10 @@ export const DEFAULT_SETTINGS = {
   floatingIconOpacity: 0.7,
   floatingIconSize: 24,
   floatingIconPos: { edge: 'right', offsetY: 1 },
+  // 懸停翻譯：兩種顯示方式各綁一個修飾鍵，按下哪個就用哪一種。
+  // 兩組都留空＝功能關閉（預設）；正規化走 lib/shortcut-utils.js。
+  hoverTranslateModifier: { alt: false, shift: false, ctrl: false, meta: false },
+  hoverTranslateInlineModifier: { alt: false, shift: false, ctrl: false, meta: false },
   // 四指觸控手勢 enable（iOS / iPadOS）。預設 true（2026-08-20 Jimmy 指示改預設開，
   //   讓觸控裝置開箱即有手勢入口；易誤觸發的使用者可在 Options 關閉）。
   // content-touch.js isEnabled() 額外 gate 此旗標；桌面 build 無此手勢，旗標無作用。
@@ -1104,6 +1108,10 @@ export async function getSettings() {
     // v1.8.49: translateDoc 深層 merge — 新增 applyFixedGlossary 後既有使用者
     // saved.translateDoc 沒這個 key,深 merge 才能拿到預設 true(否則 undefined)。
     translateDoc: { ...DEFAULT_SETTINGS.translateDoc, ...(saved.translateDoc || {}) },
+    // 正規化交給消費端的 __SKShortcuts.sanitizeHoverModifier（單一來源，比照 __SKDomain）
+    hoverTranslateModifier: saved.hoverTranslateModifier || DEFAULT_SETTINGS.hoverTranslateModifier,
+    hoverTranslateInlineModifier: saved.hoverTranslateInlineModifier
+      || DEFAULT_SETTINGS.hoverTranslateInlineModifier,
   };
   merged.apiKey = apiKey;
   // v1.5.7: 從 storage.local 讀 customProvider apiKey 注入
