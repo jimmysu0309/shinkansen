@@ -207,7 +207,7 @@ v1.0.23 → v1.9.16 這一年間加了以下功能，但**沒有讓「網頁翻�
 ## 備註
 
 - 本測試在 extension 翻譯快取清空（worst case）的狀態下進行；實際使用時快取命中率會顯著降低 API 呼叫次數與總耗時。
-- 量測工具：`tools/probe-performance.js`（v1.9.16 新增）。原始輸出存於 `.playwright-mcp/performance-result.json`。
+- 量測工具：`tools/probes/probe-performance.js`（v1.9.16 新增）。原始輸出存於 `.playwright-mcp/performance-result.json`。
 - Wikipedia Taiwan 是刻意選擇的壓力測試頁面（近 1,000 段），一般網頁的段落數遠低於此。
 - 翻譯速度主要受 API 延遲與並行批次數限制，與本地效能無關。提高 `maxConcurrent` 可縮短總耗時，但會更快消耗 rate limit 配額。
 - 記憶體數據使用 `performance.memory` API（Chrome 限定）量測 JS heap，不含 V8 外部記憶體（如 DOM 本身的 C++ 物件），但差異通常很小。

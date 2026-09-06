@@ -355,7 +355,7 @@ async function handleFile(file) {
     currentDoc = doc;
     currentPdfDoc = rawDoc.pdfDoc;
 
-    // dev probe: expose 給 tools/pdf-layout-harness.js 用 page.evaluate 讀
+    // dev probe: expose 給 tools/harness/pdf-layout-harness.js 用 page.evaluate 讀
     // 不影響使用者(只是多一個 global ref;memory 釋放交給 releaseCurrentDoc)
     window.__skLastParseError = null;
     window.__skLayoutDoc = {
@@ -417,7 +417,7 @@ async function handleFile(file) {
       if (rawDoc && rawDoc.pdfDoc && rawDoc.pdfDoc !== currentPdfDoc) closeDocument(rawDoc.pdfDoc);
       return;
     }
-    // dev probe：tools/pdf-corpus-verify.mjs 靠錯誤碼把「預期擋下」的負面案例
+    // dev probe：tools/harness/pdf-corpus-verify.mjs 靠錯誤碼把「預期擋下」的負面案例
     // （scanned / encrypted / invalid…）與真正的解析失敗分開；UI 只顯示 i18n 訊息拿不到 code
     window.__skLastParseError = {
       code: err instanceof PdfParseError ? err.code : 'exception',

@@ -389,7 +389,7 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
   // v1.8.20: 對 source / target 消毒,防止頁面內容塞 sentinel token 影響協定
   // 2026-07-12: 措辭改「右欄整串都是譯名」——舊句尾「也不需加註英文原文」跟
   // EPUB 全書術語表帶對照的 target（「《變換房間》（Changing Rooms）」）自相矛盾,
-  // 真 API probe(tools/probe-glossary-annotation.mjs)實測模型會因此剝掉（原文）
+  // 真 API probe(tools/probes/probe-glossary-annotation.mjs)實測模型會因此剝掉（原文）
   // 對照(3.5-flash 3 輪只保留 1 輪)。「對照一次」的後續出現裁剪由下游端
   // 確定性處理,LLM 層永遠輸出完整右欄——EPUB 走 epub-writer computeAnnotationDedupe,
   // 網頁走 content-inject.js trimAnnotationDedupe(注入端整頁首現保留、後續留譯名);

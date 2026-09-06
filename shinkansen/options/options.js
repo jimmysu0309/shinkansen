@@ -2,7 +2,7 @@
 // v1.0.4: 改為 ES module，從 lib/ 匯入共用常數與工具函式，消除重複程式碼。
 
 import { browser } from '../lib/compat.js';
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault } from '../lib/storage.js';
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, isLegacyDefaultForbiddenTerms, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault } from '../lib/storage.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
 import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
@@ -212,7 +212,7 @@ async function load() {
   // v1.5.6: 中國用語黑名單
   // P1/P2(v1.8.60):依 target 給對應預設(對齊 storage.js getSettings() 邏輯)。
   //   saved 已寫入 → 完全以 saved 為準(尊重客製化)
-  //   saved 未寫入 + target=zh-TW → DEFAULT_FORBIDDEN_TERMS(25 條台灣慣用語)
+  //   saved 未寫入 + target=zh-TW → DEFAULT_FORBIDDEN_TERMS(26 條台灣慣用語)
   //   saved 未寫入 + target≠zh-TW → 空陣列(zh-CN/en 等不需要禁用中國用語)
   // 之前用 s.forbiddenTerms(已 spread DEFAULTS)會永遠拿到 25 條 → en/zh-CN 使用者
   // 看到滿表中→中對映無意義。
@@ -1344,6 +1344,8 @@ $('uiLanguage')?.addEventListener('change', async () => {
 function isForbiddenTermsDefaultFor(terms, tl, defaults) {
   if (!Array.isArray(terms)) return false;
   if (terms.length === 0) return tl !== 'zh-TW';
+  // 等於舊版預設快照(物化殘留)也算未客製 → autosave 會回收 key，使用者立即吃到新預設條目
+  if (tl === 'zh-TW' && isLegacyDefaultForbiddenTerms(terms)) return true;
   if (terms.length !== defaults.length) return false;
   for (let i = 0; i < terms.length; i++) {
     const a = terms[i];

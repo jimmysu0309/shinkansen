@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.9
+- 目前 Extension 版本：2.4.10
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.9 為止）
+### 2.1 已實作（v2.4.10 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -142,7 +142,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 針對 AI 模型容易漏網的非台灣慣用譯法、或使用者不希望出現在譯文中的詞彙，建立可編輯的禁用清單，以 prompt 注入方式要求模型遵守（content 端不做事後 regex replace）。
 
 - **替換詞可留空**：填了替換詞 → 要求模型改用指定詞；留空 → 只要求不可使用該詞，由模型自行改寫
-- **預設清單**：25 條（`DEFAULT_FORBIDDEN_TERMS`），涵蓋視頻/軟件/數據/網絡/質量/用戶等常見對映；僅 target = zh-TW 時套用，其他 target 預設空清單
+- **預設清單**：26 條（`DEFAULT_FORBIDDEN_TERMS`），涵蓋視頻/軟件/數據/網絡/質量/用戶等常見對映；僅 target = zh-TW 時套用，其他 target 預設空清單
 - **設定 UI**：獨立「禁用詞清單」分頁，三欄表格（禁用詞 / 替換詞 / 備註）＋新增/還原預設/刪除；匯入匯出支援
 - 模型漏網案例會記入 Debug log（純記錄、不修改譯文）；清單變更後快取自動分區失效
 
@@ -179,7 +179,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 
 **YouTube 字幕「已是目標語言」跳過**：字幕語言命中 target 對應集合時不啟動翻譯（target=zh-TW 時簡中字幕也跳——繁中使用者可直讀，不花 API；僅字幕路徑，整頁翻譯的簡中段落照翻或走本地轉換）。
 
-**禁用詞清單依 target 預設**：未客製時 zh-TW 吃 25 條預設清單、其他 target 空清單；使用者編輯過則完全尊重 saved 值。
+**禁用詞清單依 target 預設**：未客製時 zh-TW 吃 26 條預設清單、其他 target 空清單；使用者編輯過則完全尊重 saved 值。
 
 **Cache key 區隔**：不同 target 的譯文快取自動分區（§9.1）。
 
@@ -299,8 +299,6 @@ shinkansen/
 ├── content-floating-icon.js  # 懸浮翻譯控制按鈕
 ├── content.css
 ├── background.js             # Service Worker（ES module）
-├── privacy-policy.html       # 隱私權政策（繁中）
-├── privacy-policy.en.html    # 隱私權政策（英文）
 ├── LICENSE                   # ELv2
 ├── THIRD-PARTY-NOTICES.md    # 第三方授權聲明
 ├── lib/
@@ -455,7 +453,7 @@ shinkansen/
   "customShortcuts": { "2": null, "1": null, "3": null },
   "instapaperEnabled": false,
   "instapaperSummaryEnabled": true,
-  "forbiddenTerms": "（見 §3.7 / DEFAULT_FORBIDDEN_TERMS，25 條預設）",
+  "forbiddenTerms": "（見 §3.7 / DEFAULT_FORBIDDEN_TERMS，26 條預設）",
   "disableUpdateNotice": false,
   "popupButtonSlot": 2,
   "floatingIcon": null,

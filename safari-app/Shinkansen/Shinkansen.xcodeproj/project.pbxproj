@@ -16,7 +16,6 @@
 		9E1032672FB3050300706F81 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 9E10324F2FB3050300706F81 /* LICENSE */; };
 		9E1032682FB3050300706F81 /* content-youtube-main.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032502FB3050300706F81 /* content-youtube-main.js */; };
 		9EFFFF002FB3050300706F81 /* content-fw-detect-main.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF012FB3050300706F81 /* content-fw-detect-main.js */; };
-		9E1032692FB3050300706F81 /* privacy-policy.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032512FB3050300706F81 /* privacy-policy.html */; };
 		9E10326A2FB3050300706F81 /* THIRD-PARTY-NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032522FB3050300706F81 /* THIRD-PARTY-NOTICES.md */; };
 		9E10326B2FB3050300706F81 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032532FB3050300706F81 /* background.js */; };
 		9E10326C2FB3050300706F81 /* content-drive.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032542FB3050300706F81 /* content-drive.js */; };
@@ -35,7 +34,6 @@
 		9EFFFF022FB3050300706F81 /* content-touch.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF032FB3050300706F81 /* content-touch.js */; };
 		9EFFFF00AA01000000000001 /* content-shortcuts.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA01000000000002 /* content-shortcuts.js */; };
 		9EFFFF00AA02000000000001 /* content-floating-icon.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA02000000000002 /* content-floating-icon.js */; };
-		9E1032792FB3050300706F81 /* privacy-policy.en.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032612FB3050300706F81 /* privacy-policy.en.html */; };
 		9E10327A2FB3050300706F81 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032622FB3050300706F81 /* content-serialize.js */; };
 		9E10327B2FB3050300706F81 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032632FB3050300706F81 /* content-inject.js */; };
 		9E615A8E2FB320A700EE6E7E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E615A8B2FB320A600EE6E7E /* ContentView.swift */; };
@@ -80,7 +78,6 @@
 		9E10324F2FB3050300706F81 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = Resources/LICENSE; sourceTree = "<group>"; };
 		9E1032502FB3050300706F81 /* content-youtube-main.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-youtube-main.js"; path = "Resources/content-youtube-main.js"; sourceTree = "<group>"; };
 		9EFFFF012FB3050300706F81 /* content-fw-detect-main.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-fw-detect-main.js"; path = "Resources/content-fw-detect-main.js"; sourceTree = "<group>"; };
-		9E1032512FB3050300706F81 /* privacy-policy.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.html"; path = "Resources/privacy-policy.html"; sourceTree = "<group>"; };
 		9E1032522FB3050300706F81 /* THIRD-PARTY-NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "THIRD-PARTY-NOTICES.md"; path = "Resources/THIRD-PARTY-NOTICES.md"; sourceTree = "<group>"; };
 		9E1032532FB3050300706F81 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = Resources/background.js; sourceTree = "<group>"; };
 		9E1032542FB3050300706F81 /* content-drive.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-drive.js"; path = "Resources/content-drive.js"; sourceTree = "<group>"; };
@@ -99,7 +96,6 @@
 		9EFFFF032FB3050300706F81 /* content-touch.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-touch.js"; path = "Resources/content-touch.js"; sourceTree = "<group>"; };
 		9EFFFF00AA01000000000002 /* content-shortcuts.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-shortcuts.js"; path = "Resources/content-shortcuts.js"; sourceTree = "<group>"; };
 		9EFFFF00AA02000000000002 /* content-floating-icon.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-floating-icon.js"; path = "Resources/content-floating-icon.js"; sourceTree = "<group>"; };
-		9E1032612FB3050300706F81 /* privacy-policy.en.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.en.html"; path = "Resources/privacy-policy.en.html"; sourceTree = "<group>"; };
 		9E1032622FB3050300706F81 /* content-serialize.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-serialize.js"; path = "Resources/content-serialize.js"; sourceTree = "<group>"; };
 		9E1032632FB3050300706F81 /* content-inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-inject.js"; path = "Resources/content-inject.js"; sourceTree = "<group>"; };
 		9E615A8B2FB320A600EE6E7E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -182,7 +178,6 @@
 				9E10324F2FB3050300706F81 /* LICENSE */,
 				9E1032502FB3050300706F81 /* content-youtube-main.js */,
 				9EFFFF012FB3050300706F81 /* content-fw-detect-main.js */,
-				9E1032512FB3050300706F81 /* privacy-policy.html */,
 				9E1032522FB3050300706F81 /* THIRD-PARTY-NOTICES.md */,
 				9E1032532FB3050300706F81 /* background.js */,
 				9E1032542FB3050300706F81 /* content-drive.js */,
@@ -201,7 +196,6 @@
 				9EFFFF032FB3050300706F81 /* content-touch.js */,
 				9EFFFF00AA01000000000002 /* content-shortcuts.js */,
 				9EFFFF00AA02000000000002 /* content-floating-icon.js */,
-				9E1032612FB3050300706F81 /* privacy-policy.en.html */,
 				9E1032622FB3050300706F81 /* content-serialize.js */,
 				9E1032632FB3050300706F81 /* content-inject.js */,
 			);
@@ -314,9 +308,7 @@
 				9EFFFF002FB3050300706F81 /* content-fw-detect-main.js in Resources */,
 				9E10327A2FB3050300706F81 /* content-serialize.js in Resources */,
 				9E1032722FB3050300706F81 /* icons in Resources */,
-				9E1032692FB3050300706F81 /* privacy-policy.html in Resources */,
 				9E1032662FB3050300706F81 /* content.css in Resources */,
-				9E1032792FB3050300706F81 /* privacy-policy.en.html in Resources */,
 				9E10326A2FB3050300706F81 /* THIRD-PARTY-NOTICES.md in Resources */,
 				9E10326C2FB3050300706F81 /* content-drive.js in Resources */,
 				9E10326F2FB3050300706F81 /* content-toast.js in Resources */,
@@ -488,7 +480,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.4.9;
+				CURRENT_PROJECT_VERSION = 2.4.10;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -503,7 +495,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
-				MARKETING_VERSION = 2.4.9;
+				MARKETING_VERSION = 2.4.10;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -523,7 +515,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2.4.9;
+				CURRENT_PROJECT_VERSION = 2.4.10;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -538,7 +530,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.14;
-				MARKETING_VERSION = 2.4.9;
+				MARKETING_VERSION = 2.4.10;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -561,7 +553,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2.4.9;
+				CURRENT_PROJECT_VERSION = 2.4.10;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -578,7 +570,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.9;
+				MARKETING_VERSION = 2.4.10;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -604,7 +596,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2.4.9;
+				CURRENT_PROJECT_VERSION = 2.4.10;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -621,7 +613,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.4.9;
+				MARKETING_VERSION = 2.4.10;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,

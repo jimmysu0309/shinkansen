@@ -29,9 +29,9 @@ CLAUDE-TEMPLATE-*.md
 .env
 .env.*
 
-# debug harness 截圖與一次性 probe 腳本
+# debug harness 截圖與一次性 probe 腳本(站點特定 .js probe 不入 repo;.mjs probe 有 spec / SPEC-PRIVATE 指回,照常追蹤)
 .playwright-mcp/
-tools/probe-*.js
+tools/probes/*.js
 
 # PDF layout snapshot baseline(本機素材對應)
 test/regression/pdf-layout-snapshots/
@@ -42,7 +42,6 @@ PLAN-send-to-instapaper.md
 SPEC-PRIVATE.md
 DEBUG-BOARD.md
 CODE-REVIEW-2026-08-03.md
-/reports/
 
 # Claude Code 本機工作流(專案 skill / transient lock 等,含個人資訊,
 # 跟 CLAUDE.md 同待遇不入公開 repo)
@@ -50,8 +49,8 @@ CODE-REVIEW-2026-08-03.md
 
 # 本機商店送審工具(用個人 OAuth/API 憑證自動上架,維持本機不入公開 repo;
 # 對應 ~/.shinkansen-cws-creds / ~/.shinkansen-amo-creds)
-tools/chrome-webstore-submit.sh
-tools/firefox-amo-submit.sh
+tools/release/chrome-webstore-submit.sh
+tools/release/firefox-amo-submit.sh
 
 # macOS Safari Web Extension Xcode project — Phase 2 起 commit project 骨架,
 # 只 ignore build artifacts / per-user Xcode state / rsync 進來的 Extension Resources
@@ -61,7 +60,8 @@ safari-app/**/.DS_Store
 safari-app/**/xcuserdata/
 safari-app/Shinkansen/Shinkansen Extension/Resources/
 safari-app/Shinkansen-iOS/Shinkansen/Shinkansen Extension/Resources/
-safari-app/shinkansen-ios-*.ipa
+# build 產物(MAS pkg / DevID pkg / iOS ipa)統一輸出到根目錄 build/(上方已 ignore)
+shinkansen-ios-*.ipa
 
 # Instapaper Full API 憑證(app 層,不進 public repo)
 shinkansen/lib/instapaper-keys.js

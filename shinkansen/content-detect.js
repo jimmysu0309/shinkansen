@@ -23,11 +23,11 @@
   //   - tradCount > 0 且 simpCount == 0 → zh-Hant(肯定 TC)
   // 兩邊都命中或都沒命中 → 走既有比例邏輯(維持 v0.76 短文補字策略不破壞)。
   // 簡繁特徵字集:v1.9.15 起為人工 curated 清單,簡繁互轉功能 vendor OpenCC 字典後
-  // 改由 tools/generate-zh-char-sets.mjs 完備生成(curated 清單覆蓋有限,短標題只含
+  // 改由 tools/build/generate-zh-char-sets.mjs 完備生成(curated 清單覆蓋有限,短標題只含
   // 清單外簡體字時 simpCount=0 → ratio fallback 誤判 zh-Hant 被跳過)。
   // 生成判準(防簡繁共用字誤判)與再生方式見腳本檔頭;歧義字(干/后/里/台/据/几…
   // 繁體文本也用的字)一律排除,確保「繁體短文絕不誤判 zh-Hans」優先於簡體覆蓋率。
-  // ── GENERATED:ZH-CHAR-SETS BEGIN(tools/generate-zh-char-sets.mjs,勿手改)──
+  // ── GENERATED:ZH-CHAR-SETS BEGIN(tools/build/generate-zh-char-sets.mjs,勿手改)──
   // 簡體特徵字 2657+9 字 / 繁體特徵字 3134+19 字
   //(+N 為準特徵 tier:繁/簡對側語料出現 ≤ 3 次的極邊緣共用字,例 么),
   // 判準見生成腳本檔頭

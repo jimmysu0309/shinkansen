@@ -93,7 +93,7 @@ export function pickThinkingConfig(model) {
  *   - simonw/llm-gemini #75:candidates=104 / thoughts=989 分開、未內含
  *   - 官方 tokens 文件把 candidates / thoughts / total 列為獨立欄位
  *   → 採「outputTokens = candidates + thoughts」。換新 key 後可用
- *     tools/probe-thoughts-usage.js 跑 total == prompt + candidates + thoughts 再確認。
+ *     tools/probes/probe-thoughts-usage.js 跑 total == prompt + candidates + thoughts 再確認。
  *
  * 另回傳 thoughtsTokens 供 debugLog 診斷(不改 DB schema,outputTokens 已含其值)。
  */
@@ -1009,7 +1009,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
  *   onSegment(idx, translation, hadMismatch):incremental parser 解出完整一段譯文時觸發
  * 整批結束 return: { translations, usage, hadMismatch, finishReason }
  *
- * Scope 限制(reports/streaming-probe-2026-04-28.md §6):
+ * Scope 限制(docs/excluded/planning/reports/streaming-probe-2026-04-28.md §6):
  *   ✅ 給 TRANSLATE_BATCH_STREAM(文章翻譯 batch 0)用
  *   ❌ 不給字幕(TRANSLATE_SUBTITLE_BATCH / ASR)用
  *   ❌ 不給術語抽取(EXTRACT_GLOSSARY)用

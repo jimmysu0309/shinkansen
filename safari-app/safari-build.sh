@@ -5,8 +5,8 @@
 #   把 shinkansen/ 同步進 Resources/、bump pbxproj 版本、跑 xcodebuild archive,
 #   export 出 Mac App Store 上傳用的 .pkg。
 #
-#   產出: safari-app/shinkansen-macos-v<version>-mas.pkg
-#   用法: open -a Transporter safari-app/shinkansen-macos-v<version>-mas.pkg
+#   產出: build/shinkansen-macos-v<version>-mas.pkg
+#   用法: open -a Transporter build/shinkansen-macos-v<version>-mas.pkg
 #
 # 雙軌:本 script 只跑 MAS 軌(快,每次 release.sh 跑這條)。
 #      Developer ID 公開下載 .pkg 走獨立的 safari-app/safari-build-devid.sh
@@ -132,10 +132,10 @@ xcodebuild -exportArchive \
   -exportPath "$BUILD_DIR/safari-export-mas" \
   -exportOptionsPlist "$EXPORT_OPTS"
 
-MAS_PKG="safari-app/shinkansen-macos-v${VERSION}-mas.pkg"
+MAS_PKG="build/shinkansen-macos-v${VERSION}-mas.pkg"
 # 刪除舊版 MAS .pkg(每次 bump 換版本號會留下舊檔累積)。新檔此刻仍在
 # $BUILD_DIR,先清空 safari-app/ 內所有 -mas.pkg 再 mv 進新版。
-rm -f safari-app/shinkansen-macos-v*-mas.pkg
+rm -f build/shinkansen-macos-v*-mas.pkg
 mv "$BUILD_DIR/safari-export-mas/Shinkansen.pkg" "$MAS_PKG"
 
 # 6. Source drift forcing function

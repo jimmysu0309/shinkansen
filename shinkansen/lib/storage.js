@@ -196,7 +196,31 @@ export const DEFAULT_FORBIDDEN_TERMS = [
   { forbidden: '操作系統', replacement: '作業系統', note: '' },
   { forbidden: '沒有之一', replacement: '',         note: '陳腔濫調，留空替換詞由 AI 自行改寫' },
   { forbidden: '橫空出世', replacement: '',         note: '陳腔濫調，留空替換詞由 AI 自行改寫' },
+  { forbidden: '啃硬骨頭', replacement: '',         note: '中國媒體慣用比喻（攻克難題），留空替換詞由 AI 自行改寫' },
 ];
+
+// 舊版預設清單凍結快照（v2.4.9 以前的 25 條）。既有使用者若 storage 曾把當時的預設
+// 清單「物化」寫死（2026-07-09 之前的 autosave 會寫），新增預設條目後逐條比對會被誤判
+// 成「使用者客製」→ 永遠吃不到新條目。getSettings 與 options 的「未客製」判斷把等於
+// 任一快照的 saved 視為未客製（比照 §7.5 prompt 的 normalize 升級路徑）。
+// 日後再改預設清單時：把「當時的完整清單」再 push 一份進來，不要改既有快照。
+export const LEGACY_DEFAULT_FORBIDDEN_TERMS_SNAPSHOTS = [
+  [
+    ['視頻', '影片'], ['音頻', '音訊'], ['軟件', '軟體'], ['程序', '程式'], ['進程', '行程'],
+    ['線程', '執行緒'], ['數據', '資料'], ['數據庫', '資料庫'], ['網絡', '網路'], ['信息', '資訊'],
+    ['質量', '品質'], ['用戶', '使用者'], ['默認', '預設'], ['創建', '建立'], ['實現', '實作'],
+    ['運行', '執行'], ['發布', '發表'], ['屏幕', '螢幕'], ['劍指', '針對'], ['痛點', '要害'],
+    ['硬傷', '罩門'], ['文檔', '文件'], ['操作系統', '作業系統'], ['沒有之一', ''], ['橫空出世', ''],
+  ],
+];
+
+/** saved 禁用詞陣列是否逐條等於某一版舊預設快照（forbidden + replacement 皆同、順序同）。 */
+export function isLegacyDefaultForbiddenTerms(terms) {
+  if (!Array.isArray(terms) || terms.length === 0) return false;
+  return LEGACY_DEFAULT_FORBIDDEN_TERMS_SNAPSHOTS.some((snap) =>
+    snap.length === terms.length
+    && snap.every(([f, r], i) => (terms[i]?.forbidden || '') === f && (terms[i]?.replacement || '') === r));
+}
 
 // ── i18n:翻譯目標語言(P1 / v1.8.59)─────────────────────────────────
 // targetLanguage setting 控制翻譯成什麼語言:
@@ -1071,7 +1095,8 @@ export async function getSettings() {
     // 就完全以 saved 為準；未曾寫入時才套用預設清單。
     // P1: 未曾寫入時依 target 分歧——zh-TW 走 DEFAULT 清單(維持原行為),
     // zh-CN / en 走空陣列(那些 target 不需要禁用中國用語清單)。
-    forbiddenTerms: Array.isArray(saved.forbiddenTerms)
+    // 2026-09-06: saved 等於舊版預設快照(物化殘留)→ 視為未寫入，讓新增的預設條目生效。
+    forbiddenTerms: (Array.isArray(saved.forbiddenTerms) && !isLegacyDefaultForbiddenTerms(saved.forbiddenTerms))
       ? saved.forbiddenTerms
       : (target === 'zh-TW' ? DEFAULT_SETTINGS.forbiddenTerms : []),
     // v1.5.7: customProvider 深層 merge（保留新欄位預設值）

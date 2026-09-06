@@ -523,7 +523,7 @@ if (window.__shinkansen_loaded) {
   // v1.8.0: streaming 路徑下 batch 0 size 不影響首字延遲（實測 10/20/30u 的 first_slot_close
   // 都在 1.0-1.2 秒，差距 < 100ms)。擴大到 25 unit / 3700 chars 涵蓋更多文章開頭——
   // 使用者首字看到的譯文範圍從「H1 + 副標 + 開頭幾段」變成「H1 + 副標 + 整段內文前 25 段」。
-  // 完整實測見 reports/streaming-probe-2026-04-28.md §2-§5。
+  // 完整實測見 docs/excluded/planning/reports/streaming-probe-2026-04-28.md §2-§5。
   SK.BATCH0_UNITS = 25;
   SK.BATCH0_CHARS = 3700;
 

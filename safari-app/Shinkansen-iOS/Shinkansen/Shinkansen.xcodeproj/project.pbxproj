@@ -23,7 +23,6 @@
 		9E22C7682FD2A78F00CDA923 /* content.css in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7502FD2A78F00CDA923 /* content.css */; };
 		9E22C7692FD2A78F00CDA923 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7512FD2A78F00CDA923 /* LICENSE */; };
 		9E22C76A2FD2A78F00CDA923 /* content-youtube-main.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7522FD2A78F00CDA923 /* content-youtube-main.js */; };
-		9E22C76B2FD2A78F00CDA923 /* privacy-policy.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7532FD2A78F00CDA923 /* privacy-policy.html */; };
 		9E22C76C2FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7542FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md */; };
 		9E22C76D2FD2A78F00CDA923 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7552FD2A78F00CDA923 /* background.js */; };
 		9E22C76E2FD2A78F00CDA923 /* content-drive.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7562FD2A78F00CDA923 /* content-drive.js */; };
@@ -39,7 +38,6 @@
 		9E22C7782FD2A78F00CDA923 /* content-ns.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7602FD2A78F00CDA923 /* content-ns.js */; };
 		9E22C7792FD2A78F00CDA923 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7612FD2A78F00CDA923 /* _locales */; };
 		9E22C77A2FD2A78F00CDA923 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7622FD2A78F00CDA923 /* content.js */; };
-		9E22C77B2FD2A78F00CDA923 /* privacy-policy.en.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */; };
 		9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7642FD2A78F00CDA923 /* content-serialize.js */; };
 		9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7652FD2A78F00CDA923 /* content-inject.js */; };
 		9EFFFF00AA01000000000011 /* content-shortcuts.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA01000000000012 /* content-shortcuts.js */; };
@@ -91,7 +89,6 @@
 		9E22C7502FD2A78F00CDA923 /* content.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = content.css; path = Resources/content.css; sourceTree = "<group>"; };
 		9E22C7512FD2A78F00CDA923 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = Resources/LICENSE; sourceTree = "<group>"; };
 		9E22C7522FD2A78F00CDA923 /* content-youtube-main.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-youtube-main.js"; path = "Resources/content-youtube-main.js"; sourceTree = "<group>"; };
-		9E22C7532FD2A78F00CDA923 /* privacy-policy.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.html"; path = "Resources/privacy-policy.html"; sourceTree = "<group>"; };
 		9E22C7542FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "THIRD-PARTY-NOTICES.md"; path = "Resources/THIRD-PARTY-NOTICES.md"; sourceTree = "<group>"; };
 		9E22C7552FD2A78F00CDA923 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = Resources/background.js; sourceTree = "<group>"; };
 		9E22C7562FD2A78F00CDA923 /* content-drive.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-drive.js"; path = "Resources/content-drive.js"; sourceTree = "<group>"; };
@@ -107,7 +104,6 @@
 		9E22C7602FD2A78F00CDA923 /* content-ns.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-ns.js"; path = "Resources/content-ns.js"; sourceTree = "<group>"; };
 		9E22C7612FD2A78F00CDA923 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = Resources/_locales; sourceTree = "<group>"; };
 		9E22C7622FD2A78F00CDA923 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
-		9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.en.html"; path = "Resources/privacy-policy.en.html"; sourceTree = "<group>"; };
 		9E22C7642FD2A78F00CDA923 /* content-serialize.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-serialize.js"; path = "Resources/content-serialize.js"; sourceTree = "<group>"; };
 		9E22C7652FD2A78F00CDA923 /* content-inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-inject.js"; path = "Resources/content-inject.js"; sourceTree = "<group>"; };
 		9EF9CDA52FD791E700AEDE11 /* Shinkansen.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Shinkansen.entitlements; sourceTree = "<group>"; };
@@ -198,7 +194,6 @@
 				9E22C7502FD2A78F00CDA923 /* content.css */,
 				9E22C7512FD2A78F00CDA923 /* LICENSE */,
 				9E22C7522FD2A78F00CDA923 /* content-youtube-main.js */,
-				9E22C7532FD2A78F00CDA923 /* privacy-policy.html */,
 				9E22C7542FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md */,
 				9E22C7552FD2A78F00CDA923 /* background.js */,
 				9E22C7562FD2A78F00CDA923 /* content-drive.js */,
@@ -217,7 +212,6 @@
 				9EFFFF112FD2A78F00CDA923 /* content-touch.js */,
 				9EFFFF00AA01000000000012 /* content-shortcuts.js */,
 				9EFFFF00AA02000000000012 /* content-floating-icon.js */,
-				9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */,
 				9E22C7642FD2A78F00CDA923 /* content-serialize.js */,
 				9E22C7652FD2A78F00CDA923 /* content-inject.js */,
 			);
@@ -334,8 +328,6 @@
 				9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */,
 				9E22C7742FD2A78F00CDA923 /* icons in Resources */,
 				9E22C76A2FD2A78F00CDA923 /* content-youtube-main.js in Resources */,
-				9E22C76B2FD2A78F00CDA923 /* privacy-policy.html in Resources */,
-				9E22C77B2FD2A78F00CDA923 /* privacy-policy.en.html in Resources */,
 				9E22C7682FD2A78F00CDA923 /* content.css in Resources */,
 				9E22C76C2FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md in Resources */,
 				9E22C7712FD2A78F00CDA923 /* content-toast.js in Resources */,

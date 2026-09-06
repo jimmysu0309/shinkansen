@@ -3,7 +3,7 @@
 // 設計理念:
 // - 自製 dict + 綁 settings.uiLanguage 動態切換(Chrome chrome.i18n 綁 browser
 //   locale 不能跟 target 連動,必須自製)
-// - 8 語 dict 內嵌:zh-TW source of truth;zh-CN / en 由 tools/translate-i18n-dict.js
+// - 8 語 dict 內嵌:zh-TW source of truth;zh-CN / en 由 tools/build/translate-i18n-dict.js
 //   產出後寫回;ja / ko / es / fr / de 由 Claude 直接翻譯產出(P3,v1.8.62)
 // - UI 語言與翻譯目標(targetLanguage)解綁,使用者可在 Options 強制鎖到任一語
 // - IIFE 注入 window.__SK.i18n,popup / options 透過 <script src="lib/i18n.js"></script>
@@ -154,7 +154,7 @@
     'options.tab.usage': '用量紀錄',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新紀錄</a> · <span id="options-version" class="options-version"></span>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新紀錄</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.html" target="_blank" rel="noopener">隱私政策</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': '儲存設定',
     'options.action.show': '顯示',
@@ -1179,7 +1179,7 @@
     'options.tab.usage': '用量记录',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">项目主页</a>，功能介绍与使用说明请参考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新记录</a> · <span id="options-version" class="options-version"></span>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">项目主页</a>，功能介绍与使用说明请参考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新记录</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.html" target="_blank" rel="noopener">隱私政策</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': '保存设置',
     'options.action.show': '显示',
@@ -2200,7 +2200,7 @@
     'options.tab.usage': 'Usage history',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=en" target="_blank" rel="noopener">Project home</a>. For features and usage, see the <a href="https://github.com/jimmysu0309/shinkansen/blob/main/README.en.md" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Release notes</a> · <span id="options-version" class="options-version"></span>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=en" target="_blank" rel="noopener">Project home</a>. For features and usage, see the <a href="https://github.com/jimmysu0309/shinkansen/blob/main/README.en.md" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Release notes</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html" target="_blank" rel="noopener">Privacy policy</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Save settings',
     'options.action.show': 'Show',
@@ -3221,7 +3221,7 @@
     'options.tab.usage': '使用量履歴',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ja" target="_blank" rel="noopener">プロジェクトサイト</a>、機能紹介と使い方は <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">リリースノート</a> · <span id="options-version" class="options-version"></span> をご覧ください',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ja" target="_blank" rel="noopener">プロジェクトサイト</a>、機能紹介と使い方は <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">リリースノート</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html" target="_blank" rel="noopener">プライバシーポリシー</a> · <span id="options-version" class="options-version"></span> をご覧ください',
 
     'options.action.save': '設定を保存',
     'options.action.show': '表示',
@@ -4242,7 +4242,7 @@
     'options.tab.usage': '사용 기록',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ko" target="_blank" rel="noopener">프로젝트 홈페이지</a>, 기능 소개와 사용 방법은 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">릴리스 노트</a> · <span id="options-version" class="options-version"></span>를 참조하세요',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ko" target="_blank" rel="noopener">프로젝트 홈페이지</a>, 기능 소개와 사용 방법은 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">릴리스 노트</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html" target="_blank" rel="noopener">개인정보 처리방침</a> · <span id="options-version" class="options-version"></span>를 참조하세요',
 
     'options.action.save': '설정 저장',
     'options.action.show': '표시',
@@ -5262,7 +5262,7 @@
     'options.tab.usage': 'Historial de uso',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=es" target="_blank" rel="noopener">Página del proyecto</a>; para descripción de funciones e instrucciones de uso consulta el <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notas de la versión</a> · <span id="options-version" class="options-version"></span>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=es" target="_blank" rel="noopener">Página del proyecto</a>; para descripción de funciones e instrucciones de uso consulta el <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notas de la versión</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html" target="_blank" rel="noopener">Política de privacidad</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Guardar ajustes',
     'options.action.show': 'Mostrar',
@@ -6282,7 +6282,7 @@
     'options.tab.usage': 'Historique d\'utilisation',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=fr" target="_blank" rel="noopener">Page du projet</a> ; pour la présentation des fonctionnalités et le mode d\'emploi, consultez le <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notes de version</a> · <span id="options-version" class="options-version"></span>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=fr" target="_blank" rel="noopener">Page du projet</a> ; pour la présentation des fonctionnalités et le mode d\'emploi, consultez le <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notes de version</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html" target="_blank" rel="noopener">Politique de confidentialité</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Enregistrer les paramètres',
     'options.action.show': 'Afficher',
@@ -7302,7 +7302,7 @@
     'options.tab.usage': 'Nutzungsverlauf',
     'options.tab.log': 'Debug',
 
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=de" target="_blank" rel="noopener">Projektseite</a>; Funktionsbeschreibung und Anleitung siehe <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Versionshinweise</a> · <span id="options-version" class="options-version"></span>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=de" target="_blank" rel="noopener">Projektseite</a>; Funktionsbeschreibung und Anleitung siehe <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Versionshinweise</a> · <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html" target="_blank" rel="noopener">Datenschutzerklärung</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Einstellungen speichern',
     'options.action.show': 'Anzeigen',

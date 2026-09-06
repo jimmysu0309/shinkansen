@@ -5,10 +5,10 @@
 #   產 Developer ID 簽名 + Apple 公證 + stapled 的 .pkg,給 GitHub Releases
 #   公開下載手動安裝用(雙擊 Gatekeeper 認帳)。
 #
-#   產出: safari-app/shinkansen-macos-v<version>.pkg
-#   發布: gh release upload v<version> safari-app/shinkansen-macos-v<version>.pkg
+#   產出: build/shinkansen-macos-v<version>.pkg
+#   發布: gh release upload v<version> build/shinkansen-macos-v<version>.pkg
 #
-# 一般情況下不必手動跑 — `./tools/release.sh` 內已一律呼叫本 script,自動 build +
+# 一般情況下不必手動跑 — `./tools/release/release.sh` 內已一律呼叫本 script,自動 build +
 # notarize + 上傳到 GitHub Release。本 script 保留獨立可呼叫,給「release.sh 中段
 # 出錯後手動補 Developer ID .pkg」這類情境用。
 #
@@ -157,10 +157,10 @@ if [ ! -d "$DEVID_APP" ]; then
 fi
 
 # 4. productbuild 把 .app 包進 installer .pkg + Developer ID Installer cert 簽
-DEVID_PKG="safari-app/shinkansen-macos-v${VERSION}.pkg"
+DEVID_PKG="build/shinkansen-macos-v${VERSION}.pkg"
 # 刪除舊版 Developer ID .pkg(每次 bump 換版本號會留下舊檔累積)。
 # 只清非 -mas 的版本檔,避免誤刪 MAS 軌的 -mas.pkg。
-find safari-app -maxdepth 1 -name 'shinkansen-macos-v*.pkg' ! -name '*-mas.pkg' -delete
+mkdir -p build && find build -maxdepth 1 -name 'shinkansen-macos-v*.pkg' ! -name '*-mas.pkg' -delete
 echo "==> productbuild Developer ID .pkg(install 到 /Applications,Installer cert 簽)..."
 productbuild \
   --component "$DEVID_APP" /Applications \

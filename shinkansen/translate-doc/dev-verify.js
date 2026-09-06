@@ -73,7 +73,7 @@ function computeStructureDiagnostics(doc) {
   return { issueCount: issues.length, issues };
 }
 
-// ---- 決定性 CJK 偽翻譯（零 API，tools/pdf-corpus-verify.mjs L3 全量往返用）----
+// ---- 決定性 CJK 偽翻譯（零 API，tools/harness/pdf-corpus-verify.mjs L3 全量往返用）----
 // 目的：讓 pdf-renderer 的 CJK 主路徑（Noto Sans TC 子集化 / 中文斷行禁則 / fit-to-box
 // 縮字 / 中英混排）在不打 API 的情況下全部跑到。規則：
 //   - 拉丁詞 → 由詞內容 hash 固定選字的繁中字串，長度 ≈ 0.45 倍字元數（模擬中譯縮短）
@@ -276,7 +276,7 @@ export function createVerify(deps) {
       },
       // 加強版核對:自包跑「原 PDF ground truth + 注入英文當譯文 + 攔截
       // generated PDF + 譯文 PDF 重 parse + 三項比對」一條龍。
-      // 給 tools/pdf-structure-verify.js 用,production 不會 trigger。
+      // 給 tools/harness/pdf-structure-verify.js 用,production 不會 trigger。
       // 三項驗證:
       //   1. bold preservation:原 PDF 內 bold textRun 多數佔比 ≥ 0.5 的 block
       //      在譯文 PDF 對應 bbox 區域的 textRun 是否仍 bold

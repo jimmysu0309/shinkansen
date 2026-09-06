@@ -37,11 +37,11 @@ jobs:
                  "設定方式：gh secret set INSTAPAPER_CONSUMER_KEY --repo <repo>"
             exit 1
           fi
-          # 檔案格式的單一資料源是 tools/instapaper-keys.template.js（只含 placeholder、
+          # 檔案格式的單一資料源是 tools/build/instapaper-keys.template.js（只含 placeholder、
           # 無金鑰，所以可以進 repo）。這裡只做取代，不在 workflow 裡重寫一份檔案內容。
           sed -e "s/__INSTAPAPER_CONSUMER_KEY__/${CK}/" \
               -e "s/__INSTAPAPER_CONSUMER_SECRET__/${CS}/" \
-              tools/instapaper-keys.template.js > shinkansen/lib/instapaper-keys.js
+              tools/build/instapaper-keys.template.js > shinkansen/lib/instapaper-keys.js
 
           # 自驗 0：placeholder 必須全部被取代掉
           ! grep -q '__INSTAPAPER_CONSUMER_' shinkansen/lib/instapaper-keys.js
@@ -65,23 +65,23 @@ jobs:
           # Firefox 128+ beta:Chrome 與 Firefox 對 background 鍵的接受度不同——
           # Chrome MV3 拒絕 `background.scripts`（warning「requires manifest version 2 or lower」），
           # Firefox 不支援 `background.service_worker`。所以兩邊不能共用同一份 manifest。
-          # 解法:repo 內 `shinkansen/manifest.json` 永遠是 Chrome 純淨版;此處用 tools/firefox-build.sh
-          # 程式化改寫產生 Firefox 版 ZIP。AMO source.zip 也包這支 script + BUILD.md,
+          # 解法:repo 內 `shinkansen/manifest.json` 永遠是 Chrome 純淨版;此處用 tools/release/firefox-build.sh
+          # 程式化改寫產生 Firefox 版 ZIP。AMO source.zip 也包這支 script + BUILD-FIREFOX.md,
           # reviewer 重建會用同一條路徑,確保產物一致。
-          ./tools/firefox-build.sh
+          ./tools/release/firefox-build.sh
 
       - name: Build Firefox source ZIP (for AMO submission)
         run: |
           # AMO 對「需要 build step 的 add-on」要求附 source ZIP + 重建說明。
           # 我們的 build step 是 jq 改 5 行 JSON,屬於 trivial transform,但保險起見附上,
           # 讓 reviewer 跑 firefox-build.sh 就能驗證重建結果與提交的 ZIP 一致。
-          # 內容只含 build 必要檔:shinkansen/ + firefox-build.sh + BUILD.md + LICENSE。
+          # 內容只含 build 必要檔:shinkansen/ + firefox-build.sh + BUILD-FIREFOX.md + LICENSE。
           # 不含 test/ / .github/ / node_modules / docs/(這些是開發 / CI / landing,跟 build 無關)。
           # source ZIP 維持 firefox-build.sh 在根(reviewer 跑 ./firefox-build.sh)
           mkdir -p source-pkg
           cp -r shinkansen source-pkg/
-          cp tools/firefox-build.sh source-pkg/
-          cp BUILD.md source-pkg/
+          cp tools/release/firefox-build.sh source-pkg/
+          cp BUILD-FIREFOX.md source-pkg/
           cp LICENSE source-pkg/ 2>/dev/null || true
           cd source-pkg
           zip -r ../shinkansen-firefox-${{ steps.version.outputs.VERSION }}-source.zip .

@@ -6,7 +6,7 @@
 #   patch manifest、bump pbxproj 版本、跑 xcodebuild archive,export 出
 #   App Store 上傳用的 .ipa。
 #
-#   產出: safari-app/shinkansen-ios-v<version>.ipa
+#   產出: build/shinkansen-ios-v<version>.ipa
 #   上傳: xcrun altool --upload-app -f <ipa> -t ios \
 #           --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER_ID
 #
@@ -149,8 +149,8 @@ xcodebuild -exportArchive \
   -exportPath "$BUILD_DIR/export" \
   -exportOptionsPlist "$BUILD_DIR/export-options.plist"
 
-IPA="safari-app/shinkansen-ios-v${VERSION}.ipa"
-rm -f safari-app/shinkansen-ios-v*.ipa
+IPA="build/shinkansen-ios-v${VERSION}.ipa"
+rm -f build/shinkansen-ios-v*.ipa
 mv "$BUILD_DIR/export/Shinkansen.ipa" "$IPA"
 
 # 6. Source drift forcing function

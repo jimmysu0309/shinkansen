@@ -69,7 +69,7 @@ Shinkansen 整合下列第三方軟體與字型，本檔列出來源、授權與
 - **檔案**:`shinkansen/lib/vendor/opencc/opencc-core.js`(Trie / ConverterFactory
   轉換核心，取自 opencc-js 1.4.1 dist/esm-lib/core.js)、
   `shinkansen/lib/vendor/opencc/dict/*.txt`(cn↔twp 兩方向最小字典集，原始
-  「來源 替換|…」文字格式，由 `tools/vendor-opencc.mjs` 自 opencc-js 套件抽出，
+  「來源 替換|…」文字格式，由 `tools/build/vendor-opencc.mjs` 自 opencc-js 套件抽出，
   background 首次轉換時 lazy fetch)
 - **來源**:opencc-js(github.com/nk2028/opencc-js)；字典資料上游為 OpenCC
   (github.com/BYVoid/OpenCC)

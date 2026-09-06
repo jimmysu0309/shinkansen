@@ -44,7 +44,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Bilingual subtitles**: when the display mode is set to "Bilingual", subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. Applies to both YouTube and Google Drive videos. Details in "Bilingual subtitles" below.
 - **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
 - **Custom glossary**: pin specific terms to your preferred translations so proper nouns are always rendered consistently. Two layers (global + domain-specific) where domain rules override global. Details in "Custom glossary" below.
-- **Blocked-word list**: an editable list of words you don't want in the translation. Works for any target language — write your own substitution pairs (defaults to empty for most targets; ships with 25 entries for Traditional Chinese targets). Injected as a high-prominence block at the end of the system prompt. Details in "Blocked-word list" below.
+- **Blocked-word list**: an editable list of words you don't want in the translation. Works for any target language — write your own substitution pairs (defaults to empty for most targets; ships with 26 entries for Traditional Chinese targets). Injected as a high-prominence block at the end of the system prompt. Details in "Blocked-word list" below.
 - **Translate opening only**: preview the first few paragraphs before deciding whether to translate the whole article. Saves tokens. Details in "Translate opening only" below.
 - **Full-text glossary consistency** (off by default): especially useful for long articles with many proper nouns. Automatically ensures the same name or term is translated consistently throughout. Details in "Glossary consistency" below.
 - **Translation cache + live cost report**: two-layer caching (local cache + Gemini implicit cache). After translation, the toast shows live cache hit rate and actual cost saved. Details in "Translation cache and cost calculation" below.
@@ -330,7 +330,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.9 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.10 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

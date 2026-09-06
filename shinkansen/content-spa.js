@@ -668,7 +668,7 @@
         // reuse 注入的元素不在其中 → 按還原後殘留殭屍譯文段
         SK.snapshotOnce?.(unit.el);
         // AMO source review: savedHTML 來自 STATE.translatedHTMLByText(本 extension 自存
-        // 的 inject 後 innerHTML),無 user input 流入。see BUILD.md §innerHTML
+        // 的 inject 後 innerHTML),無 user input 流入。see BUILD-FIREFOX.md §innerHTML
         unit.el.innerHTML = savedHTML;
         unit.el.setAttribute('data-shinkansen-translated', '1');
         STATE.translatedHTML.set(unit.el, savedHTML);
@@ -771,7 +771,7 @@
         if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
       }
       // AMO source review: savedHTML 來自 STATE.translatedHTML(本 extension 自己用
-      // el.innerHTML 讀出來再存的譯後 DOM 字串),沒有 user input 流入。see BUILD.md §innerHTML
+      // el.innerHTML 讀出來再存的譯後 DOM 字串),沒有 user input 流入。see BUILD-FIREFOX.md §innerHTML
       el.innerHTML = savedHTML;
       restored++;
     }
