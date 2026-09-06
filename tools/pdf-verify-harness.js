@@ -16,6 +16,7 @@
 //   npm run pdf-verify                     # default reference set(Plano + Quotation + Trimble)
 //   npm run pdf-verify -- --only Plano     # 只跑檔名含 Plano 的
 //   npm run pdf-verify -- --all            # 跑 docs/excluded/test pdf/ 全部
+//   npm run pdf-verify -- --pick           # 跑 corpus/PICK.json 代表檔（pdf-corpus-index.mjs --pick 產出），輸出到 <日期>/real/
 //   SHINKANSEN_HEADED=1 npm run pdf-verify # 顯示 chromium 視窗 debug
 //
 // 輸出:
@@ -64,6 +65,7 @@ const HEADED = process.env.SHINKANSEN_HEADED === '1';
 const onlyArgIdx = process.argv.indexOf('--only');
 const ONLY_KEYWORD = onlyArgIdx >= 0 ? process.argv[onlyArgIdx + 1] : null;
 const RUN_ALL = process.argv.includes('--all');
+const RUN_PICK = process.argv.includes('--pick');
 
 const KEY_PATH = path.join(os.homedir(), '.shinkansen-test-key');
 if (!fs.existsSync(KEY_PATH)) {
@@ -103,6 +105,16 @@ function findPdfByKeyword(allFiles, keyword) {
 }
 
 function selectReferenceFiles() {
+  if (RUN_PICK) {
+    // 代表檔名單（貪婪 set cover，pdf-corpus-index.mjs --pick）：bucket 對應目錄解析成完整路徑
+    const pickPath = path.join(PDF_DIR, 'corpus', 'PICK.json');
+    if (!fs.existsSync(pickPath)) { console.error('缺 corpus/PICK.json，先跑 npm run pdf-corpus:pick'); process.exit(1); }
+    const picks = JSON.parse(fs.readFileSync(pickPath, 'utf8'));
+    return picks.map((p) => {
+      const dir = p.bucket === 'business' ? PDF_DIR : p.bucket === 'failed pdf' ? path.join(PDF_DIR, 'failed pdf') : path.join(PDF_DIR, 'corpus', p.bucket);
+      return { keyword: p.bucket, filename: p.name, fullPath: path.join(dir, p.name) };
+    }).filter((p) => fs.existsSync(p.fullPath));
+  }
   const allFiles = fs.readdirSync(PDF_DIR)
     .filter((f) => f.toLowerCase().endsWith('.pdf'));
 
@@ -125,8 +137,8 @@ function selectReferenceFiles() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function processOnePdf(context, extensionId, pdfFilename, outDir) {
-  const pdfFullPath = path.join(PDF_DIR, pdfFilename);
+async function processOnePdf(context, extensionId, pdfFilename, outDir, pdfFullPathOverride) {
+  const pdfFullPath = pdfFullPathOverride || path.join(PDF_DIR, pdfFilename);
   const result = {
     filename: pdfFilename,
     outDir,
@@ -352,13 +364,13 @@ async function main() {
   const runStartedAt = Date.now();
   const results = [];
   for (let i = 0; i < referenceFiles.length; i++) {
-    const { filename } = referenceFiles[i];
+    const { filename, fullPath, keyword } = referenceFiles[i];
     const sanitized = sanitizeName(filename);
-    const outDir = path.join(OUT_ROOT, sanitized);
+    const outDir = RUN_PICK ? path.join(OUT_ROOT, 'real', `${keyword.replace(/\s+/g, '-')}-${sanitized}`) : path.join(OUT_ROOT, sanitized);
     fs.mkdirSync(outDir, { recursive: true });
 
     console.log(`[verify ${i + 1}/${referenceFiles.length}] ${filename}`);
-    const result = await processOnePdf(context, extensionId, filename, outDir);
+    const result = await processOnePdf(context, extensionId, filename, outDir, fullPath);
     results.push(result);
     if (result.status === 'success') {
       console.log(`  ✅ ${result.canvasCount} 頁,${result.pdfDownloaded ? '譯文 PDF 已下載' : '⚠️ PDF 下載失敗'}(${(result.elapsed / 1000).toFixed(1)}s)`);

@@ -161,6 +161,9 @@ async function main() {
   const errorState = await page.evaluate(() => {
     const errEl = document.getElementById('upload-error');
     if (!errEl || errEl.hidden) return null;
+    // stage-result 已顯示時 upload-error 只是解析警告（旋轉文字 / 字型映射），不是失敗
+    const stageResult = document.getElementById('stage-result');
+    if (stageResult && !stageResult.hidden) { console.log('[Shinkansen harness] 解析警告：' + errEl.textContent.trim()); return null; }
     return errEl.textContent.trim();
   });
   if (errorState) {

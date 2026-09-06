@@ -73,6 +73,102 @@ function computeStructureDiagnostics(doc) {
   return { issueCount: issues.length, issues };
 }
 
+// ---- 決定性 CJK 偽翻譯（零 API，tools/pdf-corpus-verify.mjs L3 全量往返用）----
+// 目的：讓 pdf-renderer 的 CJK 主路徑（Noto Sans TC 子集化 / 中文斷行禁則 / fit-to-box
+// 縮字 / 中英混排）在不打 API 的情況下全部跑到。規則：
+//   - 拉丁詞 → 由詞內容 hash 固定選字的繁中字串，長度 ≈ 0.45 倍字元數（模擬中譯縮短）
+//   - 每第 5 個拉丁詞保留原樣（中英混排斷行探針）；數字 / URL / email / ⟦N⟧ 標記原樣
+//   - ASCII 標點換全形；原本就是 CJK 的字元原樣
+//   - 前綴「偽」讓文字層辨識；探針 block（依 block 序號）額外塞行首禁則標點與
+//     罕見字 / 假名 / 簡體字 / 全形符號 / emoji（字型子集缺字 → drawText 跳過的 R9 探針）
+// 同一份輸入永遠產同一份輸出，產出可 diff。
+const PSEUDO_POOL = '的一是不了人我在有他這中大來上國個到說們為子和你地出道也時年得就那要下以生會自著去之過家學對可她裡後小麼心多天而能好都然沒日於起還發成事只作當想看文無開手十用主行方又如前所本見經頭面公同三已老從動兩長知民樣現分將外但身些與高意進把法此實回二理美點月明其種聲全工己話兒者向情性入定四東量真氣機重應水果體';
+const PSEUDO_PUNCT = { '.': '。', ',': '，', ':': '：', ';': '；', '!': '！', '?': '？', '(': '（', ')': '）', '[': '［', ']': '］' };
+// 探針字元：① 全形符號 / が 假名 / 简 簡體 / — 破折號 / 𠮷 BMP 外 / 😀 emoji（一定不在 Noto Sans TC）
+const PSEUDO_PROBE_RARE = '①が简—𠮷';
+const PSEUDO_PROBE_EMOJI = '😀';
+function pseudoHash(str, salt) {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+function pseudoWord(word, salt, ratio = 0.45) {
+  // 0.45：英譯中的字元數比約 0.35-0.5，CJK 每字 1em vs 拉丁 0.5em → 版面寬度比 ≈ 0.7-1.0，
+  // 貼近真實譯文的 fit-to-box 行為（0.6 會讓寬度比 1.2，逼 renderer 一律往右擴框，失真）
+  const len = Math.max(1, Math.round(word.length * ratio));
+  let h = pseudoHash(word.toLowerCase(), salt);
+  let out = '';
+  for (let i = 0; i < len; i++) {
+    out += PSEUDO_POOL[h % PSEUDO_POOL.length];
+    h = (Math.imul(h, 1103515245) + 12345) >>> 0;
+  }
+  return out;
+}
+export function pseudoCjkTranslate(text, blockIndex = 0, ratio = 0.45) {
+  // 連續兩個以上的句點（目錄點線 / 省略號）原樣保留：換成「。」會連成三十個字寬的不可斷行塊撐出框外
+  const re = /(⟦[^⟧]*⟧)|(https?:\/\/\S+|[\w.+-]+@[\w-]+\.[\w.-]+|\.{2,})|([A-Za-zÀ-ɏ][A-Za-zÀ-ɏ'’\-]*)|(\d[\d.,:%\/\-]*)|(\s+)|(.)/gsu;
+  const probeForbidden = blockIndex % 7 === 3;
+  const tokens = [];
+  let latinIdx = 0;
+  let quoteOpen = true;
+  for (const m of text.matchAll(re)) {
+    if (m[1]) tokens.push({ k: 'keep', v: m[1] });
+    else if (m[2]) tokens.push({ k: 'keep', v: m[2] });
+    else if (m[3]) {
+      latinIdx++;
+      if (latinIdx % 5 === 0) tokens.push({ k: 'keep', v: m[3] });
+      else tokens.push({ k: 'cjk', v: pseudoWord(m[3], blockIndex, ratio) + (probeForbidden ? '，' : '') });
+    } else if (m[4]) tokens.push({ k: 'keep', v: m[4] });
+    else if (m[5]) tokens.push({ k: 'ws' });
+    else {
+      const ch = m[6];
+      // 點線「. . . .」（句點間夾空白）：第二個起的句點原樣保留（keep 之間留空白，可斷行）
+      const prevNonWs = [...tokens].reverse().find((t) => t.k !== 'ws');
+      if (ch === '.' && prevNonWs && (prevNonWs.v === '。' || prevNonWs.v === '.')) tokens.push({ k: 'keep', v: '.' });
+      else if (ch === '"') { tokens.push({ k: 'cjk', v: quoteOpen ? '「' : '」' }); quoteOpen = !quoteOpen; }
+      else if (PSEUDO_PUNCT[ch]) tokens.push({ k: 'cjk', v: PSEUDO_PUNCT[ch] });
+      else tokens.push({ k: ch.charCodeAt(0) < 128 ? 'keep' : 'cjk', v: ch });
+    }
+  }
+  let out = '偽';
+  let prevKeep = false;
+  let pendingWs = false;
+  for (const tk of tokens) {
+    if (tk.k === 'ws') { pendingWs = true; continue; }
+    // 空白只在「兩側都是保留的拉丁 / 數字 token」時留一個 ASCII space（中文不留空白）
+    if (pendingWs && prevKeep && tk.k === 'keep') out += ' ';
+    pendingWs = false;
+    out += tk.v;
+    prevKeep = tk.k === 'keep';
+  }
+  if (blockIndex % 11 === 5) out += PSEUDO_PROBE_RARE;
+  if (blockIndex % 13 === 7) out += PSEUDO_PROBE_EMOJI;
+  return out;
+}
+function injectTranslations(doc, mode, ratio = 0.45) {
+  let count = 0;
+  let idx = 0;
+  for (const page of doc.pages) {
+    for (const block of page.blocks) {
+      if (TRANSLATABLE_TYPES.has(block.type) && block.plainText && block.plainText.trim()) {
+        block.translation = mode === 'pseudo-cjk' ? pseudoCjkTranslate(block.plainText, idx, ratio) : block.plainText;
+        block.translationStatus = 'done';
+        count++;
+        idx++;
+      }
+    }
+  }
+  return count;
+}
+function bytesToBase64(u8) {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 export function createVerify(deps) {
   return {
       hasDoc: () => !!deps.getCurrentDoc(),
@@ -89,6 +185,16 @@ export function createVerify(deps) {
           }
         }
         return { translatableCount: count };
+      },
+      injectPseudoCjkTranslation: () => {
+        if (!deps.getCurrentDoc()) return null;
+        return { translatableCount: injectTranslations(deps.getCurrentDoc(), 'pseudo-cjk') };
+      },
+      // regression 用（pdf-remote-font.spec）：生成一次，只回 meta（字型來源 / 是否退回 / 大小）
+      buildTranslatedPdfMeta: async () => {
+        if (!deps.getCurrentDoc() || !deps.getCurrentOriginalArrayBuffer()) return null;
+        const r = await buildBilingualPdf(deps.getCurrentOriginalArrayBuffer(), deps.getCurrentDoc(), {});
+        return { fontSource: r.fontSource, fontFallback: r.fontFallback, bytes: r.byteLength };
       },
       // regression 用:直接回傳譯文 PDF bytes(Array)。spec 端拿去用 PDF.js
       // render 驗 pixel(例:mask 不可蓋掉 block 間的圖片 / 向量圖形)
@@ -182,8 +288,12 @@ export function createVerify(deps) {
       //   3. translation overflow:對每個 translatable block 模擬 pdf-renderer
       //      的 wrapTextToWidth + lineHeight,看英文當譯文時 requiredHeight
       //      是否 > blockH(中文塞不下英文 bbox 的延伸風險)
-      runEnhancedVerify: async () => {
+      // opts.mode：'plain'（預設，英文原文當譯文）/ 'pseudo-cjk'（決定性 CJK 偽翻譯，見
+      // pseudoCjkTranslate）；opts.keepBytes：回傳 generated PDF 的 base64（corpus harness
+      // 存 translated.pdf 給 L4 像素比對用）
+      runEnhancedVerify: async (opts = {}) => {
         if (!deps.getCurrentDoc() || !deps.getCurrentOriginalArrayBuffer()) return null;
+        const mode = opts.mode === 'pseudo-cjk' ? 'pseudo-cjk' : 'plain';
         const pdfjs = await import('../lib/vendor/pdfjs/pdf.min.mjs');
 
         // ---- helper:對 ArrayBuffer 跑 PDF.js,抽 ground truth ----
@@ -376,17 +486,9 @@ export function createVerify(deps) {
           }
         }
 
-        // ---- 3. 注入 fake translation = plainText ----
-        let translatableCount = 0;
-        for (const page of deps.getCurrentDoc().pages) {
-          for (const block of page.blocks) {
-            if (TRANSLATABLE_TYPES.has(block.type) && block.plainText && block.plainText.trim()) {
-              block.translation = block.plainText;
-              block.translationStatus = 'done';
-              translatableCount++;
-            }
-          }
-        }
+        // ---- 3. 注入 fake translation（plain = plainText；pseudo-cjk = 決定性偽翻譯）----
+        // opts.pseudoRatio：偽翻譯字元長度比（預設 0.45 ≈ 真實中譯；fixture 可拉高逼出塞不下的截斷路徑）
+        const translatableCount = injectTranslations(deps.getCurrentDoc(), mode, typeof opts.pseudoRatio === 'number' ? opts.pseudoRatio : 0.45);
 
         // ---- 4. 攔截 generated PDF bytes ----
         let capturedBytes = null;
@@ -404,9 +506,13 @@ export function createVerify(deps) {
         };
         let generatedByteLength = 0;
         let generateError = null;
+        let fontFallback = false;
+        let fontSource = null;
         try {
           const r = await downloadBilingualPdf(deps.getCurrentOriginalArrayBuffer(), deps.getCurrentDoc(), {});
           generatedByteLength = r.byteLength;
+          fontFallback = !!r.fontFallback;
+          fontSource = r.fontSource || null;
           for (let i = 0; i < 200 && !capturedBytes; i++) await new Promise((resolve) => setTimeout(resolve, 20));
         } catch (err) {
           generateError = (err && err.message) || String(err);
@@ -540,8 +646,92 @@ export function createVerify(deps) {
           }
         }
 
+        // ---- 8c. 譯文文字層多重集比對（只看 overlay 層 Noto 字型 items）----
+        // 每個已翻 block：expected = translation 去空白的字元多重集；found = 落在
+        // 「bbox 起點 ~ 允許擴展底」區域內 overlay items 的字元多重集。missing =
+        // expected − found（逐字元計數）。三種病型都會現形：(1) 字型缺字 → 該字元
+        // 以 .notdef 畫出，PDF.js 抽不到（tofu）；(2) fit-to-box 縮到底仍塞不下，
+        // drawText loop 截掉尾行（missing 集中在尾端 → truncated）；(3) 整塊沒畫。
+        // 用 PDF.js 而非 pdftotext：後者會把底層原文 XObject 與 overlay 同行交錯輸出
+        const textLayer = { checked: 0, missingBlocks: 0, missingChars: 0, truncatedBlocks: 0, ellipsisBlocks: 0, missingCharCounts: {}, samples: [], blocks: [] };
+        // 擴右上限：overlay item 右緣超過該頁內容右緣（所有 block 最右 x1）+ 20pt 的數量。容忍約兩個字寬：
+        // 行首禁則把標點搬回上一行末、原子 token 超寬時，單行可合法超出框寬一個字，那不是擴框到頁緣
+        let rightOverflowItems = 0;
+        const rightOverflowSamples = [];
+        for (const page of deps.getCurrentDoc().pages) {
+          const genPage = gen.pages[page.pageIndex];
+          if (!genPage || page.blocks.length === 0) continue;
+          const contentRight = Math.max(...page.blocks.filter((b) => Array.isArray(b.bbox)).map((b) => b.bbox[2]));
+          for (const it of genPage.items) {
+            if (isOverlayFont(it) && it.bbox[2] > contentRight + 20) {
+              rightOverflowItems++;
+              if (rightOverflowSamples.length < 5) rightOverflowSamples.push({ pageIndex: page.pageIndex, str: it.str.slice(0, 40), right: Math.round(it.bbox[2]), contentRight: Math.round(contentRight), left: Math.round(it.bbox[0]) });
+            }
+          }
+        }
+        textLayer.rightOverflowItems = rightOverflowItems;
+        textLayer.rightOverflowSamples = rightOverflowSamples;
+        for (const page of deps.getCurrentDoc().pages) {
+          const genPage = gen.pages[page.pageIndex];
+          if (!genPage) continue;
+          const pageW = page.viewport.width;
+          for (const block of page.blocks) {
+            if (!TRANSLATABLE_TYPES.has(block.type) || !block.translation || block.translationStatus !== 'done') continue;
+            // NFKC：康熙部首（U+2F00–）/ 相容表意字與統一表意字共用字形，subset 字型的 ToUnicode
+            // 只能指回其中一個碼位（PDF.js 抽原檔 CJK 時也常回部首碼位），比對前雙方都正規化
+            // NFKC 會把「…」拆成三個 ASCII 句點，先換成私用區佔位再正規化，截斷標示才認得出來
+            const normText = (str) => str.replace(/\s+/g, '').replace(/…/g, '\uE000').normalize('NFKC');
+            const expected = normText(block.translation);
+            if (!expected) continue;
+            textLayer.checked++;
+            const [bx0, by0] = block.bbox;
+            const allowedBottom = maxAllowedBottomY(block, page);
+            const need = new Map();
+            for (const ch of expected) need.set(ch, (need.get(ch) || 0) + 1);
+            let extraEllipsis = 0;
+            for (const it of genPage.items) {
+              if (!isOverlayFont(it)) continue;
+              const [ix0, iy0] = it.bbox;
+              if (ix0 < bx0 - 3 || ix0 > pageW || iy0 < by0 - 3 || iy0 > allowedBottom + 3) continue;
+              for (const ch of normText(it.str)) {
+                const n = need.get(ch);
+                if (n) need.set(ch, n - 1);
+                else if (ch === '\uE000') extraEllipsis++;
+              }
+            }
+            // renderer 塞不下時末行補「…」（其餘行隱形補齊）：expected 沒有的「…」= 截斷標示
+            if (extraEllipsis > 0) textLayer.ellipsisBlocks++;
+            let missing = 0;
+            let missingStr = '';
+            for (const [ch, n] of need) {
+              if (n > 0) { missing += n; missingStr += ch.repeat(n); textLayer.missingCharCounts[ch] = (textLayer.missingCharCounts[ch] || 0) + n; }
+            }
+            if (missing > 0) {
+              // 給 harness 端依字型 cmap 分流（tofu vs 真的沒畫到）後再判截斷用
+              textLayer.blocks.push({ pageIndex: page.pageIndex, blockId: block.blockId, type: block.type, expectedLen: expected.length, missing: missingStr, tail: expected.slice(-60) });
+              textLayer.missingBlocks++;
+              textLayer.missingChars += missing;
+              // 尾端截斷判定：expected 最後 missing 個字元裡多數在 need 殘餘集合內
+              const tail = expected.slice(-Math.min(missing, expected.length));
+              let tailHit = 0;
+              const rest = new Map(need);
+              for (const ch of tail) { const n = rest.get(ch); if (n > 0) { tailHit++; rest.set(ch, n - 1); } }
+              const truncated = missing >= 4 && tailHit / tail.length > 0.8;
+              if (truncated) textLayer.truncatedBlocks++;
+              if (textLayer.samples.length < 8) {
+                textLayer.samples.push({ pageIndex: page.pageIndex, blockId: block.blockId, type: block.type, expectedLen: expected.length, missing, truncated, preview: expected.slice(0, 40) });
+              }
+            }
+          }
+        }
+
         return {
           ok: true,
+          mode,
+          bytesBase64: opts.keepBytes ? bytesToBase64(capturedBytes) : null,
+          fontFallback,
+          fontSource,
+          textLayer,
           generatedByteLength,
           translatableCount,
           totalBlocks: blockAnalysis.length,

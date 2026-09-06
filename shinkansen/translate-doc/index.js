@@ -357,6 +357,7 @@ async function handleFile(file) {
 
     // dev probe: expose 給 tools/pdf-layout-harness.js 用 page.evaluate 讀
     // 不影響使用者(只是多一個 global ref;memory 釋放交給 releaseCurrentDoc)
+    window.__skLastParseError = null;
     window.__skLayoutDoc = {
       meta: doc.meta,
       stats: doc.stats,
@@ -416,6 +417,12 @@ async function handleFile(file) {
       if (rawDoc && rawDoc.pdfDoc && rawDoc.pdfDoc !== currentPdfDoc) closeDocument(rawDoc.pdfDoc);
       return;
     }
+    // dev probe：tools/pdf-corpus-verify.mjs 靠錯誤碼把「預期擋下」的負面案例
+    // （scanned / encrypted / invalid…）與真正的解析失敗分開；UI 只顯示 i18n 訊息拿不到 code
+    window.__skLastParseError = {
+      code: err instanceof PdfParseError ? err.code : 'exception',
+      message: (err && err.message) || String(err),
+    };
     if (err instanceof PdfParseError) {
       showError(err.message);
     } else {
@@ -1264,11 +1271,15 @@ function bindReaderUI() {
             } else if (p.stage === 'saving') {
               btn.textContent = t('doc.reader.download.writing');
             } else if (p.stage === 'font') {
-              btn.textContent = t('doc.reader.download.loadingFont');
+              // remote：zh-CN / ja / ko 用到才下載的字型（5–10 MB），顯示進度
+              btn.textContent = p.remote && p.total
+                ? t('doc.reader.download.downloadingFont', { received: (p.received / 1048576).toFixed(1), total: (p.total / 1048576).toFixed(1) })
+                : t('doc.reader.download.loadingFont');
             }
           },
         });
       }
+      if (result && result.fontFallback) showReaderError(t('doc.reader.fontFallback'));
       const sizeMB = (result.byteLength / 1024 / 1024).toFixed(1);
       btn.textContent = t('doc.reader.download.done', { size: sizeMB });
     } catch (err) {
@@ -1303,6 +1314,7 @@ async function openReader() {
       engine: currentEngine,
       glossary: injectableArticleGlossary(),
       extraPrompt: currentDocExtraPrompt || null,
+      onFontFallback: () => showReaderError(t('doc.reader.fontFallback')),
     },
   );
   // await 期間使用者換檔 / 重新上傳(releaseCurrentDoc bump gen)→ 這輪作廢：

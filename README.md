@@ -143,7 +143,7 @@ Google Docs 的編輯畫面使用 Canvas 渲染文字，一般的網頁翻譯擴
 
 ## 文件翻譯（PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔）
 
-點工具列 Shinkansen 圖示 → 「翻譯文件」，開啟獨立分頁後把 PDF、EPUB、Word（.docx）、TXT、Markdown、HTML 或字幕檔（SRT / WebVTT / ASS）拖進頁面即可整份翻譯。檔案完全在你的瀏覽器本機解析，除了送給翻譯引擎的文字之外不上傳任何內容。
+點工具列 Shinkansen 圖示 → 「翻譯文件」，開啟獨立分頁後把 PDF、EPUB、Word（.docx）、TXT、Markdown、HTML 或字幕檔（SRT / WebVTT / ASS）拖進頁面即可整份翻譯。檔案完全在你的瀏覽器本機解析，除了送給翻譯引擎的文字之外不上傳任何內容。唯一的例外是目標語言為簡體中文 / 日文 / 韓文的 PDF 翻譯：第一次會從專案網站下載對應字型（約 10–20 MB，只下載一次，之後離線可用），請求不含任何文件內容。
 
 **PDF 翻譯**：
 
@@ -334,7 +334,7 @@ LLM 在翻譯長文時，前後文的人名、地名翻譯容易出現不一致�
 
 ## 目前版本
 
-v2.4.8 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
+v2.4.9 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 
 ## 授權
 

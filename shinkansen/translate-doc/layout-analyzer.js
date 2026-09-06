@@ -414,7 +414,9 @@ function classifyBlockType(block, ctx) {
   }
 
   // 2) footnote:fontSize 比 body 小一截 + 位於頁面下方 1/4 + 第一字元為 footnote marker
-  const footnoteMarkerRe = /^(?:[0-9]+[.)]|[\^*†‡§])/;
+  // 「1 text」(上標數字吸收回主行後無句點)也是常見形式:字級小 + 頁底兩訊號已在,
+  // 只要求數字 ≤ 3 位且後接空白(pdf-synth footnote-pagenum 實測「1 See the appendix」判成 paragraph)
+  const footnoteMarkerRe = /^(?:[0-9]+[.)]|[0-9]{1,3}\s+\S|[\^*†‡§])/;
   if (
     fontSize > 0 &&
     bodyFontSize > 0 &&
@@ -714,8 +716,12 @@ function detectColumns(lines, pageWidth) {
     if (xs.length < k) break;
     const result = kmeans1d(xs, k);
     if (!result) continue;
-    // 邊界 1：中心相距太近的 k 不採用(避免縮排被當多欄)
-    const minGap = pageWidth > 0 ? pageWidth * COLUMN_MIN_GAP_RATIO : 0;
+    // 邊界 1：中心相距太近的 k 不採用(避免縮排被當多欄)。
+    // 門檻隨 k 縮放(× 2 / k):k 欄的欄心間距上限 ≈ 可用寬 / k,固定 0.3 × 頁寬對
+    // k=3 永遠不可能達標(Letter 頁 3 欄實際間距 ≈ 165pt < 184pt),三欄版面一律被
+    // 折成兩欄且左右兩欄交錯(pdf-synth col-three 實測)。k=2 門檻不變,單欄縮排
+    // (24pt)仍遠低於 k=3 的 0.2 × 頁寬
+    const minGap = pageWidth > 0 ? pageWidth * COLUMN_MIN_GAP_RATIO * (2 / k) : 0;
     if (k > 1 && minPairwiseGap(result.centers) < minGap) continue;
     // 邊界 2：最弱 cluster 的 line 數佔比 < MIN_COLUMN_LINE_RATIO 不採用
     // (避免少量裝飾元素 / 浮動標題觸發誤判；典型場景：Quotation 右半三條 single-line
@@ -890,6 +896,9 @@ function markSiblingsInRow(lines, medianLineHeight) {
       if (xGap >= minGap) {
         a.siblingsInRow = true;
         b.siblingsInRow = true;
+        // 記配對 line,column 偵測後由 splitIntoBlocksByAssignment 回填配對所在欄
+        a.siblingLine = b;
+        b.siblingLine = a;
       }
     }
     groupStart = groupEnd + 1;
@@ -902,6 +911,12 @@ function markSiblingsInRow(lines, medianLineHeight) {
 // 不改行為,純搬移 + export。
 export function splitIntoBlocksByAssignment(lines, assignment, columnCount, medianLineHeight) {
   const initialBlocks = [];
+  // sibling 配對 line 所在欄回填(供 splitColumnIntoBlocks 判「跨欄鄰行」豁免)
+  const colOf = new Map();
+  lines.forEach((l, i) => colOf.set(l, assignment[i]));
+  for (const l of lines) {
+    if (l.siblingsInRow && l.siblingLine) l.siblingColumn = colOf.has(l.siblingLine) ? colOf.get(l.siblingLine) : null;
+  }
   for (let colIdx = 0; colIdx < columnCount; colIdx++) {
     const colLines = lines.filter((_, i) => assignment[i] === colIdx);
     colLines.sort((a, b) => a.bbox[1] - b.bbox[1]);
@@ -921,7 +936,13 @@ function splitColumnIntoBlocks(colLines, medianLineHeight, columnIdx) {
     // siblingsInRow：同視覺行被切散的多條 line(左右分置場景)，強制切獨立 block。
     // 不論 vertical gap / fontSize,prev / cur 任一是 sibling 都切——確保「左段」、
     // 「右段」各自一個 block 翻譯，譯文不會 collapse 成單一字串
-    if (prev.siblingsInRow || cur.siblingsInRow) {
+    // 例外:sibling 的配對 line 若被 column 偵測分到別的欄(prev / cur 自己在本欄),
+    // 這不是「左右分置」而是多欄版面的鄰欄行——雙欄論文左欄段落的短尾行跟右欄同 y
+    // 的整行 x gap 必然很大,原本會被切成獨立 block 單獨送翻(pdf-synth col-two 實測
+    // 「The quick.」孤立成塊)。只有配對 line 也在同欄(或無欄位資訊)才視為 sibling 切分
+    const prevSib = prev.siblingsInRow && (prev.siblingColumn == null || prev.siblingColumn === columnIdx);
+    const curSib = cur.siblingsInRow && (cur.siblingColumn == null || cur.siblingColumn === columnIdx);
+    if (prevSib || curSib) {
       blocks.push(buildBlockFromLines(currentLines, columnIdx));
       currentLines = [cur];
       continue;
@@ -1176,12 +1197,18 @@ function maybeSubsplitListBlock(block) {
   if (lines.length < LIST_SUBSPLIT_MIN_LINES) return [block];
 
   const isMarker = lines.map((l) => LIST_MARKER_RE.test(l.plainText || ''));
+  // 前導非 marker 行(清單前的引言句「The following items…:」)自成一段,marker 比例
+  // 只看引言之後的行——原本「起頭不是 marker 就整塊不切」讓「引言 + 4 個項目」黏成
+  // 單一段落送翻,譯文回填時項目換行全失(pdf-synth list-hanging 實測)
+  let firstMarker = isMarker.indexOf(true);
+  if (firstMarker < 0) return [block];
+  const listLines = lines.length - firstMarker;
   const markerCount = isMarker.filter(Boolean).length;
-  if (markerCount < lines.length * LIST_SUBSPLIT_MARKER_RATIO) return [block];
-  // 起頭那行必須是 marker 才開始切；否則 marker 之間 cluster 不對齊
-  if (!isMarker[0]) return [block];
+  if (listLines < LIST_SUBSPLIT_MIN_LINES || markerCount < listLines * LIST_SUBSPLIT_MARKER_RATIO) return [block];
+  // 引言超過 2 行不視為清單前導(可能是段落內偶然的 dash 行),維持原行為不切
+  if (firstMarker > 2) return [block];
 
-  // 按 marker 起首切 group
+  // 按 marker 起首切 group(前導行為第一個 group)
   const groups = [];
   let current = [];
   for (let i = 0; i < lines.length; i++) {

@@ -25,7 +25,9 @@ export const LIMITS = Object.freeze({
 
 // 已知不支援的 PDF 樣態（SPEC §17.2）——抽完文字後再判斷
 const SCANNED_PDF_TEXT_THRESHOLD = 50; // 整份 < 50 個非空白字 → 視為掃描檔
-const GARBLED_FONT_NON_PRINTABLE_RATIO = 0.5; // 非 ASCII printable / 控制字元比例 > 50% → 字型映射不完整
+const GARBLED_FONT_NON_PRINTABLE_RATIO = 0.5;
+const TINY_RUN_MIN_FONT_SIZE = 1.5;
+const ROTATED_PAGE_DOMINANT_RATIO = 0.8; // 丟掉的旋轉 run 佔全部 run ≥ 80% → 整頁旋轉內容，不是掃描檔 // 低於此字級的 text run 視為隱藏文字，不進版面 IR // 非 ASCII printable / 控制字元比例 > 50% → 字型映射不完整
 
 // run bbox 落在 viewport 外多遠時視為「PDF 邏輯邊界外」直接丟棄
 // (PowerPoint / Excel 匯出 PDF 常見:寬 table 繪製在邏輯 page 之外,page transform
@@ -45,6 +47,22 @@ function matMul(m1, m2) {
     m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
     m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
   ];
+}
+
+// PDF.js 對部分 CJK PDF（Chromium 列印的 Wikipedia 等）會把共用字形的字回成康熙部首碼位
+// （⽅ U+2F45 而非 方 U+65B9；wiki-zh 7 萬字中 5 千個），poppler 抽同檔為 0。這種碼位送 LLM
+// 是雜訊、「已是目標語」判定會被騙、快取 key 也不穩。只對部首區（U+2E80–2FDF）與相容表意字區
+// （U+F900–FAFF）逐字 NFKC——整串 NFKC 會把上標 ² 變 2、全形英數變半形、連字拆開，不能用
+export function normalizeCjkCompat(str) {
+  if (!str) return str;
+  let out = '';
+  let changed = false;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0);
+    if ((cp >= 0x2e80 && cp <= 0x2fdf) || (cp >= 0xf900 && cp <= 0xfaff)) { out += ch.normalize('NFKC'); changed = true; }
+    else out += ch;
+  }
+  return changed ? out : str;
 }
 
 export class PdfParseError extends Error {
@@ -132,6 +150,7 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
   let nonPrintable = 0;
   let printable = 0;
   let droppedRotatedTotal = 0;
+  let keptRunsTotal = 0;
 
   // metadata(title 用於 result UI)
   let title = file.name || '';
@@ -241,6 +260,7 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
     const textRuns = [];
     let droppedOutsideViewport = 0;
     let droppedRotated = 0;
+    let droppedTiny = 0;
     for (const item of textContent.items) {
       // PDF.js TextItem.transform 是 raw text matrix [scaleX, skewY, skewX, scaleY, x, y]
       // 在 PDF 座標系下(y 由下往上)。某些 PDF(PowerPoint/Excel 匯出)的 raw 座標
@@ -277,6 +297,14 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
       // PDF.js TextItem.width / height 已是 CSS px(在 scale=1 viewport 下 = pt),
       // 直接加到 baseline 不再乘 fontSize(這是地雷:乘了會把 bbox 暴增 fontSize 倍)。
       const fontSize = Math.hypot(m[2], m[3]);
+      // 極小字(< TINY_RUN_MIN_FONT_SIZE pt)不是給人讀的:SEO 隱藏文字 / 隱形關鍵字層。
+      // 送翻後 pdf-renderer 會以 MIN_FONT_SIZE(5pt)畫譯文,隱藏文字反而現形
+      // (pdf-synth tiny-hidden-text 實測 0.4pt 文字成了可翻譯 block)。結構性規則:
+      // 字級門檻,不看內容
+      if (fontSize < TINY_RUN_MIN_FONT_SIZE) {
+        droppedTiny++;
+        continue;
+      }
       const left = m[4];
       const baselineY = m[5];
       const top = baselineY - fontSize;
@@ -315,8 +343,9 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
       const isItalic = !!styleIsItalic[item.fontName];
       const isBold = !!styleIsBold[item.fontName];
 
+      keptRunsTotal++;
       textRuns.push({
-        text: item.str,
+        text: normalizeCjkCompat(item.str),
         // canvas 座標(y 由上往下),bbox = [left, top, right, bottom]
         bbox: [left, top, right, bottom],
         fontSize,
@@ -360,6 +389,11 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
   // 偵測掃描 PDF / 字型亂碼（SPEC §17.2）
   const warnings = [];
   if (totalChars < SCANNED_PDF_TEXT_THRESHOLD) {
+    // 內容流本身整頁旋轉（沒設 /Rotate 的橫式掃描 / 匯出）：run 全被當旋轉丟掉，字數不到門檻——
+    // 這不是掃描檔，訊息要說實話（真正支援整頁旋轉內容是另一輪的事）
+    if (droppedRotatedTotal > 0 && droppedRotatedTotal >= (droppedRotatedTotal + keptRunsTotal) * ROTATED_PAGE_DOMINANT_RATIO) {
+      throw new PdfParseError('rotated-content', '此 PDF 的文字整頁旋轉（頁面未設定旋轉屬性），目前不支援翻譯');
+    }
     throw new PdfParseError('scanned', '此 PDF 為掃描影像或無可抽取文字，本工具不支援 OCR');
   }
   const totalCharsForRatio = printable + nonPrintable;

@@ -52,11 +52,12 @@ let _renderReaderGen = 0;
  * @param {string}      [opts.modelOverride]  — retry 用的 preset model id
  * @param {string|null} [opts.extraPrompt]    — 本文件額外翻譯指令（retry 也要帶，跟主翻譯同 cache key）
  * @param {(failedCount: number) => void} [opts.onFailedCountChange]
+ * @param {() => void} [opts.onFontFallback] — 遠端字型抓不到退回內建 TC 時呼叫（提示用）
  * @returns {Promise<ReaderHandle>}
  */
 export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, originalCol, translatedCol, opts = {}) {
   const _myRenderGen = ++_renderReaderGen;   // G3：見 _renderReaderGen 註解
-  const { modelOverride, engine, glossary, extraPrompt = null, onFailedCountChange = () => {} } = opts;
+  const { modelOverride, engine, glossary, extraPrompt = null, onFailedCountChange = () => {}, onFontFallback = null } = opts;
   let currentZoom = opts.initialZoom || 1.0;
   let syncEnabled = opts.initialSyncEnabled !== false;
 
@@ -86,6 +87,8 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       translatedPdfDoc = null;
     }
     const built = await buildBilingualPdf(originalArrayBuffer, doc);
+    // zh-CN / ja / ko 需要遠端字型但抓不到 → 已退回內建 TC，讓 index.js 提示使用者
+    if (built.fontFallback && typeof onFontFallback === 'function') onFontFallback(built.fontSource);
     translatedBytes = built.bytes;
     translatedFilename = built.filename;
     // slice(0) 給 PDF.js 一份新 buffer 避免它 detach 我們的 cache。

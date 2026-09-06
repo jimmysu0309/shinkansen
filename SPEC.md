@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.8
+- 目前 Extension 版本：2.4.9
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.8 為止）
+### 2.1 已實作（v2.4.9 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -737,7 +737,7 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 
 ### 17.8 譯文 PDF 下載
 
-原頁嵌為底層（向量 / 點陣 / 文字原樣保留），可翻譯段落以白底遮罩蓋住原文位置後寫入譯文；不可翻譯與失敗段落露出底層原文；原 PDF 的連結 annotation 重建。中文字型內嵌 Noto Sans TC（TTF，subset 後每檔約 100-300KB，授權標示於 `lib/vendor/fonts/`）。譯文自動換行與 fit-to-box 縮排；排版細節見 SPEC-PRIVATE §32。
+原頁嵌為底層（向量 / 點陣 / 文字原樣保留），可翻譯段落以白底遮罩蓋住原文位置後寫入譯文；不可翻譯與失敗段落露出底層原文；原 PDF 的連結 annotation 重建。中文字型內嵌 Noto Sans TC（TTF，subset 後每檔約 100-300KB，授權標示於 `lib/vendor/fonts/`）。目標語言為簡體中文 / 日文 / 韓文時，譯文 PDF 改用對應的 Noto Sans SC / JP / KR：安裝包不內建，**只在第一次翻譯該語言的 PDF 時**從專案的 GitHub Pages 下載（Regular + Bold 約 10–20 MB，SHA-256 驗證後存瀏覽器快取，之後離線可用）；下載失敗退回內建 TC 並提示，翻譯不中斷。其他目標語言與網頁 / EPUB / 字幕翻譯不會觸發下載。譯文自動換行與 fit-to-box 縮排；排版細節見 SPEC-PRIVATE §32。
 
 ### 17.10 EPUB 電子書翻譯
 

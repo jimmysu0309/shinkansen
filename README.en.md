@@ -143,7 +143,7 @@ Notes: you must have view access to the document. Mobile reading view is read-on
 
 ## Document translation (PDF / EPUB / Word / TXT / Markdown / HTML / subtitles)
 
-Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF, EPUB, Word (.docx), TXT, Markdown, HTML, or subtitle file (SRT / WebVTT / ASS) onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine.
+Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF, EPUB, Word (.docx), TXT, Markdown, HTML, or subtitle file (SRT / WebVTT / ASS) onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine. The one exception is PDF translation into Simplified Chinese / Japanese / Korean: the first time, the matching font (about 10–20 MB) is downloaded from the project website, once only and cached for offline use; that request carries no document content.
 
 **PDF translation**:
 
@@ -330,7 +330,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.8 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.9 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 
