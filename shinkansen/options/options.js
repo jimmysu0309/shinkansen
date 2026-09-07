@@ -299,7 +299,7 @@ async function load() {
     if (p.model && [...modelSel.options].some(o => o.value === p.model)) {
       modelSel.value = p.model;
     } else {
-      modelSel.value = 'gemini-3-flash-preview';
+      modelSel.value = 'gemini-3.8-flash';
     }
     updatePresetModelVisibility(slot);
   }

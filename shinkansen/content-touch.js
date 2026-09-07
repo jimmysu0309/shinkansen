@@ -4,7 +4,7 @@
 // - 四指「快點」= Alt+S 完整 toggle（主要預設 slot 2）：未翻譯 → 翻譯；翻譯中或
 //   已翻譯 → 中止並還原原文。送 FOUR_FINGER_TAP 給 background → TRANSLATE_PRESET
 //   slot 2（跟 commands onCommand 的 Alt+S 完全同一條路徑，含 all_frames broadcast）
-// - 四指「長按」= 次要預設 slot 1（預設 Flash Lite）：四指同時壓住、不移動且持續
+// - 四指「長按」= 次要預設 slot 1（預設 Flash，即 Alt+A 那組）：四指同時壓住、不移動且持續
 //   達 LONGPRESS_MS → 送 FOUR_FINGER_LONGPRESS → background → TRANSLATE_PRESET slot 1。
 //   長按在門檻當下即由計時器觸發（不等抬起），翻譯進度 toast 即視覺回饋；不依賴
 //   navigator.vibrate（iOS Safari 不支援震動 API）

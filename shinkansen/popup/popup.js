@@ -184,7 +184,7 @@ async function refreshTranslateButton() {
 }
 
 async function refreshShortcutHint() {
-  // v1.4.13: popup 按鈕觸發 TOGGLE_TRANSLATE 訊息，content.js 將其映射為 preset slot 2（Flash）。
+  // v1.4.13: popup 按鈕觸發 TOGGLE_TRANSLATE 訊息，content.js 將其映射為 preset slot 2（Flash Lite，主要預設）。
   // 所以這裡讀「主要預設」的當前鍵位顯示。
   // v1.8.19: 主要預設 command id 改為 translate-preset-0（字典序保證 chrome://extensions/shortcuts 顯示在最上）
   const el = $('shortcut-hint');
@@ -468,7 +468,7 @@ $('translate-btn').addEventListener('click', async () => {
     if (!tab?.id) { btn.disabled = false; return; }
     const mode = btn.dataset.mode;
     statusEl.textContent = mode === 'restore' ? t('popup.status.restoring') : t('popup.status.translating');
-    // v1.6.6: 讀 settings.popupButtonSlot 決定按鈕對應的 preset slot（預設 2 = Flash）
+    // v1.6.6: 讀 settings.popupButtonSlot 決定按鈕對應的 preset slot（預設 2 = Flash Lite，主要預設）
     // content.js handleTranslatePreset 自帶 toggle 行為（已翻譯 → 還原 / 翻譯中 → abort / 閒置 → 翻譯）
     const { popupButtonSlot } = await browser.storage.sync.get('popupButtonSlot');
     const slot = pickPopupSlot(popupButtonSlot);

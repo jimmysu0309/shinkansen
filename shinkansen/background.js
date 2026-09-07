@@ -1092,7 +1092,7 @@ const messageHandlers = {
     },
   },
   // iOS 四指長按（content-touch.js）→ 轉發 TRANSLATE_PRESET slot 1（次要預設，預設
-  // Flash Lite）。跟四指 tap 同一條 background → all frames broadcast 派送，只差 slot
+  // Flash，即 Alt+A 那組）。跟四指 tap 同一條 background → all frames broadcast 派送，只差 slot
   FOUR_FINGER_LONGPRESS: {
     async: false,
     handler: (_, sender) => {
@@ -2000,7 +2000,7 @@ async function fetchWithTimeout(url, init = {}, timeoutMs = 15000) {
 
 async function testGeminiKey(payload) {
   const apiKey = (payload?.apiKey || '').trim();
-  const model = (payload?.model || 'gemini-3-flash-preview').trim();
+  const model = (payload?.model || 'gemini-3.8-flash').trim();
   if (!apiKey) return { ok: false, message: 'API Key 為空，請先填入再測試。' };
   // API key 走 x-goog-api-key header,不放 URL(避免金鑰漏進會記 URL 的 proxy / log)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`;

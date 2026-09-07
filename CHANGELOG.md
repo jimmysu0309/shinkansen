@@ -7,6 +7,8 @@
 
 ## v2.4.x
 
+**v2.4.12**——**文件與說明文字對齊現況（無功能變更）**。（1）設定頁「翻譯快速鍵」iOS 說明（8 語）：四指長按實際走次要預設（Alt+A 那組，預設 Gemini 3.8 Flash），原文誤寫為「第一組預設（Flash Lite）」，自 v1.10.67 主要 / 次要預設對調後未更新；（2）`content-touch.js` / `background.js` / `popup.js` 註解同步修正 slot 對映描述；（3）設定頁 preset 模型下拉找不到已存值時的 fallback、測試 API Key 未帶模型時的 fallback 改為 `gemini-3.8-flash`（與預設 Flash 一致；正常路徑不會走到）；（4）SPEC.md：功能摘要表的快速鍵描述（移除早已不存在的 Option+G）、懸浮按鈕預設值改為「全平台預設開」（與程式碼一致）、快速鍵表 Alt+A 標明 Gemini 3.8 Flash。**不需清快取**。
+
 **v2.4.11**——**預設 Flash 快速鍵（Alt+A / Option+A）改用 Gemini 3.8 Flash**。三組翻譯快速鍵的預設模型調整：`Alt+A` 的「Flash」preset 預設模型從 `gemini-3-flash-preview` 改為 `gemini-3.8-flash`（$0.75 / $3.75，品質優先）；`Alt+S` 維持 Flash Lite（省成本，推薦日常用）、`Alt+D` 維持 Google Translate。四指 tap / 工具列「預設模型」選 Flash 時也對應到 3.8 Flash。只影響尚未自訂快速鍵模型的使用者；已在設定頁改過的 preset 不受影響。README 快速鍵說明同步改為 Alt+S 優先。**不需清快取**。
 
 **v2.4.10**——**預設禁用詞新增「啃硬骨頭」＋ 隱私政策改為單一資料源＋專案目錄重整**。（1）**禁用詞**：繁體中文（台灣）目標的預設禁用詞清單新增「啃硬骨頭」（替換詞留空，由 AI 改寫成自然說法），共 26 條。同時補上升級路徑：舊版曾把 25 條預設清單「物化」寫進設定的使用者，現在會被視為未客製、自動吃到新條目（`LEGACY_DEFAULT_FORBIDDEN_TERMS_SNAPSHOTS` 凍結快照比對，options 自動儲存時順手回收殘留）；真正客製過的清單完全不受影響。新增 `forbidden-terms-legacy-default-upgrade.spec.js`（5 條，SANITY 過）。**建議手動清快取**：禁用詞是 system prompt 的一部分，舊快取譯文不會重翻。（2）**隱私政策**：擴充功能內夾帶的兩份隱私政策頁移除（原本沒有任何頁面連到它們，且內容已與網站版脫節——殘留已下架的 `activeTab` 段落、缺字型下載說明），改以 `docs/privacy-policy*.html`（GitHub Pages）為唯一版本，options 頁首行新增「隱私政策」連結（8 語，繁中連繁中版、其餘連英文版）。macOS / iOS 兩個 Xcode 專案同步移除引用，皆 build 通過。（3）**目錄重整**（不影響使用者）：`tools/` 84 個腳本分層為 `release/`（release、打包、商店送審）、`harness/`（各文件翻譯 harness 與 PDF 語料工具）、`probes/`（一次性 probe）、`build/`（字元集 / OpenCC / i18n 產生器與 instapaper 模板）；Safari 建置產物（MAS / Developer ID pkg、iOS ipa）改輸出根目錄 `build/`；`BUILD.md` 改名 `BUILD-FIREFOX.md`（AMO 審查用重建說明）；刪除零引用的舊 icon、一次性分析工具與建置殘留目錄。

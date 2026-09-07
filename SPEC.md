@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.11
+- 目前 Extension 版本：2.4.12
 
 ---
 
@@ -32,13 +32,13 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.11 為止）
+### 2.1 已實作（v2.4.12 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
 | 功能區塊 | 狀態 | 簡述 |
 |---------|------|------|
-| 網頁翻譯 | ✅ | Option+S（Gemini）/ Option+G（Google Translate）切換；單語覆蓋 / 雙語對照雙模式；漸進分批注入；還原原文 |
+| 網頁翻譯 | ✅ | Option+S / Option+A（Gemini）/ Option+D（Google Translate）三組快速鍵；單語覆蓋 / 雙語對照雙模式；漸進分批注入；還原原文 |
 | 雙語對照模式 | ✅ | 譯文以 wrapper 形式附在原段落後；4 種視覺標記；顯示模式同時決定字幕雙語與否 |
 | YouTube 字幕翻譯 | ✅ | 自動偵測字幕即時翻譯；ASR（自動字幕）AI 分句；時間視窗批次；雙語 overlay；字幕大小與顏色跟隨原生設定；行動版 `m.youtube.com` 支援；`/watch` 與 `/live/<id>`（直播 / 直播存檔分享連結）路徑皆支援 |
 | SPA 支援 | ✅ | 站內導航自動偵測；動態載入內容補翻；譯文防覆蓋保護；續翻模式 |
@@ -51,7 +51,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 設定頁 | ✅ | 8 Tab：一般設定 / YouTube 字幕 / Gemini / 自訂模型 / 術語表 / 禁用詞清單 / 用量紀錄 / Debug；匯入匯出 |
 | Popup 面板 | ✅ | 翻譯/還原；快取/費用統計；自動翻譯開關；YouTube 字幕 toggle |
 | Toast 提示 | ✅ | 進度條 + 計時器；可調透明度與位置；`toastAutoHide` 自動關閉選項 |
-| 懸浮按鈕 | ✅ | 頁面邊緣可拖移「新」icon；短按翻譯、長按選引擎或功能選單；可調透明度與大小；手機／平板預設開、桌面預設關 |
+| 懸浮按鈕 | ✅ | 頁面邊緣可拖移「新」icon；短按翻譯、長按選引擎或功能選單；可調透明度與大小；全平台預設開 |
 | 用量紀錄 | ✅ | IndexedDB + 折線圖 + CSV 匯出；日期/模型/網域/文字搜尋篩選 |
 | Debug 工具 | ✅ | Log buffer 1000 筆 + 持久化 100 筆（跨 SW 重啟）；設定頁 Debug 分頁瀏覽 |
 | Google Docs 支援 | ✅ | 偵測編輯頁自動導向 `/mobilebasic` 閱讀版再翻譯 |
@@ -536,7 +536,7 @@ shinkansen/
 | 快捷鍵 | command id | slot | 預設 engine / model |
 |---|---|---|---|
 | Alt+S（Opt+S） | `translate-preset-0` | 2 | Gemini Flash Lite（主要預設） |
-| Alt+A（Opt+A） | `translate-preset-1` | 1 | Gemini Flash |
+| Alt+A（Opt+A） | `translate-preset-1` | 1 | Gemini 3.8 Flash（次要預設，四指長按亦走此組） |
 | Alt+D（Opt+D） | `translate-preset-3` | 3 | Google MT |
 | Alt+I（Opt+I） | `send-to-instapaper` | — | 送到 Instapaper（§3.11） |
 
