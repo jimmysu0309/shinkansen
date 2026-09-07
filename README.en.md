@@ -88,8 +88,8 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
 
 - **Manual translation**: click the toolbar icon → "Translate this page"
 - **Translation shortcuts** (three presets):
-    - `Option+A` (macOS) / `Alt+A` — defaults to Gemini Flash Lite (cheapest)
-    - `Option+S` / `Alt+S` — defaults to Gemini Flash (best quality / value, recommended for daily use)
+    - `Option+S` / `Alt+S` — defaults to Gemini Flash Lite (cheapest, recommended for daily use)
+    - `Option+A` (macOS) / `Alt+A` — defaults to Gemini 3.8 Flash (best quality)
     - `Option+D` / `Alt+D` — defaults to Google Translate (free, no API key)
     - All three keybindings, engines, models, and labels are customizable in the "Translation shortcuts" section of settings
     - Press any shortcut while translated → restore original
@@ -107,8 +107,8 @@ Shinkansen offers three customizable translation presets, each bound to a shortc
 
 | Shortcut | Default engine | Default model | Best for |
 |----------|----------------|---------------|----------|
-| `Alt+A` / `Option+A` | Gemini | Flash Lite ($0.25 / $1.50) | Casual translation, max savings |
-| `Alt+S` / `Option+S` | Gemini | Flash ($0.50 / $3.00) | Daily reading, best quality / value |
+| `Alt+S` / `Option+S` | Gemini | Flash Lite ($0.25 / $1.50) | Daily reading, max savings |
+| `Alt+A` / `Option+A` | Gemini | 3.8 Flash ($0.75 / $3.75) | Important articles, quality first |
 | `Alt+D` / `Option+D` | Google Translate | — | No API key needed, fast, free |
 
 **All customizable in the "Translation shortcuts" section of settings**: each preset's engine (Gemini / Google Translate), model (Flash Lite / Flash / Pro / custom), and display label can be changed. The keybindings themselves can also be customized right there — click a preset's key field and press the combination you want (on Chrome use `⌥ Option` or `⌃ Control`; on Safari — Mac / iPad / iPhone — use `⌃ Control`, since iOS Safari doesn't pass `⌥` / `⌘` to web pages; the settings page shows the available keys per browser automatically; press `ESC` to cancel). Works with iPad external keyboards too. You can also adjust the built-in default keys at `chrome://extensions/shortcuts` (Chrome) or `about:addons` (Firefox).
@@ -330,7 +330,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.10 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.11 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

@@ -226,7 +226,7 @@ if (window.__shinkansen_loaded) {
   //   兩份完全相反——storage 未寫入的窗口按快速鍵，實際模型與 UI 顯示相反。
   //   一致性由 test/jest-unit/default-presets-mirror.test.cjs 鎖住）。
   SK.DEFAULT_PRESETS = [
-    { slot: 1, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
+    { slot: 1, engine: 'gemini', model: 'gemini-3.8-flash', label: 'Flash' },
     { slot: 2, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'Flash Lite' },
     { slot: 3, engine: 'google', model: null, label: 'Google MT' },
   ];

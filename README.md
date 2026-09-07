@@ -88,8 +88,8 @@
 
 - **手動翻譯**：點工具列圖示 → 「翻譯本頁」
 - **翻譯快速鍵**（三組）：
-    - `Option+A`（macOS）/ `Alt+A` — 預設 Gemini Flash Lite（便宜）
-    - `Option+S` / `Alt+S` — 預設 Gemini Flash（品質高，推薦日常用）
+    - `Option+S` / `Alt+S` — 預設 Gemini Flash Lite（省成本，推薦日常用）
+    - `Option+A`（macOS）/ `Alt+A` — 預設 Gemini 3.8 Flash（品質高）
     - `Option+D` / `Alt+D` — 預設 Google Translate（免費、不需 API Key）
     - 三組鍵位、引擎、模型、標籤都可在設定頁「翻譯快速鍵」區塊自訂
     - 已翻譯狀態下按任一快速鍵 → 還原原文
@@ -107,8 +107,8 @@ Shinkansen 提供三組可自訂的翻譯預設，各綁一個快速鍵：
 
 | 快速鍵 | 預設引擎 | 預設模型 | 適合場景 |
 |--------|----------|----------|----------|
-| `Alt+A` / `Option+A` | Gemini | Flash Lite（$0.25 / $1.50） | 隨手翻譯，要最省 |
-| `Alt+S` / `Option+S` | Gemini | Flash（$0.50 / $3.00） | 日常閱讀，品質最佳性價比 |
+| `Alt+S` / `Option+S` | Gemini | Flash Lite（$0.25 / $1.50） | 日常閱讀，最省 |
+| `Alt+A` / `Option+A` | Gemini | 3.8 Flash（$0.75 / $3.75） | 重要文章，品質優先 |
 | `Alt+D` / `Option+D` | Google Translate | — | 不需 API Key、速度快、完全免費 |
 
 **可以在設定頁「翻譯快速鍵」區塊自訂**：每組 preset 的引擎（Gemini / Google Translate）、模型（Flash Lite / Flash / Pro / 自訂）、顯示標籤都可以改。鍵位本身也可直接在同一區塊自訂——點該組右上方的鍵位欄位，再按下想要的組合鍵即可（Chrome 用 `⌥ Option` 或 `⌃ Control`；Safari 含 Mac／iPad／iPhone 請用 `⌃ Control`——iOS Safari 不會把 `⌥`／`⌘` 傳給網頁，設定頁會自動依瀏覽器顯示可用的鍵，按 `ESC` 取消），iPad 外接鍵盤也能改。也可在 Chrome `chrome://extensions/shortcuts`、Firefox `about:addons` 調整內建預設鍵
@@ -334,7 +334,7 @@ LLM 在翻譯長文時，前後文的人名、地名翻譯容易出現不一致�
 
 ## 目前版本
 
-v2.4.10 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
+v2.4.11 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 
 ## 授權
 

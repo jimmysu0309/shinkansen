@@ -135,7 +135,7 @@ _registerAlarm('exchange-rate-fetch', () => {
 // 「預設模型」對映：四指 tap / Alt+S / 工具列按鈕全走 translatePresets slot 2，
 // 所以把選的 engine+model 寫進 slot 2 那組 preset（不是切 autoTranslateSlot）。
 const HOST_MODEL_PRESETS = {
-  flash:  { engine: 'gemini', model: 'gemini-3-flash-preview' },
+  flash:  { engine: 'gemini', model: 'gemini-3.8-flash' },
   lite:   { engine: 'gemini', model: 'gemini-3.1-flash-lite' },
   google: { engine: 'google', model: null },
 };

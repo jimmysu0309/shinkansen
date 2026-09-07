@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.10
+- 目前 Extension 版本：2.4.11
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.10 為止）
+### 2.1 已實作（v2.4.11 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -446,7 +446,7 @@ shinkansen/
   "translationMarkStyle": "tint",
   "dualAccentColor": "auto",
   "translatePresets": [
-    { "slot": 1, "engine": "gemini", "model": "gemini-3-flash-preview", "label": "Flash" },
+    { "slot": 1, "engine": "gemini", "model": "gemini-3.8-flash", "label": "Flash" },
     { "slot": 2, "engine": "gemini", "model": "gemini-3.1-flash-lite", "label": "Flash Lite" },
     { "slot": 3, "engine": "google", "model": null, "label": "Google MT" }
   ],
