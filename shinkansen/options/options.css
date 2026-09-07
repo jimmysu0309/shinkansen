@@ -1219,19 +1219,23 @@ shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-de
   margin: 0;
 }
 
-/* 懸浮按鈕大小選擇：前置 label + 兩個 radio（小 / 大）水平排列 */
-.floating-size-options {
+/* 水平排列的選項群組：前置 label + 一排 radio / checkbox
+   （懸浮按鈕大小、懸停翻譯修飾鍵） */
+.floating-size-options,
+.hover-modifier-options {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   margin-top: 10px;
 }
-.floating-size-options > span {
+.floating-size-options > span,
+.hover-modifier-options > span {
   font-size: 13px;
   color: #1d1d1f;
 }
-.floating-size-options label {
+.floating-size-options label,
+.hover-modifier-options label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1239,9 +1243,13 @@ shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-de
   color: #1d1d1f;
   cursor: pointer;
 }
-.floating-size-options input[type="radio"] {
+.floating-size-options input[type="radio"],
+.hover-modifier-options input[type="radio"] {
   margin: 0;
 }
+/* 修飾鍵說明獨佔一列，貼在四個選項下方——列距比橫向的 16px 間距窄 */
+.hover-modifier-options { row-gap: 6px; }
+.hover-modifier-options > small { flex-basis: 100%; }
 
 .footer-easter-egg {
   text-align: center;
