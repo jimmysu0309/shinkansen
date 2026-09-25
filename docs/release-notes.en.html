@@ -99,6 +99,17 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.5.1 <span class="release-date">Released 2026-09-25</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.5.0</p>
+
+  <p class="lead">Two YouTube subtitle fixes: auto-dubbed videos no longer pick the wrong auto-caption language, and clearing the cache no longer skips a subtitle window that was mid-translation.</p>
+
+  <ul>
+    <li><strong>YouTube auto-dubbed videos no longer pick the wrong caption language</strong>: these videos carry one auto-generated caption track per dubbed audio track, in an order that changes on every load, so the extension could grab another language (e.g. an English video switched to Japanese auto captions before translating). It now follows YouTube's original-audio marker to pick the original-language captions, and dubbed captions are no longer treated as native subtitles. Videos without auto-dubbing behave as before.</li>
+
+    <li><strong>Subtitle retranslation after clearing the cache</strong>: if a subtitle window was mid-translation when you pressed "Clear translation cache", it is no longer marked as done, so seeking back retranslates it as expected.</li>
+  </ul>
+
   <h2>v2.5.0 <span class="release-date">Released 2026-09-15</span></h2>
   <p class="release-meta">Compared with the previous store version v2.4.0</p>
 

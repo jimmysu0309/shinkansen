@@ -99,6 +99,17 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons 與 App Store（iOS / iPadOS Safari）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v2.5.1 <span class="release-date">2026-09-25 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.5.0</p>
+
+  <p class="lead">YouTube 字幕翻譯的兩項修正：自動配音影片不再選錯自動字幕語言，清除快取時正在翻譯的字幕段不再被略過</p>
+
+  <ul>
+    <li><strong>YouTube 自動配音影片不再選錯字幕語言</strong>：這類影片每條配音各有一條「自動產生」字幕，順序每次載入不同，過去可能抓到別種語言（例如英文影片被切到日文自動字幕再翻譯）；現在依 YouTube 標示的原音軌挑出原音自動字幕，配音字幕也不再被當成原生字幕直接顯示。沒有自動配音的影片行為不變</li>
+
+    <li><strong>清除翻譯快取時的字幕重翻</strong>：按「清除翻譯快取」當下若有字幕段正在翻譯，該段不再被誤記為已翻完，拖回去會照常重翻</li>
+  </ul>
+
   <h2>v2.5.0 <span class="release-date">2026-09-15 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v2.4.0</p>
 
