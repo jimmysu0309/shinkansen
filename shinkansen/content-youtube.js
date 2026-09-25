@@ -1181,11 +1181,15 @@
   //   3) 影片原始語 ASR track（kind='asr'）→ action='switch'
   //   都沒命中 / activeTrack 已對得上目標 → action='noop'，留 YT 既有行為
   //
-  // 影片原始語從 captionTracks 中找出唯一 kind='asr' 的 track 的 languageCode 動態決定
-  // （YouTube 一支影片只會自動產生一條 ASR，語言對應原始口說語）。沒 ASR 軌（罕見：
-  // 創作者只上手動字幕沒讓 YT 跑 ASR）→ 無法可靠決定 sourceLang → noop。
+  // 影片原始語從 captionTracks 的「原音 ASR 軌」languageCode 動態決定(_pickSourceAsrTrack):
+  //   - 只有一條 kind='asr' → 就是它(一般影片,語言對應原始口說語)
+  //   - 多條 kind='asr'(自動配音影片:每條配音音軌各一條 ASR,順序每次載入不同)→ 依
+  //     bridge 帶來的 YouTube 訊號挑:hints.defaultCaptionTrackIndex(原音軌推薦字幕 index)
+  //     → hints.originalAudioLang(原音軌語言)→ 都沒有才退回第一條(舊行為,並記 log)
+  //   沒 ASR 軌（罕見：創作者只上手動字幕沒讓 YT 跑 ASR）→ 無法可靠決定 sourceLang → noop。
+  //   非原音的 ASR 軌(配音 ASR = 機器配音再辨識的二手字幕)不當 P1 原生候選。
   //
-  // Pure function：單純看 tracks + activeTrack + targetLanguage，不 mutate STATE、不 dispatch。
+  // Pure function：單純看 tracks + activeTrack + targetLanguage + hints，不 mutate STATE、不 dispatch。
   // 副作用由 _runCaptionTrackChooser 包裹 + activate flow 決定。
   // 回傳的 sourceLanguage 給 caller 傳遞給 background ASR prompt {sourceLanguage} placeholder 用。
   const _TARGET_NATIVE_LANGS = {
@@ -1215,19 +1219,50 @@
     return _TARGET_NATIVE_LANGS[targetLanguage] || [targetLanguage];
   }
 
+  // 從 tracks 挑出「影片原音」的 ASR 軌(源語推導的單一資料源)。
+  // 回傳 { track: <ASR track> | null, asrCount, via: 'single' | 'default-index' | 'audio-lang' | 'first-fallback' | 'none' }
+  // hints(來自 content-youtube-main.js player response bridge,皆可缺):
+  //   defaultCaptionTrackIndex — audioTracks[defaultAudioTrackIndex].defaultCaptionTrackIndex
+  //   originalAudioLang        — adaptiveFormats 內 audioIsDefault 音軌的語言(如 'en-US')
+  function _pickSourceAsrTrack(tracks, hints) {
+    const asrTracks = tracks.filter(t => t.kind === 'asr');
+    if (asrTracks.length === 0) return { track: null, asrCount: 0, via: 'none' };
+    if (asrTracks.length === 1) return { track: asrTracks[0], asrCount: 1, via: 'single' };
+    // 多條 ASR = 自動配音影片。順序不可信(每次載入不同),必須靠 YouTube 訊號。
+    const h = hints || {};
+    const byIdx = Number.isInteger(h.defaultCaptionTrackIndex) ? tracks[h.defaultCaptionTrackIndex] : null;
+    if (byIdx && byIdx.kind === 'asr') return { track: byIdx, asrCount: asrTracks.length, via: 'default-index' };
+    if (typeof h.originalAudioLang === 'string' && h.originalAudioLang) {
+      const full = h.originalAudioLang.toLowerCase();
+      const base = full.split('-')[0];
+      // 先全碼(en-US = en-US),再 base-lang(en-US ↔ en);ASR 軌 languageCode 與音軌 id 的
+      // 區域標記不一定一致(實測音軌 en-US.4 對 ASR 軌 `en`)
+      const byLang = asrTracks.find(t => (t.languageCode || '').toLowerCase() === full)
+                  || asrTracks.find(t => (t.languageCode || '').toLowerCase().split('-')[0] === base);
+      if (byLang) return { track: byLang, asrCount: asrTracks.length, via: 'audio-lang' };
+    }
+    return { track: asrTracks[0], asrCount: asrTracks.length, via: 'first-fallback' };
+  }
+
+  SK._pickSourceAsrTrack = _pickSourceAsrTrack;
+
   // tracks: [{ languageCode, kind: '' | 'asr', isTranslatable?, vssId?, name? }]
   // activeTrack: { languageCode, kind, translationLanguageCode } | null
   // targetLanguage: 'zh-TW' / 'zh-CN' / 'en' / ...
-  // 回傳： { action: 'skip' | 'switch' | 'switch-to-native' | 'noop', track?: <選中的 track>, reason }
-  function _chooseBestCaptionTrack(tracks, activeTrack, targetLanguage) {
+  // hints: { defaultCaptionTrackIndex?, originalAudioLang? }(見 _pickSourceAsrTrack,可省略)
+  // 回傳： { action: 'skip' | 'switch' | 'switch-to-native' | 'noop', track?: <選中的 track>, reason, sourceVia? }
+  function _chooseBestCaptionTrack(tracks, activeTrack, targetLanguage, hints) {
     if (!Array.isArray(tracks) || tracks.length === 0) {
       return { action: 'noop', reason: 'no-tracks' };
     }
     const targetLangs = _resolveTargetNativeLangs(targetLanguage);
+    const sourceAsr = _pickSourceAsrTrack(tracks, hints);
+    // 非原音的 ASR(配音 ASR)不算任何語言的原生候選:P1 / P1.5 只看手動軌 + 原音 ASR
+    const isNativeCandidate = t => t.kind !== 'asr' || t === sourceAsr.track;
 
-    // P1: target lang 原生 track（任 kind)。不分單語/雙語都優先切到 native target;
+    // P1: target lang 原生 track（手動任意 / ASR 限原音)。不分單語/雙語都優先切到 native target;
     // bilingualMode 下使用者後續手動切到非 target 軌時 Shinkansen 才接管翻譯+overlay。
-    const p1 = tracks.find(t => targetLangs.includes(t.languageCode));
+    const p1 = tracks.find(t => targetLangs.includes(t.languageCode) && isNativeCandidate(t));
     if (p1) {
       const activeIsP1 = activeTrack
         && activeTrack.languageCode === p1.languageCode
@@ -1251,7 +1286,7 @@
     const ambigSet = _AMBIGUOUS_LANGS_BY_TARGET[targetLanguage];
     if (ambigSet) {
       const p1b = tracks.find(t => ambigSet.has(t.languageCode) && (!t.kind || t.kind === ''))
-               || tracks.find(t => ambigSet.has(t.languageCode));
+               || tracks.find(t => ambigSet.has(t.languageCode) && isNativeCandidate(t));
       if (p1b) {
         const activeIsP1b = activeTrack
           && activeTrack.languageCode === p1b.languageCode
@@ -1264,8 +1299,8 @@
       }
     }
 
-    // 從唯一 ASR track 動態推導影片原始語（一支影片 YT 只會產一條 ASR）
-    const asrTrack = tracks.find(t => t.kind === 'asr');
+    // 從原音 ASR track 動態推導影片原始語(多條 ASR 時由 _pickSourceAsrTrack 依 hints 挑)
+    const asrTrack = sourceAsr.track;
     if (!asrTrack) {
       // 沒 ASR 軌 → 無法可靠決定 sourceLang（rare：創作者只上手動字幕）→ noop
       return { action: 'noop', reason: 'no-source-asr-track' };
@@ -1282,7 +1317,7 @@
       && (activeTrack.kind || '') === (desired.kind || '')
       && !activeTrack.translationLanguageCode;
     if (alreadyOnTarget) {
-      return { action: 'noop', track: desired, sourceLanguage: sourceLang, reason: 'already-on-target' };
+      return { action: 'noop', track: desired, sourceLanguage: sourceLang, reason: 'already-on-target', sourceVia: sourceAsr.via };
     }
 
     return {
@@ -1290,6 +1325,7 @@
       track: desired,
       sourceLanguage: sourceLang,
       reason: p2 ? 'p2-source-manual' : 'p3-source-asr',
+      sourceVia: sourceAsr.via,
     };
   }
 
@@ -1311,8 +1347,13 @@
       return 'noop';
     }
 
-    // Step 2：跑 pure function
-    const decision = _chooseBestCaptionTrack(detail.captionTracks, detail.activeTrack, targetLanguage);
+    // Step 2：跑 pure function(hints:自動配音影片多條 ASR 時挑原音 ASR 用)
+    const hints = {
+      defaultCaptionTrackIndex: detail.defaultCaptionTrackIndex,
+      originalAudioLang:        detail.originalAudioLang,
+    };
+    const decision = _chooseBestCaptionTrack(detail.captionTracks, detail.activeTrack, targetLanguage, hints);
+    const asrCount = Array.isArray(detail.captionTracks) ? detail.captionTracks.filter(t => t.kind === 'asr').length : 0;
     SK.sendLog('info', 'youtube', 'caption track chooser', {
       action:         decision.action,
       reason:         decision.reason,
@@ -1323,7 +1364,14 @@
       activeTransLang:detail.activeTrack?.translationLanguageCode,
       targetLanguage,
       trackCount:     detail.captionTracks?.length || 0,
+      asrCount,
+      sourceVia:      decision.sourceVia,
+      hintDefaultIdx: hints.defaultCaptionTrackIndex,
+      hintAudioLang:  hints.originalAudioLang,
     });
+    if (asrCount > 1 && decision.sourceVia === 'first-fallback') {
+      SK.sendLog('warn', 'youtube', 'chooser: multi-ASR video without usable source hints, fell back to first ASR track', { asrCount });
+    }
 
     // Step 3:'switch' 或 'switch-to-native' 命中 → dispatch setOption bridge + 等回應
     if (decision.action === 'switch' || decision.action === 'switch-to-native') {
@@ -3541,16 +3589,19 @@
       }
     }
 
+    // v1.10.46: 世代比對——in-flight 期間來源已切換(或 v2.5.1 起清過快取)的批次
+    // 不得標 translatedWindows,也不得抬高 coverage 高水位(v2.5.1:原本 coverage 寫在
+    // 世代比對之前,清快取 reset 歸零後又被 in-flight 視窗寫回)。
+    const _genStale = _myCaptionGen !== (YT.captionSourceGen || 0);
     // v1.2.46/v1.2.48: 記錄此視窗已翻完
-    YT.captionMapCoverageUpToMs = Math.max(YT.captionMapCoverageUpToMs, windowEndMs);
+    if (!_genStale) YT.captionMapCoverageUpToMs = Math.max(YT.captionMapCoverageUpToMs, windowEndMs);
     // v1.9.22: 只有「真的有譯文進帳」或「視窗本來就沒字幕」才加 translatedWindows。
     // 全 batches 失敗時不加,下次 seek 此視窗會重跑翻譯(避免「靜默空白」bug)。
     const _windowProducedTranslation =
       YT.captionMap.size > _cmSizeBefore ||
       YT.displayCues.length > _cuesCountBefore;
-    // v1.10.46: 世代比對——in-flight 期間來源已切換的批次不得標 translatedWindows
-    if (_myCaptionGen !== (YT.captionSourceGen || 0)) {
-      SK.sendLog('info', 'youtube', 'window finished after caption source switch — not marking translated', {
+    if (_genStale) {
+      SK.sendLog('info', 'youtube', 'window finished after caption source switch / cache clear — not marking translated', {
         windowStartMs, gen: _myCaptionGen, currentGen: YT.captionSourceGen,
       });
     } else if (windowSegs.length === 0 || _okBatchCount > 0 || _windowProducedTranslation) {
@@ -3926,6 +3977,11 @@
   SK.YT._resetTranslationStateForCacheClear = function _resetTranslationStateForCacheClear() {
     const YT = SK.YT;
     if (!YT) return;
+    // v2.5.1:清快取也 bump 世代——清當下 in-flight 的視窗批次是「清之前」的翻譯(可能部分
+    // 來自已清掉的快取命中),完成後不得回頭標 translatedWindows / 抬高 coverage 高水位,
+    // 否則清快取後那個視窗被當「已翻完」跳過,永遠不重翻(spec 內實測 race:reset 後
+    // coverage 又被 in-flight 視窗寫回 30000)。與 _resetCaptionSourceBookkeeping 同機制。
+    YT.captionSourceGen          = (YT.captionSourceGen || 0) + 1;
     YT.captionMap                = new Map();
     YT.translatedWindows         = new Set();
     YT.displayCues               = [];

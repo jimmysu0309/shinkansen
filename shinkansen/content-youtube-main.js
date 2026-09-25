@@ -104,6 +104,15 @@
     let playerResponseAvailable = false;
     let videoId = null;
     let activeTrack = null;
+    // 自動配音影片(v2.5.1 起):每條配音音軌各有一條 kind='asr' 字幕軌(實測 BiN5ERktXz0
+    // 英文口說影片有 20 條 ASR,且 captionTracks 順序每次載入不同),isolated 端 chooser
+    // 靠「唯一 ASR」推導源語會抓錯。多帶兩個 YouTube 自己的訊號讓 chooser 挑對原音 ASR:
+    //   defaultCaptionTrackIndex:audioTracks[defaultAudioTrackIndex].defaultCaptionTrackIndex
+    //     (YouTube 對該音軌推薦的預設字幕軌 index,實測所有音軌都指向原音語 ASR)
+    //   originalAudioLang:streamingData.adaptiveFormats 內 audioTrack.audioIsDefault 的音軌
+    //     語言(id 形如 `en-US.4`,取 `.` 前段);沒配音的影片沒 audioTrack 欄位 → null
+    let defaultCaptionTrackIndex = null;
+    let originalAudioLang = null;
     const player = document.querySelector('#movie_player');
     try {
       let resp = null;
@@ -115,7 +124,8 @@
       if (!resp) resp = window.ytInitialPlayerResponse;
       playerResponseAvailable = !!resp;
       videoId = resp?.videoDetails?.videoId || null;
-      const tracks = resp?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      const renderer = resp?.captions?.playerCaptionsTracklistRenderer;
+      const tracks = renderer?.captionTracks;
       if (Array.isArray(tracks)) {
         captionTracks = tracks.map((t) => ({
           languageCode:   t?.languageCode || null,
@@ -125,6 +135,21 @@
           name:           t?.name?.simpleText || t?.name?.runs?.[0]?.text || null,
         }));
       }
+      try {
+        const audioTracks = renderer?.audioTracks;
+        if (Array.isArray(audioTracks) && audioTracks.length > 0) {
+          const ai = Number.isInteger(renderer?.defaultAudioTrackIndex) ? renderer.defaultAudioTrackIndex : 0;
+          const idx = audioTracks[ai]?.defaultCaptionTrackIndex;
+          if (Number.isInteger(idx)) defaultCaptionTrackIndex = idx;
+        }
+      } catch (_) {}
+      try {
+        const formats = resp?.streamingData?.adaptiveFormats;
+        if (Array.isArray(formats)) {
+          const def = formats.find((f) => f?.audioTrack?.audioIsDefault && typeof f.audioTrack.id === 'string');
+          if (def) originalAudioLang = def.audioTrack.id.split('.')[0] || null;
+        }
+      } catch (_) {}
       // videoId 給 isolated world 跟 URL videoId 比對:走 fallback 快照時仍可能 stale,
       // videoId 對不上 = stale,isolated 端會 retry。
     } catch (_) {
@@ -143,7 +168,7 @@
       }
     } catch (_) {}
     window.dispatchEvent(new CustomEvent('shinkansen-yt-player-response', {
-      detail: { captionTracks, playerResponseAvailable, videoId, activeTrack },
+      detail: { captionTracks, playerResponseAvailable, videoId, activeTrack, defaultCaptionTrackIndex, originalAudioLang },
     }));
   });
 
