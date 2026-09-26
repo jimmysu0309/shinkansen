@@ -1,12 +1,8 @@
-# 本機備份
-.backups/
-
 # Node / Playwright
 node_modules/
 test-results/
 playwright-report/
 playwright/.cache/
-test/reports/
 
 # 本機打包輸出
 dist/
@@ -20,8 +16,6 @@ docs/excluded/
 
 # 含個人資訊的本機檔
 CLAUDE.md
-測試流程說明.md
-CLAUDE-TEMPLATE-*.md
 
 # 系統垃圾
 .DS_Store
@@ -33,14 +27,8 @@ CLAUDE-TEMPLATE-*.md
 .playwright-mcp/
 tools/probes/*.js
 
-# PDF layout snapshot baseline(本機素材對應)
-test/regression/pdf-layout-snapshots/
-
 # 本機規劃 / 筆記檔
-PDF-TRANSLATION-PLAN.md
-PLAN-send-to-instapaper.md
 SPEC-PRIVATE.md
-DEBUG-BOARD.md
 CODE-REVIEW-*.md
 
 # Claude Code 本機工作流(專案 skill / transient lock 等,含個人資訊,
