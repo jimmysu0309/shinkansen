@@ -147,8 +147,9 @@
   // v2.0.78（批次 4 A4/A5）：IMG 與 media-like 元素的 atomic 判定——序列化端與
   // countPairedInlineForGT 鏡像共用同一條（v2.0.61 序列化端加 media-like 時鏡像漏同步，
   // 抽共用讓下次改判定只有一處）。atomic 不產 paired 標記、不透明展開。
+  // 無文字的媒體外框整顆算 atomic：穿透的話 slot 只留內層媒體，外框帶的版面樣式跟著消失。
   function isGtAtomicMedia(child) {
-    return child.tagName === 'IMG' || SK.isMediaLikeElement(child);
+    return child.tagName === 'IMG' || SK.isMediaLikeElement(child) || SK.isTextlessMediaWrapper(child);
   }
 
   // v1.9.31: 判斷 element 是否含 element child(用於 Google MT 對 anchor atomic 判斷)。
@@ -537,7 +538,10 @@
           // PRESERVE_INLINE_TAGS → 透明展開,把框架內部實作節點(sizer img)抓成
           // slot、元件本體從 source 流消失,fragment clean-rebuild 後只剩內部空殼
           //(historyvshollywood 人物卡實例)。atomic 整顆 clone 讓元件完整還原。
-          if (imgAsSlot && (child.tagName === 'IMG' || SK.isMediaLikeElement(child))) {
+          // 無文字媒體外框同理整顆 clone(外框帶尺寸樣式,穿透後媒體撐到整欄寬)。element
+          // 路徑不開:這類節點不進 slot,注入端直接保留原節點(isMediaOnlyNode)。
+          if (imgAsSlot && (child.tagName === 'IMG' || SK.isMediaLikeElement(child)
+              || SK.isTextlessMediaWrapper(child))) {
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
             out += PH_OPEN + '*' + idx + PH_CLOSE;
@@ -854,7 +858,7 @@
           frag.appendChild(cloneReuse ? slot.node.cloneNode(true) : slot.node);
         } else if (slot.atomic) {
           const n = slot.node.cloneNode(true);
-          if (n.nodeType === Node.ELEMENT_NODE && n.tagName === 'IMG') _appendInlineImg(frag, n);
+          if (_isInlineImgNode(n)) _appendInlineImg(frag, n);
           else frag.appendChild(n);
         }
       }
@@ -908,6 +912,13 @@
   // atomic 節點補:前面若非空白結尾補一格 + 後面固定補一格,讓 emoji 有呼吸空間。
   // 不影響其他 atomic 類型(它們不是 IMG)、也不影響 element 路徑(emoji 走 A3
   // nodeValue-mutate 保留原 DOM、不經此放置)。
+  // 無文字的圖片外框（`<span><img></span>` emoji）跟裸 IMG 同樣需要間距
+  function _isInlineImgNode(node) {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    if (node.tagName === 'IMG') return true;
+    return !!node.querySelector('img') && !(node.textContent || '').trim();
+  }
+
   function _appendInlineImg(frag, imgNode) {
     const last = frag.lastChild;
     if (last) {
@@ -959,7 +970,7 @@
           // atomic + reuseNode(零文字 BUTTON)：注回原 el 的用途放活的原 node
           //(保留 listener / fiber)；比對 / 探測等 cloneReuse 用途仍走 clone
           const cloned = (slot.reuseNode && !cloneReuse) ? slot.node : slot.node.cloneNode(true);
-          if (cloned.nodeType === Node.ELEMENT_NODE && cloned.tagName === 'IMG') {
+          if (_isInlineImgNode(cloned)) {
             _appendInlineImg(frag, cloned);
           } else {
             _maybePadCjkLatinSpace(frag, cloned);
@@ -1008,7 +1019,7 @@
         } else if (slot && slot.atomic && slot.node) {
           // 同上 m[3] 臂：atomic + reuseNode 在非 cloneReuse 用途放活節點
           const cloned = (slot.reuseNode && !cloneReuse) ? slot.node : slot.node.cloneNode(true);
-          if (cloned.nodeType === Node.ELEMENT_NODE && cloned.tagName === 'IMG') {
+          if (_isInlineImgNode(cloned)) {
             _appendInlineImg(frag, cloned);
           } else {
             _maybePadCjkLatinSpace(frag, cloned);

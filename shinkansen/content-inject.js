@@ -291,14 +291,16 @@
       SK.CONTAINER_TAGS.has(c.tagName));
     const textBearingChildCount = Array.from(target.children).filter(c =>
       (c.textContent || '').trim().length > 0).length;
+    // atomic 節點已由 fragment 帶回,不是占位子(留著會與 clone 重複)。
     const hasEmptyPlaceholderChild = Array.from(target.children).some(c =>
-      c.children.length > 0 && (c.textContent || '').trim().length === 0);
+      c.children.length > 0 && (c.textContent || '').trim().length === 0
+      && !SK.isAtomicPreserve(c));
     const containsMediaOrPlaceholder = SK.containsMedia(target) || hasEmptyPlaceholderChild;
-    // 注入內容自身已含 IMG（Google MT atomic IMG slot deserialization 產生的 clone）
-    // 時跳過 (B)：(B) 會保留 target 原始 IMG，加上 fragment 裡的 clone = 圖片重複。
-    // fragment 已包含完整內容（含 IMG clone），走 (A) clean-slate 即可。
-    const contentHasImg = !isString && content.querySelector && content.querySelector('img');
-    if (containsMediaOrPlaceholder && !contentHasImg && textBearingChildCount <= 1
+    // 注入內容自身已含媒體（Google MT atomic slot deserialization 產生的 clone）時跳過
+    // (B)：(B) 會保留 target 原始媒體，加上 fragment 裡的 clone = 媒體重複。
+    // 媒體種類用 media-like 判定：只認 IMG 時 SVG 會重複，clone 又因脫離外框撐到整欄寬。
+    const contentHasMedia = !isString && SK.containsMediaLike(content);
+    if (containsMediaOrPlaceholder && !contentHasMedia && textBearingChildCount <= 1
         && (isHeading || !hasContainerChild || hasEmptyPlaceholderChild)) {
       // (B) media-preserving path
       if (!isString) {
@@ -355,20 +357,24 @@
     // 同時有 ≥ 2 個帶文字子元素(圖卡:圖 + 多行 <b>資訊)會被 textBearingChildCount
     // 守門踢出 (B),原本整顆清空 = 媒體蒸發(historyvshollywood 人物對照卡實例)。
     // 譯文 fragment 插回「第一個被清除節點」的位置,維持媒體/文字相對順序。
-    // contentHasImg(fragment 已含 IMG clone,Google MT atomic path)時不 spare,
-    // 否則原圖 + clone 重複。
+    // fragment 的媒體數量已涵蓋 target(Google MT atomic path)時不 spare,否則原圖 +
+    // clone 重複。比數量不比節點相等:lazy-load 在序列化之後才改 src 時 clone 已不相等。
     // 保留判準:自身無文字 + media-like(媒體 / embed / 無文字自訂元素,含 AMP
     // lazy 升級前後兩種空殼狀態;判定單一資料源見 content-ns.js SK.containsMediaLike)。
     // HR / 空 SPAN / BR 等一般空元素不 spare,維持既有 clean-slate 行為
     //(vBulletin TD>DIV+HR+DIV 場景的 HR 順序問題即靠清除解,v1.4.14)。
     const isMediaOnlyNode = (n) => n.nodeType === Node.ELEMENT_NODE
-      && (n.textContent || '').trim() === ''
+      && !SK.hasTextOutsideSvg(n)
       && SK.containsMediaLike(n);
+    const countMediaLike = (root) => Array.from(root.querySelectorAll('*'))
+      .filter(SK.isMediaLikeElement).length;
+    const contentCoversMedia = contentHasMedia
+      && countMediaLike(content) >= countMediaLike(target);
     const node = isString ? target.ownerDocument.createTextNode(content) : content;
     let insertRef = null;       // 譯文插入錨點 = 第一個被清除節點之後的首個保留節點
     let removedAny = false;
     for (const child of Array.from(target.childNodes)) {
-      if (!contentHasImg && isMediaOnlyNode(child)) {
+      if (!contentCoversMedia && isMediaOnlyNode(child)) {
         if (removedAny && !insertRef) insertRef = child;
         continue;
       }

@@ -924,6 +924,30 @@ if (window.__shinkansen_loaded) {
     return false;
   };
 
+  // 「圖示外框」判定（序列化層與注入層共用）：外框本身沒有可翻文字，但包著非文字內容，
+  // 版面樣式常寫在外框上（`.icon { width:22px }` + `.icon svg { width:100% }`）。序列化
+  // 若穿透外框只留內層媒體，重建後媒體失去尺寸來源，被撐到整欄寬。
+  // SVG 內的 <title> / <desc> / <text> 不算可翻文字：序列化本來就不處理 SVG 內部。
+  SK.hasTextOutsideSvg = function hasTextOutsideSvg(el) {
+    const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let t;
+    while ((t = walker.nextNode())) {
+      if (SK.hasSubstantiveText(t.nodeValue) && !t.parentElement?.closest('svg')) return true;
+    }
+    return false;
+  };
+
+  // 含表單 / 按鈕的子樹不當外框：deep clone 會失去 listener 與 fiber，維持往下走，
+  // 由 BUTTON 分支的 reuseNode 放回活節點
+  const _INTERACTIVE_SELECTOR = 'button, input, select, textarea';
+  SK.isTextlessMediaWrapper = function isTextlessMediaWrapper(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (SK.isMediaLikeElement(el)) return false;
+    if (!SK.containsMediaLike(el)) return false;
+    if (el.querySelector(_INTERACTIVE_SELECTOR)) return false;
+    return !SK.hasTextOutsideSvg(el);
+  };
+
   // 是否含有 block 後代（v1.1.9 重構：用 querySelector 取代 getElementsByTagName 迴圈）
   SK.containsBlockDescendant = function containsBlockDescendant(el) {
     return !!el.querySelector(SK.BLOCK_TAG_SELECTOR);
@@ -988,6 +1012,36 @@ if (window.__shinkansen_loaded) {
     return _ICON_FONT_RE.test(first);
   };
 
+  // 不含元素子節點的字型圖示：`<i class="fa-x"></i>`（圖示畫在 ::before / ::after）或
+  // `<i>\uF0C9</i>`（私有區字元，靠 class 指定的字型才顯示得出來）。兩者都沒有可翻文字，
+  // 外框一丟圖示就消失或變成豆腐字。
+  const _PUA_RE = /\p{Co}/u;
+  function isIconGlyphLeaf(el) {
+    if (el.children.length > 0) return false;
+    // 沒掛在頁面上就沒有渲染、也就沒有字型圖示：docx 的 run 是離線節點，Symbol 字元要
+    // 走 run 的格式往返，不可被當成圖示整顆保留
+    const win = el.ownerDocument?.defaultView;
+    if (!win || !el.isConnected) return false;
+    const txt = (el.textContent || '').trim();
+    if (txt) return _PUA_RE.test(txt) && !SK.hasSubstantiveText(txt);
+    return ['::before', '::after'].some((pseudo) => {
+      const content = win.getComputedStyle(el, pseudo).content;
+      return !!content && content !== 'none' && content !== 'normal';
+    });
+  }
+
+  // 字型圖示本身，或只包著字型圖示的無文字外框
+  SK.isIconGlyphElement = function isIconGlyphElement(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (SK.containsMediaLike(el)) return false;
+    if (el.children.length === 0) return isIconGlyphLeaf(el);
+    if (SK.hasTextOutsideSvg(el) || el.querySelector(_INTERACTIVE_SELECTOR)) return false;
+    for (const d of el.querySelectorAll('*')) {
+      if (d.children.length === 0 && isIconGlyphLeaf(d)) return true;
+    }
+    return false;
+  };
+
   // 「原子保留」子樹
   SK.isAtomicPreserve = function isAtomicPreserve(el) {
     if (el.tagName === 'SUP' && el.classList && el.classList.contains('reference')) return true;
@@ -997,6 +1051,7 @@ if (window.__shinkansen_loaded) {
     // 保留為 ⟦*N⟧ 不送 LLM（人名、icon 名）。偵測層對同樣訊號整顆 skip，見
     // content-detect.js isInsideExcludedContainer。
     if (SK.isNoTranslateMarked(el) || SK.isIconFontLigature(el)) return true;
+    if (SK.isIconGlyphElement(el)) return true;
     return false;
   };
 
