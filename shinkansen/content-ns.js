@@ -877,6 +877,17 @@ if (window.__shinkansen_loaded) {
     const style = SK.getCS(el);
     if (style) {
       if (style.visibility === 'hidden' || style.display === 'none') return false;
+      // display:contents 元素自己不產生 box：offsetParent 恆為 null、自身 rect 恆為 0×0，
+      // 量自己必判成不可見（圖說 `<span><p style="display:contents">` 整段漏翻）。
+      // 改量子內容的 range——祖先 display:none 時 range 一樣是 0×0，隱藏判斷不失效
+      if (style.display === 'contents') {
+        try {
+          const range = el.ownerDocument.createRange();
+          range.selectNodeContents(el);
+          const r = range.getBoundingClientRect();
+          return !(r.width === 0 && r.height === 0);
+        } catch (_e) { return true; }
+      }
     }
     let rect = null;
     if (el.offsetParent === null) {
