@@ -113,6 +113,7 @@
     //     語言（id 形如 `en-US.4`，取 `.` 前段）；沒配音的影片沒 audioTrack 欄位 → null
     let defaultCaptionTrackIndex = null;
     let originalAudioLang = null;
+    let title = null; // 沒 ASR 軌也沒音軌資訊時，isolated 端用標題文字系統猜原始語
     const player = document.querySelector('#movie_player');
     try {
       let resp = null;
@@ -146,10 +147,30 @@
       try {
         const formats = resp?.streamingData?.adaptiveFormats;
         if (Array.isArray(formats)) {
-          const def = formats.find((f) => f?.audioTrack?.audioIsDefault && typeof f.audioTrack.id === 'string');
+          // 原音音軌：優先認 xtags 內 YouTube 明示的 `acont=original`（base64 protobuf，
+          // 解出來含 acont…original…lang…），配音軌是 dubbed / dubbed-auto；
+          // 沒 xtags 才退 audioIsDefault（「預設音軌」多數情況就是原音）
+          const withTrack = formats.filter((f) => typeof f?.audioTrack?.id === 'string');
+          const isOriginal = (f) => {
+            try {
+              const raw = atob(String(f.xtags || '').replace(/-/g, '+').replace(/_/g, '/'));
+              return /acont[\s\S]{0,4}original/.test(raw);
+            } catch (_) { return false; }
+          };
+          const def = withTrack.find(isOriginal) || withTrack.find((f) => f.audioTrack.audioIsDefault);
           if (def) originalAudioLang = def.audioTrack.id.split('.')[0] || null;
         }
       } catch (_) {}
+      // adaptiveFormats 拿不到音軌資訊時，退字幕 renderer 的預設音軌 id（形如 `ja.4`）
+      try {
+        if (!originalAudioLang) {
+          const audioTracks = renderer?.audioTracks;
+          const ai = Number.isInteger(renderer?.defaultAudioTrackIndex) ? renderer.defaultAudioTrackIndex : -1;
+          const id = Array.isArray(audioTracks) ? audioTracks[ai]?.audioTrackId : null;
+          if (typeof id === 'string' && id) originalAudioLang = id.split('.')[0] || null;
+        }
+      } catch (_) {}
+      title = typeof resp?.videoDetails?.title === 'string' ? resp.videoDetails.title : null;
       // videoId 給 isolated world 跟 URL videoId 比對:走 fallback 快照時仍可能 stale,
       // videoId 對不上 = stale,isolated 端會 retry。
     } catch (_) {
@@ -168,7 +189,7 @@
       }
     } catch (_) {}
     window.dispatchEvent(new CustomEvent('shinkansen-yt-player-response', {
-      detail: { captionTracks, playerResponseAvailable, videoId, activeTrack, defaultCaptionTrackIndex, originalAudioLang },
+      detail: { captionTracks, playerResponseAvailable, videoId, activeTrack, defaultCaptionTrackIndex, originalAudioLang, title },
     }));
   });
 

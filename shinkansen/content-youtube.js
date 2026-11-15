@@ -1244,9 +1244,12 @@
   // 影片原始語從 captionTracks 的「原音 ASR 軌」languageCode 動態決定（_pickSourceAsrTrack）：
   //   - 只有一條 kind='asr' → 就是它（一般影片，語言對應原始口說語）
   //   - 多條 kind='asr'（自動配音影片：每條配音音軌各一條 ASR，順序每次載入不同）→ 依
-  //     bridge 帶來的 YouTube 訊號挑：hints.defaultCaptionTrackIndex（原音軌推薦字幕 index）
-  //     → hints.originalAudioLang（原音軌語言）→ 都沒有才退回第一條（舊行為，並記 log）
-  //   沒 ASR 軌（罕見：創作者只上手動字幕沒讓 YT 跑 ASR）→ 無法可靠決定 sourceLang → noop。
+  //     bridge 帶來的 YouTube 訊號挑：hints.originalAudioLang（原音軌語言，與觀看者無關）
+  //     → hints.defaultCaptionTrackIndex（原音軌推薦字幕 index，會受帳號字幕偏好影響）
+  //     → 都沒有才退回第一條（舊行為，並記 log）
+  //   沒 ASR 軌（創作者上傳手動字幕後 YouTube 常不再列自動字幕，並不罕見）→ _resolveSourceLanguage
+  //   依序退：原音音軌語言 → 唯一手動軌 → 標題文字系統；全無訊號才 noop
+  //   （active 是 YT 自動翻譯軌時仍切回未翻譯版，避免二手翻譯）。
   //   非原音的 ASR 軌（配音 ASR = 機器配音再辨識的二手字幕）不當 P1 原生候選。
   //
   // Pure function：單純看 tracks + activeTrack + targetLanguage + hints，不 mutate STATE、不 dispatch。
@@ -1290,8 +1293,9 @@
     if (asrTracks.length === 1) return { track: asrTracks[0], asrCount: 1, via: 'single' };
     // 多條 ASR = 自動配音影片。順序不可信（每次載入不同），必須靠 YouTube 訊號。
     const h = hints || {};
-    const byIdx = Number.isInteger(h.defaultCaptionTrackIndex) ? tracks[h.defaultCaptionTrackIndex] : null;
-    if (byIdx && byIdx.kind === 'asr') return { track: byIdx, asrCount: asrTracks.length, via: 'default-index' };
+    // 先認原音音軌語言（bridge 由 YouTube 明示的 original 標記取得，與觀看者無關），
+    // 再退 defaultCaptionTrackIndex：後者會受觀看者帳號的字幕語言偏好影響
+    // （實測 KRqTLZ1YCLg 登入帳號下，日文原音音軌的 defaultCaptionTrackIndex 指向英文軌）
     if (typeof h.originalAudioLang === 'string' && h.originalAudioLang) {
       const full = h.originalAudioLang.toLowerCase();
       const base = full.split('-')[0];
@@ -1301,10 +1305,69 @@
                   || asrTracks.find(t => (t.languageCode || '').toLowerCase().split('-')[0] === base);
       if (byLang) return { track: byLang, asrCount: asrTracks.length, via: 'audio-lang' };
     }
+    const byIdx = Number.isInteger(h.defaultCaptionTrackIndex) ? tracks[h.defaultCaptionTrackIndex] : null;
+    if (byIdx && byIdx.kind === 'asr') return { track: byIdx, asrCount: asrTracks.length, via: 'default-index' };
     return { track: asrTracks[0], asrCount: asrTracks.length, via: 'first-fallback' };
   }
 
   SK._pickSourceAsrTrack = _pickSourceAsrTrack;
+
+  // 依語言碼找軌：先全碼相等，再 base-lang 相等（音軌 `en-US` ↔ 字幕軌 `en`）。pred 可限 kind。
+  function _findTrackByLang(tracks, lang, pred) {
+    if (!lang) return null;
+    const full = String(lang).toLowerCase();
+    const base = full.split('-')[0];
+    const ok = pred || (() => true);
+    return tracks.find(t => ok(t) && (t.languageCode || '').toLowerCase() === full)
+        || tracks.find(t => ok(t) && (t.languageCode || '').toLowerCase().split('-')[0] === base)
+        || null;
+  }
+
+  // 由標題文字系統猜語言（只認文字系統本身能定案的：假名 → ja、諺文 → ko、純漢字 → zh）。
+  // 拉丁字母分不出英 / 西 / 法 / 德 → null。刻意不用 SK.detectTextLang（它會被頁面 html lang 短路）。
+  function _guessLangFromTitle(title) {
+    if (typeof title !== 'string' || !title) return null;
+    let kana = 0, hangul = 0, han = 0, latin = 0;
+    for (const ch of title) {
+      const c = ch.codePointAt(0);
+      if ((c >= 0x3040 && c <= 0x30FF)) kana++;
+      else if (c >= 0xAC00 && c <= 0xD7AF) hangul++;
+      else if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF)) han++;
+      else if ((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)) latin++;
+    }
+    if (kana >= 2) return 'ja';
+    if (hangul >= 2) return 'ko';
+    if (han >= 4 && han > latin) return 'zh';
+    return null;
+  }
+
+  // 影片原始語推導的單一入口。回傳 { lang, asrTrack, via }：
+  //   1) 有 ASR 軌 → 原音 ASR 的語言（_pickSourceAsrTrack；via = single / default-index / audio-lang / first-fallback）
+  //   以下是「沒有任何 ASR 軌」的影片（創作者上傳手動字幕後 YouTube 不再列自動字幕，
+  //   實測 KRqTLZ1YCLg：日文原音 + 英文自動配音，字幕軌只有手動 ja / en）：
+  //   2) 原音音軌語言（hints.originalAudioLang）且有該語言的軌 → via 'audio-lang-manual'
+  //   3) 只有一條手動軌 → 就是它（via 'single-manual'）
+  //   4) 標題文字系統對得上某條手動軌 → via 'title-lang'
+  //   都沒有 → lang=null（caller 決定 noop / 拿掉自動翻譯）
+  function _resolveSourceLanguage(tracks, hints, sourceAsr) {
+    const picked = sourceAsr || _pickSourceAsrTrack(tracks, hints);
+    if (picked.track) return { lang: picked.track.languageCode, asrTrack: picked.track, via: picked.via };
+    const h = hints || {};
+    if (typeof h.originalAudioLang === 'string' && h.originalAudioLang) {
+      const byAudio = _findTrackByLang(tracks, h.originalAudioLang);
+      if (byAudio) return { lang: byAudio.languageCode, asrTrack: null, via: 'audio-lang-manual' };
+    }
+    if (tracks.length === 1) return { lang: tracks[0].languageCode, asrTrack: null, via: 'single-manual' };
+    const guess = _guessLangFromTitle(h.title);
+    if (guess) {
+      const byTitle = _findTrackByLang(tracks, guess);
+      if (byTitle) return { lang: byTitle.languageCode, asrTrack: null, via: 'title-lang' };
+    }
+    return { lang: null, asrTrack: null, via: 'none' };
+  }
+
+  SK._resolveSourceLanguage = _resolveSourceLanguage;
+  SK._guessLangFromTitle = _guessLangFromTitle;
 
   // tracks: [{ languageCode, kind: '' | 'asr', isTranslatable?, vssId?, name? }]
   // activeTrack: { languageCode, kind, translationLanguageCode } | null
@@ -1359,17 +1422,28 @@
       }
     }
 
-    // 從原音 ASR track 動態推導影片原始語（多條 ASR 時由 _pickSourceAsrTrack 依 hints 挑）
-    const asrTrack = sourceAsr.track;
-    if (!asrTrack) {
-      // 沒 ASR 軌 → 無法可靠決定 sourceLang（rare：創作者只上手動字幕）→ noop
-      return { action: 'noop', reason: 'no-source-asr-track' };
+    // 影片原始語推導（_resolveSourceLanguage：原音 ASR → 原音音軌語言 → 唯一手動軌 → 標題文字系統）
+    const source = _resolveSourceLanguage(tracks, hints, sourceAsr);
+    if (!source.lang) {
+      // 原始語完全無從判斷。至少把 YT 自動翻譯拿掉（避免「原文 → YT 機翻 → Shinkansen 再翻」二手翻譯）：
+      // active 是某軌的自動翻譯版 → 切回同一條軌的未翻譯版
+      if (activeTrack && activeTrack.translationLanguageCode) {
+        const base = tracks.find(t => t.languageCode === activeTrack.languageCode
+          && (t.kind || '') === (activeTrack.kind || ''));
+        if (base) {
+          return { action: 'switch', track: base, sourceLanguage: base.languageCode, reason: 'p4-drop-auto-translation', sourceVia: 'none' };
+        }
+      }
+      return { action: 'noop', reason: 'no-source-signal', sourceVia: 'none' };
     }
-    const sourceLang = asrTrack.languageCode;
+    const sourceLang = source.lang;
 
-    // P2: 原始語 manual track（creator-uploaded，品質高過 ASR）
-    const p2 = tracks.find(t => t.languageCode === sourceLang && (!t.kind || t.kind === ''));
-    const desired = p2 || asrTrack;
+    // P2: 原始語 manual track（creator-uploaded，品質高過 ASR）；P3: 原音 ASR
+    const p2 = _findTrackByLang(tracks, sourceLang, t => !t.kind || t.kind === '');
+    const desired = p2 || source.asrTrack;
+    if (!desired) {
+      return { action: 'noop', reason: 'no-source-lang-track', sourceLanguage: sourceLang, sourceVia: source.via };
+    }
 
     // 當前 active track 已是目標 track 且沒被自翻譯 → 不必再切
     const alreadyOnTarget = activeTrack
@@ -1377,7 +1451,7 @@
       && (activeTrack.kind || '') === (desired.kind || '')
       && !activeTrack.translationLanguageCode;
     if (alreadyOnTarget) {
-      return { action: 'noop', track: desired, sourceLanguage: sourceLang, reason: 'already-on-target', sourceVia: sourceAsr.via };
+      return { action: 'noop', track: desired, sourceLanguage: sourceLang, reason: 'already-on-target', sourceVia: source.via };
     }
 
     return {
@@ -1385,7 +1459,7 @@
       track: desired,
       sourceLanguage: sourceLang,
       reason: p2 ? 'p2-source-manual' : 'p3-source-asr',
-      sourceVia: sourceAsr.via,
+      sourceVia: source.via,
     };
   }
 
@@ -1411,6 +1485,7 @@
     const hints = {
       defaultCaptionTrackIndex: detail.defaultCaptionTrackIndex,
       originalAudioLang:        detail.originalAudioLang,
+      title:                    detail.title,
     };
     const decision = _chooseBestCaptionTrack(detail.captionTracks, detail.activeTrack, targetLanguage, hints);
     const asrCount = Array.isArray(detail.captionTracks) ? detail.captionTracks.filter(t => t.kind === 'asr').length : 0;
