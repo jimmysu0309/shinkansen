@@ -1,9 +1,10 @@
 // doc-file-translate-harness.js — txt / md / html / 字幕檔文件翻譯端到端自驗 harness（v2.0.87）
 //
 // 用法：
-//   node tools/harness/doc-file-translate-harness.js [--kind txt|md|html|srt|vtt|ass[,…]] [--csv-only]
+//   node tools/harness/doc-file-translate-harness.js [--kind txt|md|md-noletter|md-structure|html|html-sjis|html-latin1|srt|vtt|ass|srt-big5[,…]] [--csv-only]
 //
 //   省略 --kind 時六種格式全跑（逗號可列多種）。--csv-only 只驗術語表 CSV 匯入（不打翻譯 API）。
+//   UI_LANG=en 可指定介面語言（預設跟瀏覽器），翻譯後會印出累計費用實際顯示的字。
 //
 // 行為（每種格式）：
 //   1. fresh profile 載入 unpacked extension，注入 ~/.shinkansen-test-key、
@@ -74,6 +75,21 @@ const BIG5_SRT_BYTES = Buffer.concat([
   Buffer.from('\r\n', 'latin1'),
 ]);
 FIXTURES['srt-big5'] = { name: 'sample-big5.srt', bytes: BIG5_SRT_BYTES };
+// 無字母的標題 / 清單行（code review 2026-11-15 P1-1：修前解析無窮迴圈，分頁卡死）
+FIXTURES['md-noletter'] = {
+  name: 'sample-changelog.md',
+  content: '# Changelog\n\n## 1.2.3\n\n- 100\n- Fixed the lantern flicker bug.\n\n* * *\n\n## 1.2.2\n\nThe keeper now logs the tide every morning.\n',
+};
+// Markdown 結構保護（code review 2026-11-15 E-6）：front matter / 縮排程式碼 / 清單內深縮排 fence /
+// 清單項縮排續段 / 連結參照定義
+FIXTURES['md-structure'] = {
+  name: 'sample-structure.md',
+  content: '---\ntitle: Lighthouse Notes\ntags: [sea, lamp]\ndraft: false\n---\n\n# Lighthouse Notes\n\nRead the [keeper guide][guide] before the first night shift.\n\n1. Light the lamp at dusk:\n\n    ```bash\n    lamp --ignite --slow\n    ```\n\n    Wait until the flame is steady before you leave the room.\n\n2. Write the tide level in the logbook.\n\nThe old signal code looked like this:\n\n    FLASH 3 LONG\n    PAUSE 2\n\n[guide]: https://example.com/keeper-guide "Keeper Guide"\n',
+};
+// 非 UTF-8 的 HTML（code review 2026-11-15 P1-2）：宣告 Shift_JIS 的日文頁、宣告
+// iso-8859-1 的西文頁。驗「依宣告解碼 → 譯文檔宣告改成 utf-8 → 本機重開不亂碼」
+FIXTURES['html-sjis'] = { name: 'sample-sjis.html', bytes: Buffer.from('3c21444f43545950452068746d6c3e0a3c68746d6c206c616e673d226a61223e0a3c686561643e3c6d65746120687474702d65717569763d22436f6e74656e742d547970652220636f6e74656e743d22746578742f68746d6c3b20636861727365743d53686966745f4a4953223e3c7469746c653e939491e43c2f7469746c653e3c2f686561643e0a3c626f64793e0a3c68313e939491e48ee782cc95a88cea3c2f68313e0a3c703e939491e48ee782cd968894d3814182e782b982f18a4b926982f0936f82e882dc82b582bd81423c2f703e0a3c703e96e996be82af82c9814194de82cd93fa8e8f82c988ea8d7382be82af8f9182ab82dc82b582bd81423c2f703e0a3c2f626f64793e0a3c2f68746d6c3e0a', 'hex') };
+FIXTURES['html-latin1'] = { name: 'sample-latin1.html', bytes: Buffer.from('3c68746d6c3e0a3c686561643e3c6d65746120636861727365743d2269736f2d383835392d31223e3c7469746c653e436166e93c2f7469746c653e3c2f686561643e0a3c626f64793e0a3c703e54686520636166e920627920746865206c69676874686f757365206f70656e73206174206e6f6f6e2e3c2f703e0a3c703e5365f16f72204efaf1657a20736572766573206372e86d65206272fb6ce965206576657279206576656e696e672e3c2f703e0a3c2f626f64793e0a3c2f68746d6c3e0a', 'hex') };
 const SUBTITLE_KINDS = new Set(['srt', 'vtt', 'ass', 'srt-big5']);
 
 const CSV_FIXTURE = {
@@ -106,17 +122,18 @@ async function launch() {
   const extId = new URL(sw.url()).host;
   const page = await ctx.newPage();
   await page.goto(`chrome-extension://${extId}/translate-doc/index.html`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(async ({ apiKey }) => {
+  await page.evaluate(async ({ apiKey, uiLang }) => {
     await chrome.storage.local.set({ apiKey, translateDocPresetSlot: 1 });
     await chrome.storage.sync.set({
       targetLanguage: 'zh-TW',
+      ...(uiLang ? { uiLanguage: uiLang } : {}),
       translatePresets: [
         { label: 'lite', engine: 'gemini', model: 'gemini-3.1-flash-lite' },
         { label: 'lite2', engine: 'gemini', model: 'gemini-3.1-flash-lite' },
         { label: 'lite3', engine: 'gemini', model: 'gemini-3.1-flash-lite' },
       ],
     });
-  }, { apiKey: API_KEY });
+  }, { apiKey: API_KEY, uiLang: process.env.UI_LANG || '' });
   await page.reload({ waitUntil: 'domcontentloaded' });
   return { ctx, page };
 }
@@ -155,6 +172,12 @@ async function runKind(kind) {
       return { done, failed };
     });
     console.log('[harness] 翻譯結果：', after);
+    // 累計費用實際顯示的字（UI_LANG=en 時驗非繁中介面顯示美金）
+    const costSeen = await page.evaluate(() => ['chapters-cumulative-cost', 'translated-cost'].map((id) => {
+      const el = document.getElementById(id);
+      return { id, text: el ? el.textContent : null, visible: !!el && el.getClientRects().length > 0 };
+    }));
+    console.log('[harness] 累計費用顯示：', JSON.stringify(costSeen));
     await page.screenshot({ path: path.join(OUT_DIR, `docfile-${kind}-after.png`), fullPage: true });
 
     // 下載譯文檔
@@ -168,6 +191,46 @@ async function runKind(kind) {
     console.log('[harness] 譯文檔：', dl.suggestedFilename(), '→', outPath);
     console.log('[harness] ── 譯文檔內容 ──');
     console.log(fs.readFileSync(outPath, 'utf-8'));
+    if (kind === 'md-noletter') {
+      // 無字母行必須原樣留在輸出
+      const out = fs.readFileSync(outPath, 'utf-8');
+      const ok = out.includes('## 1.2.3\n') && out.includes('- 100\n') && out.includes('* * *\n') && out.includes('## 1.2.2\n');
+      console.log('[harness] 無字母行原樣保留：', ok ? 'PASS' : 'FAIL');
+      if (!ok) process.exitCode = 1;
+    }
+    if (kind === 'md-structure') {
+      const out = fs.readFileSync(outPath, 'utf-8');
+      const checks = {
+        'front matter 原樣': out.startsWith('---\ntitle: Lighthouse Notes\ntags: [sea, lamp]\ndraft: false\n---\n'),
+        '清單內 fence 原樣': out.includes('\n    ```bash\n    lamp --ignite --slow\n    ```\n'),
+        '縮排程式碼原樣': out.includes('\n    FLASH 3 LONG\n    PAUSE 2\n'),
+        '參照定義原樣': out.includes('\n[guide]: https://example.com/keeper-guide "Keeper Guide"\n'),
+        '續段保留 4 格縮排且已翻成中文': /\n {4}[^\n]*[\u4e00-\u9fff][^\n]*\n\n2\. /.test(out),
+        '內文連結的參照 id 還在': out.includes('[guide]'),
+      };
+      for (const [k, v] of Object.entries(checks)) { console.log(`[harness] ${k}：`, v ? 'PASS' : 'FAIL'); if (!v) process.exitCode = 1; }
+    }
+    if (kind.startsWith('html-')) {
+      // 譯文檔用 file:// 重開：瀏覽器判定的編碼、宣告、實際看到的內文 + 截圖
+      const bytes = fs.readFileSync(outPath);
+      let utf8Ok = true;
+      try { new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (_) { utf8Ok = false; }
+      const viewer = await ctx.newPage();
+      await viewer.goto('file://' + outPath);
+      const seen = await viewer.evaluate(() => ({
+        charset: document.characterSet,
+        decls: [...document.querySelectorAll('meta[charset], meta[http-equiv]')].map((m) => m.outerHTML),
+        text: document.body.innerText,
+      }));
+      await viewer.screenshot({ path: path.join(OUT_DIR, `docfile-${kind}-reopened.png`), fullPage: true });
+      await viewer.close();
+      const srcText = await page.evaluate(() => window.__skEpubDoc.chapters[0].blocks.map((b) => b.plainText).join(' | '));
+      console.log('[harness] 解碼原文：', srcText);
+      console.log('[harness] 重開譯文檔：', JSON.stringify(seen, null, 2));
+      const ok = utf8Ok && seen.charset === 'UTF-8' && !/[\uFFFD]|Ã|â€|ƒ/.test(seen.text + srcText);
+      console.log('[harness] 編碼驗證：', ok ? 'PASS' : 'FAIL');
+      if (!ok) process.exitCode = 1;
+    }
     if (kind === 'srt-big5') {
       // 輸出必為合法 UTF-8（fatal 解碼不拋）且原文字幕（雙語 / 未翻露出）不含亂碼
       const bytes = fs.readFileSync(outPath);
@@ -255,7 +318,7 @@ async function runCsvImport() {
 }
 
 if (!CSV_ONLY) {
-  for (const kind of ['txt', 'md', 'html', 'srt', 'vtt', 'ass', 'srt-big5']) {
+  for (const kind of ['txt', 'md', 'md-noletter', 'md-structure', 'html', 'html-sjis', 'html-latin1', 'srt', 'vtt', 'ass', 'srt-big5']) {
     if (ONLY_KINDS && !ONLY_KINDS.has(kind)) continue;
     await runKind(kind);
   }

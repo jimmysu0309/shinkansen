@@ -3,8 +3,8 @@
 
 import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, isLegacyDefaultForbiddenTerms, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault, LOCAL_SETTINGS_KEYS, migrateLargeKeysToLocalIfNeeded, overlayLocalSettings, splitSettingsPatch } from '../lib/storage.js';
-import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
-import { sanitizeImport as sanitizeImportImpl, importChangesCustomProviderOrigin } from './import-sanitize.js';
+import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms, resolveDisplayCurrency } from '../lib/format.js';
+import { sanitizeImport as sanitizeImportImpl, importChangesCustomProviderOrigin, mergeImportOverCurrent, isDifferentOrigin, IMPORT_MERGE_KEYS } from './import-sanitize.js';
 import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 import { isTouchScreenDevice } from '../lib/platform.js';
@@ -16,10 +16,41 @@ const DEFAULTS = DEFAULT_SETTINGS;
 // v1.4.12: 模型參考價統一由 lib/model-pricing.js 提供，與 background.js 共用同一份，
 // 避免兩邊不同步（以前 background 用 settings.pricing 單一值，options 用 local 表，
 // preset 切換 model 時 toast 會算錯）。此處做 input/output key 轉換保留原 options.js 介面。
-import { MODEL_PRICING as LIB_MODEL_PRICING, DEFAULT_GEMINI_CACHED_DISCOUNT } from '../lib/model-pricing.js';
+// 內建價走 builtInPricingTable()（含有期限促銷價的日期切換），不直接讀靜態表。
+import { builtInPricingTable, MODEL_PRICING_PROMOS, isPromoActive, isExpiredPromoPricing, LAST_CALIBRATED_DATE, DEFAULT_GEMINI_CACHED_DISCOUNT, temperatureSupport } from '../lib/model-pricing.js';
 const MODEL_PRICING = Object.fromEntries(
-  Object.entries(LIB_MODEL_PRICING).map(([model, p]) => [model, { input: p.inputPerMTok, output: p.outputPerMTok }])
+  Object.entries(builtInPricingTable()).map(([model, p]) => [model, { input: p.inputPerMTok, output: p.outputPerMTok }])
 );
+
+// 設定頁上所有寫著內建單價的字樣（模型選單「（$0.75 / $3.75）」、模型計價區的「內建 $…」
+// 與覆蓋欄位 placeholder、校準日期）一律以 MODEL_PRICING 現值改寫。HTML 與 i18n 字典裡的
+// 數字只是 fallback 文字：促銷價到期後不必改八語字典，價格表是唯一來源。
+// applyI18n 會把字樣重設回字典值，所以每次 applyI18n 之後都要再跑一次。
+const _PRICE_LABEL_RE = /\$\d+(?:\.\d+)?\s*\/\s*\$\d+(?:\.\d+)?/;
+function refreshModelPriceLabels() {
+  for (const [model, p] of Object.entries(MODEL_PRICING)) {
+    const label = `$${p.input.toFixed(2)} / $${p.output.toFixed(2)}`;
+    for (const opt of document.querySelectorAll(`option[value="${model}"]`)) {
+      if (_PRICE_LABEL_RE.test(opt.textContent)) opt.textContent = opt.textContent.replace(_PRICE_LABEL_RE, label);
+    }
+    const row = document.querySelector(`.model-pricing-row[data-model="${model}"]`);
+    if (!row) continue;
+    const hint = row.querySelector('.model-pricing-label small[data-i18n]');
+    if (hint && _PRICE_LABEL_RE.test(hint.textContent)) {
+      let text = hint.textContent.replace(_PRICE_LABEL_RE, label);
+      // 促銷結束後拿掉句尾的「（2026 促銷價）」註記（各語言都是句尾一組括號）
+      if (MODEL_PRICING_PROMOS[model] && !isPromoActive(model)) {
+        text = text.replace(/\s*[（(][^（()）]*[）)]\s*$/, '');
+      }
+      hint.textContent = text;
+    }
+    const inputs = row.querySelectorAll('input[type="number"]');
+    if (inputs[0]) inputs[0].placeholder = p.input.toFixed(2);
+    if (inputs[1]) inputs[1].placeholder = p.output.toFixed(2);
+  }
+  const cal = document.getElementById('pricing-calibrated-date');
+  if (cal) cal.textContent = LAST_CALIBRATED_DATE;
+}
 
 
 // v1.6.15: 全域 #model dropdown 已移除（v1.4.12 起 preset modelOverride 涵蓋
@@ -87,6 +118,8 @@ async function load() {
   // settings.geminiConfig.model 仍保留 storage 結構（避免 migration）但 UI 不顯示。
   $('serviceTier').value = s.geminiConfig.serviceTier;
   $('temperature').value = s.geminiConfig.temperature;
+  // 字幕模型選「與主模型相同」時實際用的模型（UI 沒有全域 model 下拉，refreshTemperatureNotes 要用）
+  _mainGeminiModel = s.geminiConfig.model || DEFAULTS.geminiConfig.model;
   $('maxOutputTokens').value = s.geminiConfig.maxOutputTokens;
   $('systemInstruction').value = s.geminiConfig.systemInstruction;
   // v1.6.16: 後備路徑單價 UI 已移除（對應 input element 不存在），不再從 settings 載入到 UI。
@@ -260,7 +293,8 @@ async function load() {
   $('cp-inputPerMTok').value = cp.inputPerMTok != null ? cp.inputPerMTok : '';
   $('cp-outputPerMTok').value = cp.outputPerMTok != null ? cp.outputPerMTok : '';
   // v1.9.2: cache 命中折扣 — UI 顯示百分比(0-100),儲存仍為比例(0-1);null/undefined → 空白
-  $('cp-cachedDiscount').value = (Number.isFinite(Number(cp.cachedDiscount))
+  // null 不可直接 Number()（Number(null) = 0 會顯示成 0，下次存檔就真的存成 0% 折扣）
+  $('cp-cachedDiscount').value = (cp.cachedDiscount != null && cp.cachedDiscount !== '' && Number.isFinite(Number(cp.cachedDiscount))
     ? Math.round(Number(cp.cachedDiscount) * 100)
     : '');
   // v1.6.18: thinking 控制
@@ -301,7 +335,11 @@ async function load() {
   } else {
     ytModelSel.value = '';
   }
-  const ytPricing = yt.pricing;
+  // 存的是「已過期促銷價」→ 那是當初選模型時自動帶入的舊內建價，顯示改用現價
+  //（背景計費同一判斷：background.js ytPricingOverride）
+  const ytPricing = isExpiredPromoPricing(savedYtModel, yt.pricing) && MODEL_PRICING[savedYtModel]
+    ? { inputPerMTok: MODEL_PRICING[savedYtModel].input, outputPerMTok: MODEL_PRICING[savedYtModel].output }
+    : yt.pricing;
   $('ytInputPerMTok').value  = ytPricing?.inputPerMTok  != null ? ytPricing.inputPerMTok  : '';
   $('ytOutputPerMTok').value = ytPricing?.outputPerMTok != null ? ytPricing.outputPerMTok : '';
 
@@ -330,6 +368,7 @@ async function load() {
     }
     updatePresetModelVisibility(slot);
   }
+  refreshTemperatureNotes();
   // 自訂快速鍵：storage 讀回值消毒後渲染 recorder 顯示
   shortcutTable = SC ? SC.sanitizeTable(s.customShortcuts) : shortcutTable;
   renderShortcutRecorders();
@@ -402,6 +441,7 @@ async function load() {
   if (I18N) {
     const dictLang = I18N.getUiLanguage($('uiLanguage')?.value || s.uiLanguage || 'auto');
     I18N.applyI18n(document, dictLang);
+    refreshModelPriceLabels();
     { const _vEl = $('options-version');
       if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
     // refreshSlotDropdownLabels 在 load() 較早處(line ~273)已跑過一次,但當時
@@ -420,6 +460,8 @@ async function load() {
     updateYtPromptCostHint();
     // 網域術語表清單的「（路徑範圍）」後綴是動態 _t()，picker value sync 後重組
     refreshDomainKeyLabels();
+    // Temperature 註記同理：picker value sync 後才拿得到正確語言；此時術語表 / 字幕模型下拉也已載入
+    refreshTemperatureNotes();
     // 只訂閱一次(load() 多次呼叫,見 _uiLangChangeSubscribed 宣告處註解)
     if (!_uiLangChangeSubscribed) {
     _uiLangChangeSubscribed = true;
@@ -717,6 +759,14 @@ function getSelectedCurrency() {
   return ['USD', 'TWD'].includes(v) ? v : 'TWD';
 }
 
+// 實際顯示用的幣別：非繁中介面一律 USD（幣別選項只在繁中介面出現），繁中介面照 radio。
+// 存檔仍存 radio 值（getSelectedCurrency），這裡只管顯示。判斷本體在 lib/format.js
+function getDisplayCurrency() {
+  const I18N = window.__SK?.i18n;
+  const uiLang = I18N ? I18N.getUiLanguage($('uiLanguage')?.value || 'auto') : 'zh-TW';
+  return resolveDisplayCurrency(getSelectedCurrency(), uiLang);
+}
+
 // v1.8.41：當前幣值 + 匯率快取狀態，給 fmt helpers 用，避免每次顯示都 await
 let currentCurrencyState = { currency: 'TWD', rate: 31.6, fetchedAt: 0, source: 'fallback' };
 
@@ -762,6 +812,12 @@ function _updateCurrencySectionVisibility() {
   const uiPref = $('uiLanguage')?.value || 'auto';
   const dictLang = I18N ? I18N.getUiLanguage(uiPref) : 'zh-TW';
   sec.hidden = (dictLang !== 'zh-TW');
+  // 介面語言切換會改變實際顯示幣別（非繁中一律 USD）→ 同步狀態並重畫用量分頁
+  const next = getDisplayCurrency();
+  if (currentCurrencyState.currency !== next) {
+    currentCurrencyState.currency = next;
+    if (typeof rerenderUsageWithCurrency === 'function') rerenderUsageWithCurrency();
+  }
 }
 
 // v1.8.41:更新「目前匯率」顯示文字 + radio 同步
@@ -776,7 +832,7 @@ async function refreshExchangeRateDisplay() {
     const resp = await browser.runtime.sendMessage({ type: 'EXCHANGE_RATE_GET' });
     if (resp?.ok) {
       currentCurrencyState = {
-        currency: getSelectedCurrency(),
+        currency: getDisplayCurrency(),
         rate: resp.rate,
         fetchedAt: resp.fetchedAt,
         source: resp.source,
@@ -807,6 +863,42 @@ function updatePresetModelVisibility(slot) {
   const engine = $(`preset-engine-${slot}`).value;
   const row = $(`preset-model-row-${slot}`);
   if (row) row.hidden = (engine === 'google' || engine === 'openai-compat');
+}
+
+// ─── Temperature 欄位可用狀態 ─────────────────────────────
+// Gemini 3.6+ / 3.5 Flash-Lite 已淘汰 temperature（請求端不送，見 lib/gemini.js
+// buildTemperatureField）。欄位實際套用的模型全部不支援 → 停用並註明；部分不支援 → 可調，
+// 註明只對哪些模型生效。判準單一資料源：lib/model-pricing.js temperatureSupport。
+// 各欄位套用的模型：
+//   temperature（網頁翻譯）     = 三組預設中引擎為 Gemini 的模型
+//   glossaryTemperature          = 術語擷取模型；選「與主翻譯模型相同」→ 同上
+//   ytTemperature                = 字幕模型；選「與主模型相同」→ geminiConfig.model
+let _mainGeminiModel = DEFAULTS.geminiConfig.model;
+function _presetGeminiModels() {
+  const out = [];
+  for (const slot of [1, 2, 3]) {
+    if ($(`preset-engine-${slot}`)?.value === 'gemini') out.push($(`preset-model-${slot}`)?.value);
+  }
+  return out;
+}
+function _applyTemperatureNote(inputId, models) {
+  const input = $(inputId);
+  const note = $(`${inputId}-note`);
+  if (!input || !note) return;
+  const { status, supported } = temperatureSupport(models);
+  input.disabled = status === 'none';
+  note.hidden = status === 'all';
+  note.textContent = status === 'none'
+    ? _t('options.tempNote.none')
+    : (status === 'partial' ? _t('options.tempNote.partial', { models: supported.join(' / ') }) : '');
+}
+function refreshTemperatureNotes() {
+  const presetModels = _presetGeminiModels();
+  _applyTemperatureNote('temperature', presetModels);
+  const glossaryModel = $('glossaryModel')?.value;
+  _applyTemperatureNote('glossaryTemperature', glossaryModel ? [glossaryModel] : presetModels);
+  const ytModel = $('ytModel')?.value;
+  _applyTemperatureNote('ytTemperature', [ytModel || _mainGeminiModel]);
 }
 
 // 「工具列翻譯本頁按鈕」「自動翻譯網站」兩個下拉選單的 option text
@@ -1348,6 +1440,7 @@ function applyUiLanguageRefresh(dictLang) {
   const I18N = window.__SK?.i18n;
   if (!I18N) return;
   I18N.applyI18n(document, dictLang);
+  refreshModelPriceLabels();
   { const _vEl = $('options-version');
     if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
   // iOS 上架提示 pill 的 storefront 跟著 UI 語系走
@@ -1366,6 +1459,8 @@ function applyUiLanguageRefresh(dictLang) {
   updateYtPromptCostHint();
   // 網域術語表清單 / 面板標題的「（路徑範圍）」後綴跟上新語言
   refreshDomainKeyLabels();
+  // Temperature 註記是動態 _t() 文字，跟上新語言
+  refreshTemperatureNotes();
 }
 
 // P2 (v1.8.60):#uiLanguage picker change handler — 立刻寫 storage(UI 跟著切),
@@ -1485,7 +1580,12 @@ $('gemini-reset-all')?.addEventListener('click', () => {
 // v1.4.13: preset engine 下拉切換時隱藏/顯示 model row
 for (const slot of [1, 2, 3]) {
   $(`preset-engine-${slot}`).addEventListener('change', () => updatePresetModelVisibility(slot));
+  // 引擎 / 模型一變，Temperature 欄位的可用狀態跟著重算
+  $(`preset-engine-${slot}`).addEventListener('change', refreshTemperatureNotes);
+  $(`preset-model-${slot}`).addEventListener('change', refreshTemperatureNotes);
 }
+$('glossaryModel').addEventListener('change', refreshTemperatureNotes);
+$('ytModel').addEventListener('change', refreshTemperatureNotes);
 
 // preset 標籤輸入時即時刷新「工具列翻譯本頁按鈕」「自動翻譯網站」兩個下拉選單的顯示文字
 for (const slot of [1, 2, 3]) {
@@ -1595,7 +1695,7 @@ function rerenderUsageWithCurrency() {
 
 for (const r of document.querySelectorAll('input[name="displayCurrency"]')) {
   r.addEventListener('change', () => {
-    currentCurrencyState.currency = getSelectedCurrency();
+    currentCurrencyState.currency = getDisplayCurrency();
     rerenderUsageWithCurrency();
   });
 }
@@ -1611,7 +1711,7 @@ $('refresh-rate-btn')?.addEventListener('click', async () => {
     const resp = await browser.runtime.sendMessage({ type: 'EXCHANGE_RATE_REFRESH' });
     if (resp?.ok) {
       currentCurrencyState = {
-        currency: getSelectedCurrency(),
+        currency: getDisplayCurrency(),
         rate: resp.rate,
         fetchedAt: resp.fetchedAt,
         source: resp.source,
@@ -1854,11 +1954,27 @@ async function resetSyncPreservingLinks(storage) {
 $('reset-defaults').addEventListener('click', async () => {
   if (!confirm(_t('options.reset.confirm'))) return;
   // v0.62 起：apiKey 在 browser.storage.local，不在 sync 裡，clear sync 不影響 apiKey。
+  // 自訂模型金鑰例外（code review 2026-11-15 O-2）：回復預設會把端點改回預設主機，
+  // 原端點若是別的主機，那把金鑰留著就會被送到預設主機 → 一併清掉並告知；
+  // 端點本來就在預設主機（同 origin）則保留
+  const defaultCpBaseUrl = DEFAULT_SETTINGS.customProvider.baseUrl;
+  const { customProvider: cpBeforeReset } = await browser.storage.sync.get('customProvider');
+  const cpBaseUrlBeforeReset = (cpBeforeReset && typeof cpBeforeReset.baseUrl === 'string')
+    ? cpBeforeReset.baseUrl : defaultCpBaseUrl;
+  let cpKeyCleared = false;
+  if (isDifferentOrigin(cpBaseUrlBeforeReset, defaultCpBaseUrl)) {
+    const { customProviderApiKey } = await browser.storage.local.get('customProviderApiKey');
+    if (customProviderApiKey) {
+      await browser.storage.local.remove('customProviderApiKey');
+      cpKeyCleared = true;
+    }
+  }
   await resetSyncPreservingLinks(browser.storage.sync);
   // 固定術語表 / 禁用詞存 local（批次 6）：回復預設也要清
   await browser.storage.local.remove(LOCAL_SETTINGS_KEYS);
   await load();
   showSaveBar('saved', _t('options.reset.done'));
+  if (cpKeyCleared) alert(_t('options.io.importCpKeyCleared', { url: defaultCpBaseUrl }).trim());
 });
 
 // v0.88: 舊的 view-logs 按鈕已移除，Log 改為獨立分頁
@@ -1905,21 +2021,29 @@ $('import-input').addEventListener('change', async (e) => {
       alert(_t('options.io.importNoFields'));
       return;
     }
+    // 子物件以「現值 ← 匯入值」逐欄合併後才寫入（code review 2026-11-15 O-2）：
+    // sync.set 是整顆取代，匯入檔沒列的欄位不可因此被重設回預設
+    const curSync = await browser.storage.sync.get(IMPORT_MERGE_KEYS);
+    const merged = mergeImportOverCurrent(clean, curSync);
     // 2026-10-20 security review：baseUrl 換到不同 origin 時清掉既有自訂模型金鑰，
-    // 避免匯入檔把使用者的 Bearer key 導到別的主機（規則見 importChangesCustomProviderOrigin）
+    // 避免匯入檔把使用者的 Bearer key 導到別的主機（規則見 importChangesCustomProviderOrigin）。
+    // 2026-11-15 O-3：origin 會變時一律先跳確認並顯示新網址（不論有沒有金鑰）——端點一換，
+    // 之後用自訂模型翻譯的頁面原文就送往新主機；取消 = 整份匯入不寫入
     let cpKeyClearedNote = '';
-    const { customProvider: curCp } = await browser.storage.sync.get('customProvider');
+    const curCp = curSync.customProvider;
     const curBaseUrl = (curCp && typeof curCp.baseUrl === 'string')
       ? curCp.baseUrl : DEFAULT_SETTINGS.customProvider.baseUrl;
-    if (importChangesCustomProviderOrigin(curBaseUrl, clean)) {
+    if (importChangesCustomProviderOrigin(curBaseUrl, merged)) {
+      const nextUrl = merged.customProvider.baseUrl;
+      if (!confirm(_t('options.io.importEndpointConfirm', { url: nextUrl, from: curBaseUrl }))) return;
       const { customProviderApiKey } = await browser.storage.local.get('customProviderApiKey');
       if (customProviderApiKey) {
         await browser.storage.local.remove('customProviderApiKey');
-        cpKeyClearedNote = _t('options.io.importCpKeyCleared', { url: clean.customProvider.baseUrl });
+        cpKeyClearedNote = _t('options.io.importCpKeyCleared', { url: nextUrl });
       }
     }
     // 固定術語表 / 禁用詞走 local（批次 6）
-    const { syncPart, localPart } = splitSettingsPatch(clean);
+    const { syncPart, localPart } = splitSettingsPatch(merged);
     if (Object.keys(localPart).length > 0) await browser.storage.local.set(localPart);
     if (Object.keys(syncPart).length > 0) await browser.storage.sync.set(syncPart);
     await load();

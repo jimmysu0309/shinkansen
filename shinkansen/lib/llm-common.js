@@ -42,11 +42,18 @@ export function emptyUsage() {
 export function addUsage(a, b) {
   const x = a || {};
   const y = b || {};
-  return {
+  const out = {
     inputTokens: (x.inputTokens || 0) + (y.inputTokens || 0),
     outputTokens: (x.outputTokens || 0) + (y.outputTokens || 0),
     cachedTokens: (x.cachedTokens || 0) + (y.cachedTokens || 0),
   };
+  // Priority 被降級成 Standard 處理的部分（gemini.js 標記，lib/billing.js computeBilling 讀）。
+  // 有值才帶，沒有降級時 usage 形狀不變
+  for (const k of ['stdInputTokens', 'stdOutputTokens', 'stdCachedTokens']) {
+    const v = (x[k] || 0) + (y[k] || 0);
+    if (v > 0) out[k] = v;
+  }
+  return out;
 }
 
 /**

@@ -47,7 +47,9 @@
         <span data-i18n="doc.settingsPage.label.temperature">翻譯創意度（temperature）</span>
         <input type="number" id="td-temperature" step="0.05" min="0" max="2" style="max-width:120px">
       </label>
-      <small class="muted" style="display:block;margin-top:4px;margin-bottom:14px" data-i18n="doc.settingsPage.hint.temperature">數字越低翻譯越穩定（人名 / 術語前後一致、用詞保守），越高越有創意（行文流暢但可能跑掉）。範圍 0–2，預設 0.5。合約 / 技術文件適合 0.3–0.5；散文 / 文章可調到 1 左右。改數字後再翻同一份文件會自動重翻（不會用舊的）</small>
+      <!-- 模型不支援 Temperature 時由 settings.js refreshTemperatureNote() 顯示（文字走 t()） -->
+      <small class="muted temp-note" id="td-temperature-note" hidden></small>
+      <small class="muted" style="display:block;margin-top:4px;margin-bottom:14px" data-i18n="doc.settingsPage.hint.temperature">控制翻譯用詞的隨機程度，範圍 0–2，預設 1。Gemini 3 模型建議維持 1，調低可能讓翻譯品質變差。改數字後再翻同一份文件會自動重翻（不會用舊的）</small>
 
       <div class="danger-zone">
         <strong data-i18n="doc.settingsPage.danger.title">清除所有文件翻譯記憶</strong>

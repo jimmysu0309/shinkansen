@@ -57,6 +57,31 @@ export async function clearTcCacheForTexts(texts) {
   return matched.length;
 }
 
+// 清一份文件（PDF LayoutDoc）所有可翻譯段落的譯文快取，並把段落翻譯狀態重置成未翻。
+// 快取 key 由背景以「實際送翻文字」算——PDF 段落送的是 buildMarkedText(block)（含粗體 /
+// 斜體 / 連結的 ⟦b⟧ ⟦i⟧ ⟦l:N⟧ 標記），不是 plainText；這裡必須用同一個函式取文字，
+// 否則帶樣式的段落 hash 對不上、清不掉（「清除本篇翻譯記憶」按了仍秒回舊譯文）。
+// 送翻與清除共用 buildMarkedText = 單一資料源，prefix 掃描共用 clearTcCacheForTexts
+export async function clearTcCacheForDoc(doc) {
+  const blocks = [];
+  for (const page of (doc && doc.pages) || []) {
+    for (const block of page.blocks || []) {
+      if (!TRANSLATABLE_TYPES.has(block.type)) continue;
+      if (!(block.plainText && block.plainText.trim())) continue;
+      blocks.push(block);
+    }
+  }
+  if (blocks.length === 0) return { removedKeyCount: 0, translatableSegmentCount: 0 };
+  const removedKeyCount = await clearTcCacheForTexts(blocks.map((b) => buildMarkedText(b)));
+  // 重置 block 翻譯狀態,讓 reader / debug overlay 看起來「重新可翻」
+  for (const block of blocks) {
+    block.translation = undefined;
+    block.translationStatus = undefined;
+    block.translationError = undefined;
+  }
+  return { removedKeyCount, translatableSegmentCount: blocks.length };
+}
+
 /**
  * 文章術語表的輸入取樣:按 reading order 收 translatable block 的 plainText,
  * 累計達 maxChars 截斷。給 index.js extractGlossaryForDoc 用(抽出來可 unit 測)。

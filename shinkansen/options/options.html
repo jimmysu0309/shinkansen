@@ -564,6 +564,8 @@
       <label>
         <span data-i18n="options.gemini.params.tempLabel">Temperature</span>
         <input type="number" id="temperature" step="0.1" min="0" max="2">
+        <!-- 模型不支援 Temperature 時由 options.js refreshTemperatureNotes() 顯示（文字走 _t） -->
+        <small class="muted temp-note" id="temperature-note" hidden></small>
         <small class="muted" data-i18n="options.gemini.params.tempHint">控制回覆的隨機程度。數字越低翻譯越穩定一致，越高則越有創意但可能偏離原意，範圍 0–2，預設 1.0（Gemini 3 Flash 原廠預設值）</small>
       </label>
       <details class="advanced-details">
@@ -717,6 +719,7 @@
         <label>
           <span data-i18n="options.glossary.auto.tempLabel">術語表 Temperature</span>
           <input type="number" id="glossaryTemperature" step="0.1" min="0" max="2">
+          <small class="muted temp-note" id="glossaryTemperature-note" hidden></small>
           <small class="muted" data-i18n="options.glossary.auto.tempHint">控制術語擷取的穩定度，越低越穩定。預設 0.1，一般不需調整</small>
         </label>
         <label>
@@ -1118,10 +1121,10 @@
 
     <section>
       <h2 data-i18n="options.yt.auto.heading">自動翻譯</h2>
-      <p class="muted" data-i18n="options.yt.auto.hint">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動點工具列圖示開啟開關</p>
+      <p class="muted" data-i18n="options.yt.auto.hint">開啟後進入 YouTube、Google Drive 或 X 的影片頁面時，會自動開始翻譯字幕，不需手動點工具列圖示開啟開關。工具列圖示選單裡的字幕開關只影響當下那個分頁，不會改這項設定</p>
       <label class="checkbox-label">
         <input type="checkbox" id="ytAutoTranslate">
-        <span data-i18n="options.yt.auto.toggle">偵測到 YouTube 影片時自動翻譯字幕</span>
+        <span data-i18n="options.yt.auto.toggle">偵測到影片時自動翻譯字幕（YouTube / Google Drive / X）</span>
       </label>
     </section>
 
@@ -1186,6 +1189,7 @@
           <label>
             <span data-i18n="options.yt.gemini.tempLabel">Temperature</span>
             <input type="number" id="ytTemperature" step="0.05" min="0" max="2">
+            <small class="muted temp-note" id="ytTemperature-note" hidden></small>
           </label>
         </details>
       </section>

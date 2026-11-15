@@ -30,7 +30,9 @@
   const RE_STRAY_HALF_CLOSE_G = new RegExp('[\\*\\/]\\d+' + PH_CLOSE, 'g');
   const RE_STRAY_BRACKETS_G = new RegExp('[' + PH_OPEN + PH_CLOSE +
     SK.BRACKET_ALIASES_OPEN.join('') + SK.BRACKET_ALIASES_CLOSE.join('') + ']', 'g');
-  const RE_NORM_ANNOTATED_G = new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)[ \\t]+\\S[^' + PH_CLOSE + ']{0,28}' + PH_CLOSE, 'g');
+  // 加注範圍同時排除 ⟦：模型把 ⟦0⟧ 寫成 ⟦0（漏 ⟧）時，只排除 ⟧ 會一路吃到下一個標記的 ⟧，
+  // 把「⟦0 連結文字⟦/0⟧」整段當加注刪掉。漏寫的 ⟧ 由 RE_NORM_MANGLED_CLOSE_G 補
+  const RE_NORM_ANNOTATED_G = new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)[ \\t]+[^\\s' + PH_OPEN + PH_CLOSE + '][^' + PH_OPEN + PH_CLOSE + ']{0,28}' + PH_CLOSE, 'g');
   const RE_NORM_SPACED_G = new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)\\s*' + PH_CLOSE, 'g');
   const RE_NORM_MANGLED_CLOSE_G = new RegExp(PH_OPEN + '(\\*?\\/?\\d+)(?:[»›❱》〉≫]|(?=[^' + PH_CLOSE + '0-9])|$)', 'g');
   const RE_HALF_BROKEN_TOK_G = new RegExp(PH_OPEN + '(\\*)?(\\/)?(\\d+)' + PH_CLOSE, 'g');
@@ -60,9 +62,13 @@
 
   // ─── 序列化 ───────────────────────────────────────────
 
-  SK.serializeWithPlaceholders = function serializeWithPlaceholders(el) {
+  // opts.imgAsSlot：呼叫端會把整個元素內容清掉重建（文件翻譯的 EPUB / HTML 寫回）時必須開——
+  // 網頁 element 路徑不開是因為注入端保留原節點，圖不會掉；清掉重建的呼叫端沒有這層保護，
+  // 段內的圖 / 影音 / SVG 不進 slot 就會從輸出消失
+  SK.serializeWithPlaceholders = function serializeWithPlaceholders(el, opts) {
     return serializeNodeIterable(el.childNodes, {
       preserveNewlines: shouldPreserveTextNewlines(el),
+      imgAsSlot: !!(opts && opts.imgAsSlot),
     });
   };
 
@@ -87,6 +93,8 @@
   // 退化路徑,該段失去 <a> 連結保留(anchor text 變純文字)但譯文不會壞掉。
   // Atomic 標記(【*N】)不受影響——probe 顯示連 8 個 atomic 都不會亂。
   const GT_MAX_PAIRED_SLOTS = 5;
+  // 原文字面長得像 Google 路徑標記的編號（【1】、[/2] 等；位數設上限，年份以上的數字不可能撞序號但照算無妨）
+  const RE_GT_LITERAL_MARKER_G = /[【\[][*\/]?(\d{1,9})[】\]]/g;
 
   // 鏡像 serializeNodeIterableForGoogle 的分支順序估算「非 degrade 模式下會產出的
   // paired marker 對數」。兩者是同一份事實的雙面——序列化端改 paired 產出規則時本函式
@@ -187,14 +195,35 @@
     // v1.8.13: paired marker 過閾值 → 降級為純文字模式(slots 仍可含
     // atomic,但不再產生 paired【N】/【/N】標記)。
     const degrade = countPairedInlineForGT(topLevelNodes) > GT_MAX_PAIRED_SLOTS;
+    // 標記先以內部 token（\u0002 種類+序號 \u0003）寫進 out，走完才換成【N】：原文字面若有
+    //「【1】」這類編號（日文 / 中文頁常見），標記序號要從「字面最大編號 + 1」起跳，還原時才分得出
+    // 哪個是我們的標記、哪個是原文——字面最大編號要走完整段才知道
+    let maxLiteral = -1;
+    const gtTok = (kind, idx) => '\u0002' + kind + idx + '\u0003';
+    const gtText = (v) => {
+      if (!v) return v;
+      if (v.indexOf('\u0002') >= 0 || v.indexOf('\u0003') >= 0) v = v.replace(/[\u0002\u0003]/g, '');
+      if (v.indexOf('】') >= 0 || v.indexOf(']') >= 0) {
+        RE_GT_LITERAL_MARKER_G.lastIndex = 0;
+        let lm;
+        while ((lm = RE_GT_LITERAL_MARKER_G.exec(v)) !== null) {
+          const n = Number(lm[1]);
+          if (n > maxLiteral) maxLiteral = n;
+        }
+      }
+      return v;
+    };
     function walk(nodeList) {
       for (const child of nodeList) {
         if (child.nodeType === Node.TEXT_NODE) {
           // pre/pre-wrap/pre-line:textNode 內 \n 是視覺換行,轉  跟 BR 共用 sentinel,
           // 避開後續 /\s+/g collapse 把 \n 壓成 space。
+          {
+          const _tv = gtText(child.nodeValue);
           out += preserveNewlines
-            ? child.nodeValue.replace(/\n/g, '')
-            : child.nodeValue;
+            ? _tv.replace(/\n/g, '')
+            : _tv;
+          }
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           // Inline <code> 在 HARD_EXCLUDE_TAGS 是給 walker 擋整個 code 區塊用的,
           // 但段落內 inline <code> 走到 serialize 已是另一條路徑,必須當 atomic
@@ -207,13 +236,13 @@
             if (codeAsPaired) {
               const idx = slots.length;
               slots.push(child.cloneNode(false));
-              out += '【' + idx + '】';
+              out += gtTok('', idx);
               walk(child.childNodes);
-              out += '【/' + idx + '】';
+              out += gtTok('/', idx);
             } else {
               const idx = slots.length;
               slots.push({ atomic: true, node: child.cloneNode(true) });
-              out += '【*' + idx + '】';
+              out += gtTok('*', idx);
             }
             continue;
           }
@@ -226,9 +255,9 @@
             if (!degrade) {
               const idx = slots.length;
               slots.push({ reuseNode: true, node: child });
-              out += '【' + idx + '】';
+              out += gtTok('', idx);
               walk(child.childNodes);
-              out += '【/' + idx + '】';
+              out += gtTok('/', idx);
             } else {
               walk(child.childNodes);
             }
@@ -239,7 +268,7 @@
           if (child.tagName === 'BUTTON') {
             const idx = slots.length;
             slots.push({ atomic: true, reuseNode: true, node: child });
-            out += '【*' + idx + '】';
+            out += gtTok('*', idx);
             continue;
           }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
@@ -248,7 +277,7 @@
           if (SK.isAtomicPreserve(child)) {
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
-            out += '【*' + idx + '】';
+            out += gtTok('*', idx);
             continue;
           }
           // v1.9.31: 含 element child 的 anchor 走 atomic deep clone path。
@@ -279,10 +308,10 @@
             if (_p && SK.BLOCK_TAGS_SET.has(_p.tagName) && _p.children.length === 1) {
               const idx = slots.length;
               slots.push(child.cloneNode(false));
-              out += '【' + idx + '】';
+              out += gtTok('', idx);
               for (const ac of child.childNodes) {
                 if (ac.nodeType === Node.TEXT_NODE) {
-                  out += ac.nodeValue;
+                  out += gtText(ac.nodeValue);
                 } else if (ac.nodeType === Node.ELEMENT_NODE) {
                   if (SK.HARD_EXCLUDE_TAGS.has(ac.tagName)) continue;
                   // BR 輸出 \u0001 sentinel(與主路徑 / LLM 路徑一致)。批次 8 A10 審視:原字面
@@ -292,18 +321,18 @@
                   if (hasElementChild(ac) || !(ac.textContent || '').trim()) {
                     const aidx = slots.length;
                     slots.push({ atomic: true, node: ac.cloneNode(true) });
-                    out += '【*' + aidx + '】';
+                    out += gtTok('*', aidx);
                   } else {
                     walk([ac]);
                   }
                 }
               }
-              out += '【/' + idx + '】';
+              out += gtTok('/', idx);
               continue;
             }
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
-            out += '【*' + idx + '】';
+            out += gtTok('*', idx);
             continue;
           }
           // v1.9.31: IMG 走 atomic deep clone(Twitter / X 用 IMG render emoji)。
@@ -323,7 +352,7 @@
           if (isGtAtomicMedia(child)) {
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
-            out += '【*' + idx + '】';
+            out += gtTok('*', idx);
             continue;
           }
           // 語意行內標籤 → 配對標記（保留格式）
@@ -334,9 +363,9 @@
           if (!degrade && SK.GT_INLINE_TAGS.has(child.tagName)) {
             const idx = slots.length;
             slots.push(child.cloneNode(false));
-            out += '【' + idx + '】';
+            out += gtTok('', idx);
             walk(child.childNodes);
-            out += '【/' + idx + '】';
+            out += gtTok('/', idx);
             continue;
           }
           // SPAN、ABBR 及其他非語意元素 → 只取文字，不加標記
@@ -351,7 +380,12 @@
       .replace(/\u0001{3,}/g, '\u0001\u0001')
       .replace(/\u0001/g, '\n')
       .trim();
-    return { text: normalized, slots };
+    const base = maxLiteral + 1;
+    // base 掛在 slots 陣列上：slots 以同一個參照一路傳到還原端（packBatches 不複製）
+    if (base > 0) slots.gtMarkerBase = base;
+    const text = normalized.replace(/\u0002([*\/]?)(\d+)\u0003/g,
+      (m, kind, d) => '【' + kind + (Number(d) + base) + '】');
+    return { text, slots };
   }
 
   SK.serializeForGoogleTranslate = function serializeForGoogleTranslate(el) {
@@ -380,16 +414,26 @@
   // Google MT 有時會把 CJK 括號【】正規化成 ASCII 括號 []。
   // 只在偵測到 [/N] 或 [*N]（自然文字不會出現的 pattern）時才啟動
   // ASCII fallback，避免把 footnote [0] / [1] 之類誤判為 marker。
-  SK.restoreGoogleTranslateMarkers = function restoreGoogleTranslateMarkers(s) {
+  // slots（選填）：帶了就只認「落在實際 slot 範圍內」的序號，並扣掉序列化端的起跳值
+  //（slots.gtMarkerBase）；範圍外的【N】/ [N] 是原文字面，原樣留著
+  SK.restoreGoogleTranslateMarkers = function restoreGoogleTranslateMarkers(s, slots) {
+    var base = (slots && slots.gtMarkerBase) || 0;
+    var count = slots ? slots.length : Infinity;
+    var conv = function (prefix) {
+      return function (m, d) {
+        var i = Number(d) - base;
+        return (i >= 0 && i < count) ? PH_OPEN + prefix + i + PH_CLOSE : m;
+      };
+    };
     var result = s
-      .replace(/【\*(\d+)】/g, PH_OPEN + '*$1' + PH_CLOSE)
-      .replace(/【(\d+)】/g,   PH_OPEN + '$1'  + PH_CLOSE)
-      .replace(/【\/(\d+)】/g, PH_OPEN + '/$1' + PH_CLOSE);
+      .replace(/【\*(\d+)】/g, conv('*'))
+      .replace(/【(\d+)】/g,   conv(''))
+      .replace(/【\/(\d+)】/g, conv('/'));
     if (/\[\/\d+\]|\[\*\d+\]/.test(result)) {
       result = result
-        .replace(/\[\*(\d+)\]/g, PH_OPEN + '*$1' + PH_CLOSE)
-        .replace(/\[(\d+)\]/g,   PH_OPEN + '$1'  + PH_CLOSE)
-        .replace(/\[\/(\d+)\]/g, PH_OPEN + '/$1' + PH_CLOSE);
+        .replace(/\[\*(\d+)\]/g, conv('*'))
+        .replace(/\[(\d+)\]/g,   conv(''))
+        .replace(/\[\/(\d+)\]/g, conv('/'));
     }
     return result;
   };
@@ -398,10 +442,18 @@
   // 只對 opening ⟦N⟧ / atomic ⟦*N⟧ 前和 closing ⟦/N⟧ / atomic ⟦*N⟧ 後補空格;
   // 不動 ⟦N⟧ 後(slot 內容起始)與 ⟦/N⟧ 前(slot 內容結尾)。
   SK.ensureCJKSlotSpacing = function ensureCJKSlotSpacing(s) {
+    if (!targetUsesCjkLatinSpacing()) return s;
     return s
       .replace(/([一-鿿㐀-䶿])(⟦\*?\d+⟧)/g, '$1 $2')
       .replace(/(⟦[/*]\d+⟧)([一-鿿㐀-䶿])/g, '$1 $2');
   };
+
+  // 「漢字與拉丁字之間補空格」是中文排版慣例，只對中文 target 做。日文 / 韓文譯文同樣含漢字，
+  // 不 gate 的話同一句內「漢字結尾補、假名結尾不補」，空格時有時無
+  function targetUsesCjkLatinSpacing() {
+    const t = SK.STATE && SK.STATE.targetLanguage;
+    return !t || t === 'zh-TW' || t === 'zh-CN';
+  }
 
   SK.serializeFragmentWithPlaceholders = function serializeFragmentWithPlaceholders(unit) {
     const nodes = [];
@@ -547,6 +599,11 @@
             out += PH_OPEN + '*' + idx + PH_CLOSE;
             continue;
           }
+          // element 路徑的 SVG：不走進去。<title> / <desc> 是無障礙標籤、不是正文，混進送翻
+          // 內容後譯文會多出一段「外部連結」之類的字。SVG 節點本身不進 slot，由注入端保留
+          // 原節點（同 element 路徑的 IMG）。fragment 路徑已在上一個分支整顆當 atomic。
+          // Google 路徑對應 isGtAtomicMedia，兩邊都不讓 SVG 內部文字進 payload
+          if (SK.isSvgElement(child)) continue;
           if (SK.isAtomicPreserve(child)) {
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
@@ -811,6 +868,24 @@
 
   // ─── 反序列化 ─────────────────────────────────────────
 
+  // 把譯文裡沒出現的「載體型」slot（reuseNode 活按鈕 / atomic 保留子樹）補到 frag 尾端。
+  // used：已放進 frag 的 slot 序號集合（沒有就視為全部沒放）。格式 shell 不補（見下方呼叫端註解）
+  function appendUnusedCarrierSlots(frag, slots, used, cloneReuse) {
+    for (let i = 0; i < slots.length; i++) {
+      if (used && used.has(i)) continue;
+      const slot = slots[i];
+      if (!slot || !slot.node) continue; // 格式 shell:slot 自身是 Element，無 .node
+      if (slot.reuseNode) {
+        frag.appendChild(cloneReuse ? slot.node.cloneNode(true) : slot.node);
+      } else if (slot.atomic) {
+        const n = slot.node.cloneNode(true);
+        if (_isInlineImgNode(n)) _appendInlineImg(frag, n);
+        else frag.appendChild(n);
+      }
+    }
+  }
+  SK.appendUnusedCarrierSlots = appendUnusedCarrierSlots;
+
   // opts.cloneReuse：比對 / 探測 / dual 重建等「frag 不會注回原 el」的用途必須傳 true——
   // reuseNode 分支預設會把活的原 DOM node(inline BUTTON)從頁面 detach 進 frag,
   // 只有標準 single 注入(frag 注回同一 el,node 等同 detach+re-attach)可以安全 reuse;
@@ -849,20 +924,7 @@
     // 其文字仍在譯文裡，補空殼沒有內容意義。
     // 只在 ok(frag 會被注入)時回收：ok=false 時 caller 走 fallback 不用 frag,
     // 把 reuseNode 活節點 detach 進被丟棄的 frag 反而讓按鈕直接消失。
-    if (ok) {
-      for (let i = 0; i < slots.length; i++) {
-        if (matchedRef.used.has(i)) continue;
-        const slot = slots[i];
-        if (!slot || !slot.node) continue; // 格式 shell:slot 自身是 Element，無 .node
-        if (slot.reuseNode) {
-          frag.appendChild(cloneReuse ? slot.node.cloneNode(true) : slot.node);
-        } else if (slot.atomic) {
-          const n = slot.node.cloneNode(true);
-          if (_isInlineImgNode(n)) _appendInlineImg(frag, n);
-          else frag.appendChild(n);
-        }
-      }
-    }
+    if (ok) appendUnusedCarrierSlots(frag, slots, matchedRef.used, cloneReuse);
     return { frag, ok, matched: matchedRef.count };
   };
 
@@ -889,6 +951,7 @@
     return cur && cur.nodeType === Node.TEXT_NODE ? cur : null;
   }
   function _maybePadCjkLatinSpace(frag, nextElement) {
+    if (!targetUsesCjkLatinSpacing()) return;
     const last = frag.lastChild;
     if (!last) return;
     let tailText = '';
@@ -965,8 +1028,17 @@
       if (m[3] !== undefined) {
         const idx = Number(m[3]);
         const slot = slots[idx];
-        if (slot && matchedRef.used) matchedRef.used.add(idx);
-        if (slot && slot.atomic && slot.node) {
+        // 只有真的放進 frag 才記 used：模型把非 atomic 的 slot 寫成 ⟦*N⟧ 時，先記 used 會讓
+        // 尾端的載體補救（appendUnusedCarrierSlots）以為它已經放了——有字的按鈕就此消失
+        if (slot && slot.reuseNode && !slot.atomic && slot.node) {
+          // 有字的按鈕被寫成自閉合佔位符：原樣放回這個位置（文字維持原文，按鈕不能不見）
+          const btn = cloneReuse ? slot.node.cloneNode(true) : slot.node;
+          _maybePadCjkLatinSpace(frag, btn);
+          frag.appendChild(btn);
+          if (matchedRef.used) matchedRef.used.add(idx);
+          matchedRef.count++;
+        } else if (slot && slot.atomic && slot.node) {
+          if (matchedRef.used) matchedRef.used.add(idx);
           // atomic + reuseNode(零文字 BUTTON)：注回原 el 的用途放活的原 node
           //(保留 listener / fiber)；比對 / 探測等 cloneReuse 用途仍走 clone
           const cloned = (slot.reuseNode && !cloneReuse) ? slot.node : slot.node.cloneNode(true);

@@ -5,7 +5,9 @@
 // 並暴露 SK._x*，讓 regression spec 在 localServer fixture 頁直接驅動（同 content-drive.js 慣例）。
 //
 // 資料來源（2026-10-19 實測 x.com 播放器）：
-//   - 影片走 HLS，master playlist `video.twimg.com/<amplify_video|ext_tw_video>/<mediaId>/pl/<hash>.m3u8`
+//   - 影片走 HLS，master playlist `video.twimg.com/amplify_video/<mediaId>/pl/<hash>.m3u8`；
+//     使用者上傳的影片是 `video.twimg.com/ext_tw_video/<mediaId>/pu/pl/<hash>.m3u8`（多一層 /pu/，
+//     2026-11-15 實測；部分也帶自動字幕軌）
 //     帶 `#EXT-X-MEDIA:TYPE=SUBTITLES`（X 自動產生的 ASR 字幕軌，NAME 如「en (auto-generated)」）
 //     → 字幕 playlist → 整支一個 WebVTT（cue 為 ~1 秒 ASR 碎片，帶 <X-word-ms> 字級時間標記）
 //   - <video> 是 MSE blob: src，對不到 m3u8；改用 poster 屬性
@@ -17,12 +19,14 @@
 // 顯示：在 <video> 上 addTextTrack 掛一條譯文字幕軌（瀏覽器原生 cue 渲染，外觀同 X 自家字幕，
 //       全螢幕 / 時間軸捲動不必追位置）；X 的 CC 鈕兼當譯文字幕開關（見 _syncWithNativeTracks）。
 // 觸發（產品決策 2026-10-19）：影片「有聲音播放」時才翻——時間軸自動靜音播放不翻，避免滑過就燒 API。
+//       2026-11-15 起連「翻多少」也跟著播放走：只翻播放位置往後 LOOKAHEAD_MS 內的批次，暫停 /
+//       靜音 / 滑走（X 會暫停）就不再派新批，繼續播或拖動時間軸再接著翻（見 _pickDemanded）。
 // 設定：共用 ytSubtitle（autoTranslate / engine / model），雙語跟隨 displayMode === 'dual'。
 //
-// 同一份事實的雙實作：批次 worker（_runBatchLlm / _runBatchGoogle / _translateMedia 的派批迴圈）
-// 與 content-drive.js 的 _runOneBatchLlm / _runOneBatchGoogle / _handleCaptionsMessage 結構相同、
-// 狀態容器不同。改 SK.ASR 協定用法（resolveEntryTimeline / splitLongCue / batchEndMs）、
-// stale run 判定、失敗重試語意時兩邊要一起改。
+// 派批迴圈與逐批狀態（pending / done / failed）走 SK.ASR.runTranscript，與 content-drive.js 共用。
+// 仍是雙實作的部分：單批函式（_runBatchLlm / _runBatchGoogle ↔ Drive 的 _runOneBatchLlm /
+// _runOneBatchGoogle）結構相同、狀態容器不同。改 SK.ASR 協定用法（resolveEntryTimeline /
+// splitLongCue / batchEndMs）、stale run 判定時兩邊要一起改。
 
 (function (SK) {
   if (!SK || SK.disabled) return;
@@ -30,12 +34,18 @@
   const BATCH_SIZE = 30;
   const MAX_CONCURRENT = 3;
   const TRACK_LABEL = 'Shinkansen';
+  // 只翻播放位置往後這段時間內的批次（一批 30 個 ASR 片段，約半分鐘到一分鐘）
+  const LOOKAHEAD_MS = 180000;
+  // 失敗批次：最多試 MAX_BATCH_ATTEMPTS 次，第 n 次失敗後等 5s × 4^(n-1) 才放回佇列
+  const MAX_BATCH_ATTEMPTS = 3;
+  const _batchBackoffMs = (attempts) => 5000 * Math.pow(4, Math.max(0, attempts - 1));
 
   const XV = SK.XV = SK.XV || {
     // mediaId → master m3u8 URL（PerformanceObserver 蒐集）
     masterUrls: new Map(),
-    // mediaId → { status, rawSegments, entries, runId, sourceLang, videos:Set }
-    //   status: 'idle' | 'loading' | 'done' | 'none'（無字幕軌）| 'skip'（已是目標語言）
+    // mediaId → { status, rawSegments, entries, runId, sourceLang, videos:Set, batches, batchState, running }
+    //   status: 'idle' | 'loading'（抓字幕中）| 'ready'（字幕已就緒，譯文隨播放逐批補）
+    //         | 'done'（全部批次完成）| 'none'（無字幕軌）| 'skip'（已是目標語言）
     media: new Map(),
     bilingualMode: false,
     autoTranslate: true,
@@ -52,9 +62,9 @@
   }
 
   // master m3u8 URL → mediaId。只認 /pl/<hash>.m3u8（master）；/pl/avc1/…、/pl/mp4a/…、/pl/s0/…
-  // 是子 playlist，多一層目錄不會命中
+  // 是子 playlist，多一層目錄不會命中。ext_tw_video（使用者上傳）在 mediaId 後多一層 /pu/
   function mediaIdFromMasterUrl(url) {
-    const m = String(url || '').match(/^https:\/\/video\.twimg\.com\/(?:amplify_video|ext_tw_video)\/(\d+)\/pl\/[A-Za-z0-9_-]+\.m3u8(?:\?|$)/);
+    const m = String(url || '').match(/^https:\/\/video\.twimg\.com\/(?:amplify_video|ext_tw_video)\/(\d+)\/(?:pu\/)?pl\/[A-Za-z0-9_-]+\.m3u8(?:\?|$)/);
     return m ? m[1] : null;
   }
 
@@ -296,20 +306,20 @@
       });
     } catch (e) {
       SK.sendLog('warn', 'x', `batch ${label} ${engineLabel} sendMessage failed`, { error: e?.message || String(e) });
-      return;
+      return false;
     }
     if (!res?.ok) {
       SK.sendLog('warn', 'x', `batch ${label} ${engineLabel} failed`, { error: res?.error || 'unknown' });
-      return;
+      return false;
     }
     _logUsage(mediaId, batch.length, res.usage, engineLabel);   // 已付費就記帳，parse 失敗也一樣
-    if (runId !== rec.runId) return;
+    if (runId !== rec.runId) return false;
     let entries;
     try {
       entries = SK.ASR.parseLlmOutput(res.result?.[0] || '', batch, batchEndMs);
     } catch (e) {
       SK.sendLog('warn', 'x', `batch ${label} parse failed (${engineLabel})`, { error: e?.message || String(e) });
-      return;
+      return false;
     }
     const { cues, droppedCount } = SK.ASR.resolveEntryTimeline(entries, batch, batchEndMs);
     const starts = batch.map(s => s.startMs);
@@ -322,6 +332,7 @@
     SK.sendLog('info', 'x', `batch ${label} done (${engineLabel})`, {
       mediaId, llmEntryCount: entries.length, droppedMisaligned: droppedCount, totalEntries: rec.entries.length,
     });
+    return true;
   }
 
   async function _runBatchGoogle(rec, mediaId, batch, label, runId) {
@@ -330,13 +341,13 @@
       res = await SK.safeSendMessage({ type: 'TRANSLATE_X_BATCH_GOOGLE', payload: { texts: batch.map(s => s.text), glossary: null } });
     } catch (e) {
       SK.sendLog('warn', 'x', `batch ${label} google sendMessage failed`, { error: e?.message || String(e) });
-      return;
+      return false;
     }
     if (!res?.ok) {
       SK.sendLog('warn', 'x', `batch ${label} google failed`, { error: res?.error || 'unknown' });
-      return;
+      return false;
     }
-    if (runId !== rec.runId) return;
+    if (runId !== rec.runId) return false;
     const tr = Array.isArray(res.result) ? res.result : [];
     for (let i = 0; i < batch.length; i++) {
       const text = String(tr[i] || '').trim();
@@ -347,40 +358,81 @@
     }
     rec.entries.sort((a, b) => a.startMs - b.startMs);
     SK.sendLog('info', 'x', `batch ${label} done (google)`, { mediaId, totalEntries: rec.entries.length });
+    return true;
   }
 
-  // rawSegments 已就緒的 rec → 整支切批 throttled 並行翻譯；每批完成即重繪 cue
-  async function _translateMedia(mediaId, rec) {
-    const segs = rec.rawSegments;
-    const batches = [];
-    for (let i = 0; i < segs.length; i += BATCH_SIZE) batches.push(segs.slice(i, i + BATCH_SIZE));
-    const engine = XV.engine;   // 整支翻譯開始前 latch，mid-run 切設定不跨批混用
-    const runId = ++rec.runId;
-    rec.entries = [];
-    SK.sendLog('info', 'x', 'starting transcript translation', {
-      mediaId, totalSegments: segs.length, totalBatches: batches.length, engine, sourceLang: rec.sourceLang,
-    });
-    let next = 0;
-    const worker = async () => {
-      while (true) {
-        const idx = next++;
-        if (idx >= batches.length || !XV.autoTranslate || runId !== rec.runId) return;
-        const label = `${idx + 1}/${batches.length}`;
-        if (engine === 'google') {
-          await _runBatchGoogle(rec, mediaId, batches[idx], label, runId);
-        } else if (engine === 'openai-compat') {
-          await _runBatchLlm(rec, mediaId, batches[idx], label, 'TRANSLATE_X_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat', runId);
-        } else {
-          await _runBatchLlm(rec, mediaId, batches[idx], label, 'TRANSLATE_X_ASR_SUBTITLE_BATCH', 'gemini', runId);
-        }
-        if (runId === rec.runId) _renderMedia(rec);
-      }
-    };
-    await Promise.all(Array.from({ length: MAX_CONCURRENT }, worker));
-    // 全失敗（沒 key / 網路斷）回 idle：下次有聲播放可重試，不卡在 done
-    rec.status = rec.entries.length ? 'done' : 'idle';
-    SK.sendLog('info', 'x', 'transcript translation finished', { mediaId, totalEntries: rec.entries.length, status: rec.status });
+  // ─── 依播放位置派批（Y-2）─────────────────────────────
+  // 「有聲播放中」：播放中 + 非靜音 + 音量 > 0（與 _maybeStart 的觸發判定同一條）
+  function _isAudible(v) {
+    return !!v && v.isConnected !== false && !v.paused && !v.muted && v.volume > 0;
   }
+  // 下一個該翻的批次：有聲播放中的影片，播放位置之後 LOOKAHEAD_MS 內、最接近播放位置的
+  // pending 批次。沒有影片在有聲播放、或這段範圍內都翻完了 → -1（不派新批）。
+  // 已播過的批次不補翻（往回拖時間軸才會落回範圍內）
+  function _pickDemanded(rec) {
+    const state = rec.batchState;
+    if (!state) return -1;
+    const times = [];
+    for (const v of rec.videos) if (_isAudible(v)) times.push((v.currentTime || 0) * 1000);
+    if (!times.length) return -1;
+    let best = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < state.length; i++) {
+      if (state[i].status !== 'pending') continue;
+      const start = rec.batches[i][0].startMs;
+      const end = i + 1 < rec.batches.length ? rec.batches[i + 1][0].startMs : Infinity;
+      for (const t of times) {
+        if (end <= t || start > t + LOOKAHEAD_MS) continue;
+        const dist = Math.max(0, start - t);
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      }
+    }
+    return best;
+  }
+
+  // status === 'ready' 的 rec：把目前播放位置需要的批次翻掉；每批完成即重繪 cue。
+  // 同一 rec 同時只有一輪在跑；沒有需求就直接返回，之後由 play / timeupdate / seeked 再叫起
+  async function _pump(mediaId, rec) {
+    if (rec.running || rec.status !== 'ready' || !XV.autoTranslate) return;
+    // 失敗批次過了等待時間就放回佇列（Y-3：缺的批次補得回來；次數有上限，不會無限重打）
+    SK.ASR.reviveFailedBatches(rec.batchState, { maxAttempts: MAX_BATCH_ATTEMPTS, backoffMs: _batchBackoffMs });
+    if (_pickDemanded(rec) < 0) return;
+    rec.running = true;
+    const engine = XV.engine;   // 每輪開始前 latch，同一輪內切設定不跨批混用
+    const runId = rec.runId;
+    const total = rec.batches.length;
+    let summary;
+    try {
+      summary = await SK.ASR.runTranscript({
+        state: rec.batchState,
+        maxConcurrent: MAX_CONCURRENT,
+        shouldStop: () => !XV.autoTranslate || runId !== rec.runId,
+        pickNext: () => _pickDemanded(rec),
+        runBatch: async (idx) => {
+          const label = `${idx + 1}/${total}`;
+          let ok;
+          if (engine === 'google') {
+            ok = await _runBatchGoogle(rec, mediaId, rec.batches[idx], label, runId);
+          } else if (engine === 'openai-compat') {
+            ok = await _runBatchLlm(rec, mediaId, rec.batches[idx], label, 'TRANSLATE_X_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat', runId);
+          } else {
+            ok = await _runBatchLlm(rec, mediaId, rec.batches[idx], label, 'TRANSLATE_X_ASR_SUBTITLE_BATCH', 'gemini', runId);
+          }
+          if (runId === rec.runId) _renderMedia(rec);
+          return ok;
+        },
+      });
+    } finally {
+      rec.running = false;
+    }
+    // 全部批次都完成才是 done；有 pending（還沒播到）或 failed（待重試）就留在 ready
+    if (summary.done === total) rec.status = 'done';
+    SK.sendLog('info', 'x', 'transcript pump finished', {
+      mediaId, totalEntries: rec.entries.length, status: rec.status, batches: summary,
+    });
+  }
+  SK._xPump = _pump;
+  SK._xPickDemanded = _pickDemanded;
 
   async function _fetchText(url) {
     const res = await fetch(url, { credentials: 'omit' });
@@ -392,11 +444,12 @@
   async function startForVideo(video, mediaId, masterUrl) {
     let rec = XV.media.get(mediaId);
     if (!rec) {
-      rec = { status: 'idle', rawSegments: [], entries: [], runId: 0, sourceLang: '', videos: new Set() };
+      rec = { status: 'idle', rawSegments: [], entries: [], runId: 0, sourceLang: '', videos: new Set(), batches: [], batchState: null, running: false };
       XV.media.set(mediaId, rec);
     }
     rec.videos.add(video);
     if (rec.status === 'done') { _renderVideo(video, rec); return; }
+    if (rec.status === 'ready') { _renderVideo(video, rec); _pump(mediaId, rec); return; }
     if (rec.status !== 'idle') return;
     rec.status = 'loading';
     try {
@@ -424,9 +477,20 @@
       rec.sourceLang = track.lang || 'en';
       SK.sendLog('info', 'x', 'subtitle fetched', { mediaId, name: track.name, lang: track.lang, segments: raw.length });
       if (!raw.length) { rec.status = 'none'; return; }
-      await _translateMedia(mediaId, rec);
+      rec.batches = [];
+      for (let i = 0; i < raw.length; i += BATCH_SIZE) rec.batches.push(raw.slice(i, i + BATCH_SIZE));
+      rec.batchState = SK.ASR.createBatchState(rec.batches.length);
+      rec.entries = [];
+      rec.runId++;
+      rec.status = 'ready';
+      SK.sendLog('info', 'x', 'transcript ready — translating on demand', {
+        mediaId, totalSegments: raw.length, totalBatches: rec.batches.length, engine: XV.engine, sourceLang: rec.sourceLang,
+      });
+      await _pump(mediaId, rec);
     } catch (e) {
-      rec.status = 'idle';
+      // 抓字幕階段失敗才回 idle（下次有聲播放重抓）；字幕已就緒後的錯誤留在 ready 由批次重試處理
+      if (rec.status === 'loading') rec.status = 'idle';
+      rec.running = false;
       SK.sendLog('warn', 'x', 'subtitle pipeline failed', { mediaId, error: e?.message || String(e) });
     }
   }
@@ -473,7 +537,10 @@
     const mediaId = mediaIdFromPoster(video.getAttribute('poster'));
     if (!mediaId) return;
     const rec = XV.media.get(mediaId);
-    if (rec && rec.videos.has(video) && rec.status !== 'idle') return;
+    if (rec && rec.videos.has(video) && rec.status !== 'idle') {
+      if (rec.status === 'ready') _pump(mediaId, rec);   // 繼續播 / 取消靜音 → 接著翻
+      return;
+    }
     if (!SK.isInstanceLeader()) return;
     const masterUrl = await _waitMasterUrl(mediaId);
     if (!masterUrl) {
@@ -489,6 +556,17 @@
       if (e.target instanceof HTMLVideoElement) _maybeStart(e.target);
     }, true);
   }
+  // 播放推進 / 拖動時間軸：只對「字幕已就緒、還有批次沒翻」的影片接著派批。
+  // 不走 _maybeStart——timeupdate 每秒約 4 次，沒對到 master playlist 的影片不該反覆等待重試
+  for (const ev of ['timeupdate', 'seeked']) {
+    document.addEventListener(ev, (e) => {
+      const video = e.target;
+      if (!(video instanceof HTMLVideoElement) || !_isAudible(video)) return;
+      const mediaId = mediaIdFromPoster(video.getAttribute('poster'));
+      const rec = mediaId && XV.media.get(mediaId);
+      if (rec && rec.status === 'ready' && !rec.running && rec.videos.has(video)) _pump(mediaId, rec);
+    }, true);
+  }
 
   (async () => {
     try {
@@ -500,25 +578,52 @@
     } catch { /* 維持預設 */ }
   })();
 
+  // 使用者改了設定（換引擎 / 模型 / 重開開關）：失敗批次的嘗試次數歸零，下次播放重新試
+  function _resetFailedBatches() {
+    for (const rec of XV.media.values()) {
+      if (rec.batchState) SK.ASR.reviveFailedBatches(rec.batchState, { resetAttempts: true });
+    }
+  }
+
+  // 本分頁的字幕翻譯開關。兩個來源共用：設定頁改全域 ytSubtitle.autoTranslate（onChanged）、
+  // 工具列圖示選單的開關（SET_TAB_SUBTITLE，只影響本分頁、不寫 storage）。回傳是否有變動
+  function _setAutoTranslate(enabled) {
+    if (enabled === XV.autoTranslate) return false;
+    XV.autoTranslate = enabled;
+    if (enabled) {
+      _resetFailedBatches();
+      // 使用者明確重開：已有譯文軌的影片恢復顯示
+      document.querySelectorAll('video').forEach(v => {
+        if (v._skXTrack) v._skXTrack.mode = 'showing';
+        _maybeStart(v);
+      });
+    }
+    return true;
+  }
+
+  // 工具列圖示選單 ↔ 本分頁（與 YouTube 的 SET_SUBTITLE 同語意：只影響當前分頁，
+  // 不改全域設定）。GET 讓選單顯示本分頁實際狀態而非全域設定值。
+  // 訊息型別與 content-drive.js 共用（兩站不會同頁，各自 host gate 後才註冊）
+  browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'GET_TAB_SUBTITLE') {
+      sendResponse({ enabled: XV.autoTranslate });
+      return;
+    }
+    if (msg?.type === 'SET_TAB_SUBTITLE') {
+      if (_setAutoTranslate(!!msg.payload?.enabled)) _renderAll();
+      sendResponse({ enabled: XV.autoTranslate });
+    }
+  });
+
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return;
     let rerender = false;
     if (changes.ytSubtitle) {
       const v = changes.ytSubtitle.newValue || {};
-      const enabled = v.autoTranslate !== false;
-      if (enabled !== XV.autoTranslate) {
-        XV.autoTranslate = enabled;
-        rerender = true;
-        if (enabled) {
-          // 使用者明確重開：已有譯文軌的影片恢復顯示
-          document.querySelectorAll('video').forEach(v => {
-            if (v._skXTrack) v._skXTrack.mode = 'showing';
-            _maybeStart(v);
-          });
-        }
-      }
+      if (_setAutoTranslate(v.autoTranslate !== false)) rerender = true;
       SK._xSetEngine(v.engine);
       XV.model = v.model || '';
+      _resetFailedBatches();
     }
     if (changes.displayMode) {
       const bi = changes.displayMode.newValue === 'dual';

@@ -17,6 +17,7 @@
 import { browser } from '../lib/compat.js';
 import { getSettings, DEFAULT_SETTINGS, DEFAULT_DOC_SYSTEM_PROMPT } from '../lib/storage.js';
 import * as cache from '../lib/cache.js';
+import { temperatureSupport } from '../lib/model-pricing.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,9 +36,37 @@ async function load() {
   $('td-applyFixedGlossary').checked = td.applyFixedGlossary !== false;
   $('td-temperature').value = (typeof td.temperature === 'number' && Number.isFinite(td.temperature))
     ? td.temperature : DEFAULT_SETTINGS.translateDoc.temperature;
+  _tempModels = docTemperatureModels(s);
+  refreshTemperatureNote();
   // 載入完成標記乾淨狀態(避免 load 觸發 input event 把 save-bar 點起來)
   initialLoaded = true;
   hideSaveBar();
+}
+
+// ─── Temperature 欄位可用狀態（與 options.js refreshTemperatureNotes 同判準）──────
+// 文件翻譯的模型 = 翻譯時選的預設組：引擎為 Gemini 的走 preset.model；引擎為自訂模型的
+// 走 customProvider.model（該路徑同樣吃 translateDoc.temperature）。全部不支援 → 停用。
+let _tempModels = [];
+function docTemperatureModels(s) {
+  const presets = Array.isArray(s.translatePresets) && s.translatePresets.length > 0
+    ? s.translatePresets : DEFAULT_SETTINGS.translatePresets;
+  const out = [];
+  for (const p of presets) {
+    if (p.engine === 'openai-compat') out.push(s.customProvider?.model || 'custom');
+    else if (p.engine !== 'google') out.push(p.model || s.geminiConfig?.model);
+  }
+  return out;
+}
+function refreshTemperatureNote() {
+  const input = $('td-temperature');
+  const note = $('td-temperature-note');
+  if (!input || !note) return;
+  const { status, supported } = temperatureSupport(_tempModels);
+  input.disabled = status === 'none';
+  note.hidden = status === 'all';
+  note.textContent = status === 'none'
+    ? t('options.tempNote.none')
+    : (status === 'partial' ? t('options.tempNote.partial', { models: supported.join(' / ') }) : '');
 }
 
 async function initI18n() {
@@ -57,6 +86,7 @@ async function initI18n() {
   I18N.subscribeUiLanguageChange((newUi) => {
     window.__SK.STATE.uiLanguage = newUi;
     I18N.applyI18n(document, newUi);
+    refreshTemperatureNote();
   });
 }
 

@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 使用者上傳的檔案（HTML / EPUB）是不可信內容：解析與預覽時檔內的 <img> / <video> / <audio> /
+       SVG image / 樣式表 / iframe 一進到這個頁面的 document 就會向檔案指定的主機要資源。
+       這條政策把頁面能載入的圖片、媒體、字型、樣式表限制在擴充功能自身與 data: / blob:，
+       內嵌框架與外掛物件一律不准，檔案內容因此連不到任何第三方。
+       翻譯 API 走 fetch（connect-src），不在限制內；script 仍由 manifest 的政策管 -->
+  <meta http-equiv="Content-Security-Policy" content="img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; frame-src 'none'; object-src 'none'">
   <title data-i18n="doc.title">翻譯文件 — Shinkansen</title>
   <link rel="stylesheet" href="index.css">
 </head>

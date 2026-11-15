@@ -380,23 +380,57 @@ export function sanitizeImport(raw, _t, SC = globalThis.__SKShortcuts) {
   return { clean, warnings };
 }
 
+// 匯入時要「現值 ← 匯入值」逐欄合併的設定子物件（code review 2026-11-15 O-2）。
+// 清單 = getSettings 以 `{ ...DEFAULT, ...saved }` 逐欄合併的那幾顆；陣列 / 表格型
+//（translatePresets、fixedGlossary、forbiddenTerms、customShortcuts 等）維持整顆取代。
+// 為什麼要合併：寫入是 storage.sync.set 整顆取代，匯入檔只帶部分欄位時，沒列到的欄位
+// 會從 storage 消失、由 getSettings 補回預設值——customProvider 只帶 model 不帶 baseUrl
+// 的檔會讓端點悄悄回到預設主機，而既有金鑰留著（繞過下方的 origin 防護）。
+export const IMPORT_MERGE_KEYS = [
+  'geminiConfig', 'pricing', 'domainRules', 'glossary',
+  'ytSubtitle', 'partialMode', 'customProvider', 'translateDoc',
+];
+
+// @param {object} clean  sanitizeImport 回傳的 clean 物件
+// @param {object} currentSync  目前 storage.sync 內的對應子物件（storage.sync.get(IMPORT_MERGE_KEYS) 的結果）
+// @returns {object}  要寫入的物件（不改動傳入的 clean）
+export function mergeImportOverCurrent(clean, currentSync) {
+  const out = { ...clean };
+  for (const k of IMPORT_MERGE_KEYS) {
+    const incoming = clean[k];
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) continue;
+    const cur = currentSync && currentSync[k];
+    if (cur && typeof cur === 'object' && !Array.isArray(cur)) out[k] = { ...cur, ...incoming };
+  }
+  return out;
+}
+
+const _originOf = (u) => {
+  try { return new URL(String(u || '').trim()).origin; } catch { return null; }
+};
+
+// 兩個端點網址是否屬於不同 origin。任一端解析不了 → 無法證明是同一服務，保守視為不同
+export function isDifferentOrigin(a, b) {
+  const oa = _originOf(a);
+  const ob = _originOf(b);
+  if (!oa || !ob) return true;
+  return oa !== ob;
+}
+
 // 2026-10-20 security review：匯入的 customProvider.baseUrl 與目前已存的 origin 不同時，
 // 既有的 customProviderApiKey 必須清掉。匯入檔本來就視為不可信（apiKey 一律剝除），
 // 若只換目的地不換金鑰，一份「推薦設定」JSON 就能把使用者的 Bearer key 連同頁面原文
 // 導到攻擊者主機。同 origin（只改 path，例如 /v1 → /api/v1）視為同一服務，金鑰保留。
 //
-// @param {string} currentBaseUrl  目前 storage 內的 customProvider.baseUrl
-// @param {object} clean  sanitizeImport 回傳的 clean 物件
-// @returns {boolean}  true = 呼叫端應清掉 customProviderApiKey
-export function importChangesCustomProviderOrigin(currentBaseUrl, clean) {
-  const nextBaseUrl = clean && clean.customProvider && clean.customProvider.baseUrl;
-  if (typeof nextBaseUrl !== 'string') return false; // 匯入檔沒帶 baseUrl = 目的地不變
-  const originOf = (u) => {
-    try { return new URL(String(u || '').trim()).origin; } catch { return null; }
-  };
-  const prev = originOf(currentBaseUrl);
-  const next = originOf(nextBaseUrl);
-  // 任一端解析不了 → 無法證明是同一服務，保守清掉
-  if (!prev || !next) return true;
-  return prev !== next;
+// 2026-11-15（O-2 / O-3）：呼叫端要傳 mergeImportOverCurrent 合併後的物件——合併後
+// 「沒帶 baseUrl」才真的等於「目的地不變」。回傳 true 時呼叫端除了清金鑰，還要先跳
+// 確認並顯示新網址（不論原本有沒有金鑰：端點一換，之後的頁面原文就送往新主機）。
+//
+// @param {string} currentBaseUrl  目前生效的 customProvider.baseUrl（storage 沒存時為預設值）
+// @param {object} merged  mergeImportOverCurrent 的結果
+// @returns {boolean}  true = 端點 origin 會改變
+export function importChangesCustomProviderOrigin(currentBaseUrl, merged) {
+  const nextBaseUrl = merged && merged.customProvider && merged.customProvider.baseUrl;
+  if (typeof nextBaseUrl !== 'string') return false; // 合併後仍沒有 baseUrl = 目的地不變（維持預設）
+  return isDifferentOrigin(currentBaseUrl, nextBaseUrl);
 }

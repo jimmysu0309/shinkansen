@@ -152,6 +152,12 @@ textarea { resize: vertical; font-family: -apple-system, 'PingFang TC', sans-ser
 
 .muted { color: #86868b; font-size: 12px; }
 
+/* Temperature 欄位「模型不支援」註記：獨立一行，與一般說明以粗細 + 左側色條雙通道區分
+   （不只靠顏色）；停用的輸入框降透明度。文件翻譯設定頁共用本檔 */
+.temp-note { display: block; margin: 4px 0 2px; padding-left: 8px; border-left: 2px solid #ff9500; font-weight: 600; color: #6e6e73; }
+.temp-note[hidden] { display: none; }
+input[type="number"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .actions {
   margin-top: 28px;
   padding-top: 20px;

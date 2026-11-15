@@ -84,7 +84,8 @@ export function stripBom(rawText) {
 // ─── 文字檔解碼（編碼自動判斷 → 內部一律 UTF-8 字串，輸出一律 UTF-8）──
 // file.text() 固定當 UTF-8 解碼：Big5 / GBK / Shift_JIS / EUC-KR 的舊編碼字幕 /
 // 文字檔（網路流通極多）讀進來整份亂碼，存出去的「UTF-8」檔內容也是亂碼。
-// 判斷順序：UTF-16 BOM → UTF-8（fatal）→ 依目標語言排序的舊編碼候選
+// 判斷順序：UTF-16 BOM → UTF-8（fatal）→（HTML 限定）檔內宣告的 charset →
+// 依目標語言排序的舊編碼候選
 //（fatal 解碼成功 + 文字可信度檢查）→ windows-1252（永不失敗的最後退路）。
 //
 // 可信度檢查是結構性必要：Big5 / GBK 的位元組空間幾乎互相涵蓋（Big5 位元組
@@ -123,13 +124,31 @@ function orderLegacyCandidates(targetLanguage) {
   return [...LEGACY_CANDIDATES.filter((c) => c.enc === pref), ...LEGACY_CANDIDATES.filter((c) => c.enc !== pref)];
 }
 
+// HTML 檔自己宣告的編碼（<meta charset> / http-equiv Content-Type 的 charset 參數）。
+// 比照瀏覽器 prescan：只看檔頭一小段、以單位元組解讀找宣告。HTML 的標籤與屬性名
+// 全是拉丁字母，會把下方「文字系統占字母 3 成以上」的可信度比例稀釋掉（標記多、
+// 內文少的 Big5 / Shift_JIS 頁面會一路落到 windows-1252），所以 HTML 有宣告時以宣告為準。
+// 回傳 TextDecoder 認得的 label；沒宣告、label 無效或宣告為 utf-8（呼叫端已先試過
+// fatal UTF-8 失敗）回 null
+function sniffHtmlDeclaredCharset(bytes) {
+  const head = new TextDecoder('windows-1252').decode(bytes.subarray(0, 4096));
+  const m = head.match(/<meta\b[^>]*?charset\s*=\s*["']?\s*([\w.:-]+)/i);
+  if (!m) return null;
+  try {
+    const enc = new TextDecoder(m[1]).encoding;
+    return enc === 'utf-8' ? null : enc;
+  } catch (_) {
+    return null;
+  }
+}
+
 /**
  * 位元組 → 字串（編碼自動判斷）。BOM 保留在字串內（U+FEFF），由 stripBom 記錄、
  * 輸出端按原樣回寫（有 BOM 的來源輸出 UTF-8 BOM）。
  * @param {ArrayBuffer|Uint8Array} buf
  * @returns {{ text: string, encoding: string }}
  */
-export function decodeTextBytes(buf, { targetLanguage } = {}) {
+export function decodeTextBytes(buf, { targetLanguage, html = false } = {}) {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
     return { text: new TextDecoder('utf-16le', { ignoreBOM: true }).decode(bytes), encoding: 'utf-16le' };
@@ -140,6 +159,10 @@ export function decodeTextBytes(buf, { targetLanguage } = {}) {
   try {
     return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes), encoding: 'utf-8' };
   } catch (_) { /* 非 UTF-8，往下試舊編碼 */ }
+  if (html) {
+    const declared = sniffHtmlDeclaredCharset(bytes);
+    if (declared) return { text: new TextDecoder(declared).decode(bytes), encoding: declared };
+  }
   for (const cand of orderLegacyCandidates(targetLanguage)) {
     let text;
     try {
@@ -256,7 +279,11 @@ function pushSentenceChunks(out, line) {
 
 // ─── md 解析（純函式，unit 可測）─────────────────────────
 // 行級掃描。結構規則（全部結構性，不綁特定 flavor 擴充）：
-//   - fenced code（``` / ~~~，含縮排 ≤3）整段 verbatim
+//   - 檔頭 front matter（第 1 行「---」/「+++」到對應結束行，開頭行後不可緊接空白行）整段 verbatim
+//   - fenced code（``` / ~~~，任意縮排——清單項內的 fence 縮排常超過 3 格）整段 verbatim
+//   - 縮排程式碼（空白行之後、縮排 ≥ 4 格；清單內為「清單內容起點 + 4 格」）整段 verbatim
+//   - 連結參照定義（[id]: url）單行 verbatim；註腳定義（[^id]: 文字）照常送翻
+//   - 帶縮排的段落（清單項的續段等）：縮排當前綴保留，只送去掉縮排的文字
 //   - ATX 標題（#{1,6} + 空白）→ heading block；level ≤ 2 切新章節
 //   - 引用（行首 >）連續行合一 block，writer 重建「> 」前綴
 //   - 清單項（- * + / 數字. / 數字)）逐行一 block，原始 marker 當 prefix
@@ -290,13 +317,37 @@ export function parseMdStructure(text) {
     verbCursor = clamp(offsets[b] - 1);
   };
 
-  const RE_FENCE = /^\s{0,3}(`{3,}|~{3,})/;
+  const RE_FENCE = /^[ \t]*(`{3,}|~{3,})/;
   const RE_ATX = /^(#{1,6})([ \t]+)(.*)$/;
   const RE_QUOTE = /^\s{0,3}>/;
   const RE_LIST = /^(\s*(?:[-*+]|\d{1,9}[.)])[ \t]+)(\S.*)$/;
   const RE_BLANK = /^\s*$/;
+  const RE_REFDEF = /^ {0,3}\[(?!\^)[^\]]+\]:[ \t]*\S/;
+  // 行首縮排寬度（只算半形空白與 tab；全形空白是內文不是縮排）
+  const indentWidth = (l) => {
+    let n = 0;
+    for (const ch of l) {
+      if (ch === ' ') n++;
+      else if (ch === '\t') n += 4 - (n % 4);
+      else break;
+    }
+    return n;
+  };
+  // 目前所在清單項的內容起點欄位（不在清單內為 -1）。只記最近一個清單項：
+  // 巢狀清單回到外層項的續段時門檻偏高，那段會被當續段送翻而不是程式碼（已知近似）
+  let listContent = -1;
 
   let i = 0;
+  // 檔頭 front matter：整段留在 verbatim 累積。開頭行後緊接空白行的不算（那是分隔線）
+  {
+    const closeFm = /^---\s*$/.test(lines[0]) ? /^(---|\.\.\.)\s*$/
+      : /^\+\+\+\s*$/.test(lines[0]) ? /^\+\+\+\s*$/ : null;
+    if (closeFm && lines.length > 2 && !RE_BLANK.test(lines[1])) {
+      let j = 1;
+      while (j < lines.length && !closeFm.test(lines[j])) j++;
+      if (j < lines.length) i = j + 1;
+    }
+  }
   while (i < lines.length) {
     const line = lines[i];
     const fence = line.match(RE_FENCE);
@@ -305,13 +356,15 @@ export function parseMdStructure(text) {
       // fence 全區留在 verbatim 累積內（不 flush、不出 block）
       const marker = fence[1][0];
       const minLen = fence[1].length;
-      const closeRe = new RegExp(`^\\s{0,3}\\${marker}{${minLen},}\\s*$`);
+      const closeRe = new RegExp(`^[ \\t]*\\${marker}{${minLen},}\\s*$`);
       let j = i + 1;
       while (j < lines.length && !closeRe.test(lines[j])) j++;
       i = Math.min(lines.length, j + 1);
+      if (indentWidth(line) === 0) listContent = -1;
       continue;
     }
     const atx = line.match(RE_ATX);
+    if (atx) listContent = -1;
     if (atx && HAS_LETTER_RE.test(atx[3])) {
       flushVerbatimTo(offsets[i]);
       if (atx[1].length <= 2) {
@@ -348,6 +401,7 @@ export function parseMdStructure(text) {
       continue;
     }
     const list = line.match(RE_LIST);
+    if (list) listContent = indentWidth(list[1].replace(/\S/g, ' '));
     if (list && HAS_LETTER_RE.test(list[2])) {
       flushVerbatimTo(offsets[i]);
       segments.push({
@@ -364,15 +418,49 @@ export function parseMdStructure(text) {
       i++;
       continue; // 空白行留在 verbatim 累積
     }
+    // 形狀是標題 / 清單但沒有可翻文字的行（「## 1.2.3」「- 100」「* * *」）：
+    // 上面兩個分支因 HAS_LETTER_RE 不收，下面段落迴圈的停止條件又把它當結構行
+    //（j 停在 i、i 不前進 → 無窮迴圈）。這類行單獨留在 verbatim 累積原樣輸出
+    if (atx || list) {
+      i++;
+      continue;
+    }
+    const afterBlank = i === 0 || RE_BLANK.test(lines[i - 1]);
+    const ind = indentWidth(line);
+    // 連結參照定義：網址與 id 都不是內文
+    if (afterBlank || RE_REFDEF.test(lines[i - 1])) {
+      if (RE_REFDEF.test(line)) { i++; continue; }
+    }
+    // 縮排程式碼：到下一個「非空白且縮排不足」的行為止，整段留在 verbatim 累積
+    const codeIndent = listContent >= 0 ? listContent + 4 : 4;
+    if (afterBlank && ind >= codeIndent) {
+      let j = i + 1;
+      while (j < lines.length && (RE_BLANK.test(lines[j]) || indentWidth(lines[j]) >= codeIndent)) j++;
+      i = j;
+      continue;
+    }
+    if (ind === 0 && afterBlank) listContent = -1;
     // 一般段落：連續「非空白、非結構行」合併（表格列也走這裡——markdown
     // 表格屬文字內容整段送翻,LLM 對管線符號結構保留穩定）
     let j = i;
     while (j < lines.length
       && !RE_BLANK.test(lines[j]) && !RE_FENCE.test(lines[j])
       && !RE_ATX.test(lines[j]) && !RE_QUOTE.test(lines[j]) && !RE_LIST.test(lines[j])) j++;
+    // 前進保證：走到這裡的第 i 行必屬段落；任何分支組合都不可讓 i 原地不動
+    if (j === i) j = i + 1;
     const para = lineSpan(i, j);
     flushVerbatimTo(offsets[i]);
-    pushParagraphSegments(segments, para, '', '');
+    // 帶縮排的段落：縮排是結構（清單項續段靠它留在清單內），不交給模型保管
+    const lead = line.match(/^[ \t]*/)[0];
+    const stripped = lead
+      ? lines.slice(i, j).map((l) => (l.startsWith(lead) ? l.slice(lead.length) : l.replace(/^[ \t]+/, ''))).join('\n')
+      : para;
+    const pieces = lead && HAS_LETTER_RE.test(stripped) ? splitOversized(stripped) : null;
+    if (pieces && pieces.length === 1 && !pieces[0].gap) {
+      segments.push({ block: { text: stripped, type: 'paragraph' }, src: para, prefix: lead, linePrefix: lead });
+    } else {
+      pushParagraphSegments(segments, para, '', '');
+    }
     consumeLines(i, j);
     i = j;
   }
@@ -506,7 +594,7 @@ function parseHtmlDoc(rawText, filename) {
  * @returns {Promise<object>} 與 parseEpub 同形狀的 doc（kind 不同）
  */
 export async function parseDocFile(file, kind, opts = {}) {
-  const rawText = await decodeTextFile(file, opts);
+  const rawText = await decodeTextFile(file, kind === 'html' ? { ...opts, html: true } : opts);
   if (kind === 'html') return parseHtmlDoc(rawText, file.name);
   const bom = stripBom(rawText);
   const eol = normalizeEol(bom.text);
@@ -577,17 +665,36 @@ export async function buildTranslatedHtmlDoc(doc, targetLanguage, dedupe = null)
     }
   }
   if (targetLanguage) htmlDoc.documentElement.setAttribute('lang', targetLanguage);
-  // 下載檔以 UTF-8 輸出：來源沒宣告 charset 時補 <meta charset>，
-  // 否則本機開檔（無 HTTP header）非 ASCII 會亂碼
-  if (!htmlDoc.querySelector('meta[charset], meta[http-equiv="Content-Type" i]')) {
-    const head = htmlDoc.querySelector('head');
-    if (head) {
-      const meta = htmlDoc.createElement('meta');
-      meta.setAttribute('charset', 'utf-8');
-      head.insertBefore(meta, head.firstChild);
-    }
-  }
+  forceUtf8CharsetDeclaration(htmlDoc);
   return (doc.hadDoctype ? '<!DOCTYPE html>\n' : '') + htmlDoc.documentElement.outerHTML;
+}
+
+// 下載檔一律以 UTF-8 位元組輸出（index.js 的 Blob），文件內的編碼宣告必須跟著
+// 是 utf-8：本機開檔沒有 HTTP header，瀏覽器只看 <meta>。來源宣告 big5 /
+// shift_jis / iso-8859-1 等若原樣保留，整頁會照舊編碼解讀成亂碼。
+//   - <meta charset="…"> → 改成 utf-8
+//   - <meta http-equiv="Content-Type" content="…; charset=…"> → 改寫 charset 參數
+//   - 都沒有有效宣告 → 在 <head> 最前面補 <meta charset="utf-8">
+// 不處理：XML 宣告（HTML 解析器不認）、非 meta 的編碼提示（<script charset> 等，
+// 指的是外部資源編碼，與本檔無關）
+export function forceUtf8CharsetDeclaration(htmlDoc) {
+  let declared = false;
+  for (const meta of htmlDoc.querySelectorAll('meta[charset]')) {
+    meta.setAttribute('charset', 'utf-8');
+    declared = true;
+  }
+  for (const meta of htmlDoc.querySelectorAll('meta[http-equiv="Content-Type" i]')) {
+    const content = meta.getAttribute('content') || '';
+    if (!/charset\s*=/i.test(content)) continue;
+    meta.setAttribute('content', content.replace(/(charset\s*=\s*)["']?[^\s;"']+["']?/i, '$1utf-8'));
+    declared = true;
+  }
+  if (declared) return;
+  const head = htmlDoc.querySelector('head');
+  if (!head) return;
+  const meta = htmlDoc.createElement('meta');
+  meta.setAttribute('charset', 'utf-8');
+  head.insertBefore(meta, head.firstChild);
 }
 
 /** 下載檔名：<原檔名>-shinkansen.<原副檔名>（與 EPUB 的 -shinkansen 慣例一致） */

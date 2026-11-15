@@ -6,11 +6,11 @@
 
 import { parsePdf, preflightFile, renderPageToCanvas, closeDocument, PdfParseError } from './pdf-engine.js';
 import { analyzeLayout } from './layout-analyzer.js';
-import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts, clearTcCacheForTexts, stripPlaceholderTokens } from './translate.js';
+import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts, clearTcCacheForTexts, clearTcCacheForDoc, stripPlaceholderTokens } from './translate.js';
 import { TRANSLATABLE_TYPES } from './block-types.js';
 import { renderReader, buildPlainTextDump } from './reader.js';
 import { downloadBilingualPdf, buildBilingualPdf } from './pdf-renderer.js';
-import { formatMoney } from '../lib/format.js';
+import { formatMoney, resolveDisplayCurrency } from '../lib/format.js';
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 // EPUB 翻譯（v2.0.11）
 import {
@@ -730,6 +730,14 @@ function bindUploadUI() {
     const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (file) handleFile(file);
   });
+  // 拖放區以外（或拖放區已隱藏的翻譯 / 結果階段）把檔案拖進頁面：瀏覽器預設會直接導向那個檔案，
+  // 頁面被換掉、還沒下載的翻譯成果全部消失。整頁擋掉預設行為（拖放區自己的 handler 已 stopPropagation）
+  ['dragover', 'drop'].forEach((evt) => {
+    window.addEventListener(evt, (e) => {
+      const types = e.dataTransfer && e.dataTransfer.types;
+      if (types && Array.prototype.includes.call(types, 'Files')) e.preventDefault();
+    });
+  });
 }
 
 function bindResultUI() {
@@ -1118,53 +1126,11 @@ function bindSettingsDialogUI() {
 // 清除本篇 PDF 對應的所有譯文快取(prefix tc_<sha1> match,不限 suffix)。
 // 不動其他 PDF / 網頁 / 字幕快取。同時把 currentDoc 內已有 translation 的
 // block 重置成 pending,讓使用者下次重新翻譯會真的呼叫 LLM。
-//
-// Cache key 結構(見 lib/cache.js):
-//   tc_<sha1(plainText)><suffix>
-// suffix 包含 cacheTag('_doc') / glossary hash / forbidden hash / model id,
-// 所以同一段 plainText 在不同 model / glossary 設定下會有不同 key。我們以
-// `tc_<sha1>` 為 prefix 一次掃掉所有 suffix 變體 — 比對單一 suffix 來得徹底
+// 實作在 translate.js clearTcCacheForDoc：取文字必須與送翻同一個函式（buildMarkedText），
+// 本檔不再自己算 hash（先前用 plainText 算，帶粗體 / 斜體 / 連結的段落清不掉）
 async function clearCurrentDocCache() {
   if (!currentDoc) return { removedKeyCount: 0, translatableSegmentCount: 0 };
-  const segTexts = [];
-  for (const page of currentDoc.pages) {
-    for (const block of page.blocks) {
-      if (!TRANSLATABLE_TYPES.has(block.type)) continue;
-      const t = block.plainText && block.plainText.trim();
-      if (!t) continue;
-      segTexts.push({ block, text: block.plainText });
-    }
-  }
-  if (segTexts.length === 0) return { removedKeyCount: 0, translatableSegmentCount: 0 };
-  // 算每段 sha1 → 構造 prefix
-  const prefixes = await Promise.all(
-    segTexts.map(async (s) => 'tc_' + (await sha1(s.text))),
-  );
-  const prefixSet = new Set(prefixes);
-  // v1.10.39(code review 2026-06-09 L4):只需比對 key prefix,不需 value。網頁翻譯快取
-  // (tc_ 前綴)也存在 storage.local,重度使用者可能累積數千~數萬條 → get(null) 會把
-  // 整份快取(可能數十 MB)反序列化進記憶體只為比 key。優先用 getKeys()(Chrome 130+,
-  // 只回 key 不載 value);舊瀏覽器 fallback get(null)。
-  const allKeys = (typeof chrome.storage.local.getKeys === 'function')
-    ? await chrome.storage.local.getKeys()
-    : Object.keys(await chrome.storage.local.get(null));
-  const matchedKeys = [];
-  for (const key of allKeys) {
-    if (!key.startsWith('tc_')) continue;
-    // tc_<40 char sha1>... — 取前 43 字當 prefix 比對
-    const prefix = key.slice(0, 43);
-    if (prefixSet.has(prefix)) matchedKeys.push(key);
-  }
-  if (matchedKeys.length > 0) {
-    await chrome.storage.local.remove(matchedKeys);
-  }
-  // 重置 block 翻譯狀態,讓 reader / debug overlay 看起來「重新可翻」
-  for (const { block } of segTexts) {
-    block.translation = undefined;
-    block.translationStatus = undefined;
-    block.translationError = undefined;
-  }
-  return { removedKeyCount: matchedKeys.length, translatableSegmentCount: segTexts.length };
+  return clearTcCacheForDoc(currentDoc);
 }
 
 function bindSummaryDialogUI() {
@@ -2570,11 +2536,14 @@ async function fillSummaryDialog(summary) {
 
 async function formatCostStr(usd) {
   try {
-    const [{ displayCurrency = 'TWD' }, rateInfo] = await Promise.all([
-      chrome.storage.sync.get('displayCurrency'),
+    const [{ displayCurrency, uiLanguage }, rateInfo] = await Promise.all([
+      chrome.storage.sync.get(['displayCurrency', 'uiLanguage']),
       getCachedRate(),
     ]);
-    return formatMoney(usd, { currency: displayCurrency, rate: rateInfo?.rate || FALLBACK_USD_TWD_RATE });
+    // 非繁中介面一律 USD（幣別選項只在繁中介面出現，lib/format.js resolveDisplayCurrency）
+    const I18N = window.__SK?.i18n;
+    const uiLang = I18N ? I18N.getUiLanguage(uiLanguage || 'auto') : 'zh-TW';
+    return formatMoney(usd, { currency: resolveDisplayCurrency(displayCurrency, uiLang), rate: rateInfo?.rate || FALLBACK_USD_TWD_RATE });
   } catch (_) {
     return formatMoney(usd, { currency: 'USD' });
   }
@@ -2693,6 +2662,19 @@ async function handleBookFile(file, kind, subtitleFormat = null) {
     if (myGen !== parseGeneration) return;
     if (session) {
       const restored = hydrateSessionBlocks(doc, session.blocks);
+      // 存檔裡有哪些段落要讓差異存檔知道：persistEpubSession 只會移除「簽章表裡有、現在不是已翻」的
+      // 段落，重開頁面後簽章表是空的——匯入舊工作階段 / 清掉譯文之後，存檔裡的舊段落刪不掉，
+      // 下次開書又回來。值放不會與任何欄位相等的佔位（首次存檔仍全量寫一次）。
+      // 只記這次有還原到的段落；存檔裡對不到段落的紀錄不動
+      if (session.blocks) {
+        for (const ch of doc.chapters) {
+          for (const b of ch.blocks) {
+            if (session.blocks[b.blockId] && !_sessionSavedSig.has(b.blockId)) {
+              _sessionSavedSig.set(b.blockId, { raw: undefined, plain: undefined, edited: undefined });
+            }
+          }
+        }
+      }
       // 空陣列也要接受——「清空過」（[]）跟「沒建過」（null）是不同狀態；
       // 只接受非空會讓清空後重開掉進 legacy fallback 撈回舊術語表
       //（2026-07-10 Jimmy 回報 bug）

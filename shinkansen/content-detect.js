@@ -123,24 +123,61 @@
   // text node 的超集。用原生 regex 掃，長頁 (300K 字) 約 1ms。
   const _SIMP_ONLY_RE = new RegExp('[' + Array.from(SIMPLIFIED_ONLY_CHARS).join('') + ']', 'u');
   const _ANY_CJK_RE = /[\u3400-\u4DBF\u4E00-\u9FFF]/u;
+  // 日文 / 韓文不是中文變體（2026-11-15 code review D-1）：日文新字體大量落在簡體特徵
+  // 字集內（国 / 会 / 学 / 画…），舊字體與韓文漢字又多與繁體同形，文字級無法與中文
+  // 區分。真實頁實測：日文百科條目載入後被自動轉換 130 個元素（含整句帶假名的句子、
+  // 人名、「辞書項目 → 辭書專案」這類詞組級誤轉），且轉完被標成已翻譯。三層訊號：
+  //   (1) 頁面「原始」lang 宣告為 ja / ko → 整頁不做簡繁轉換（看 docLangBackup.orig：
+  //       翻譯 / 轉換後 <html lang> 會被蓋成 target，不可讀當前值）
+  //   (2) 文字級：detectTextLang 判 ja / ko（假名 / 諺文 > 5%）→ 不可轉；放寬分支
+  //       （中英混排）另要求完全不含假名 / 諺文
+  //   (3) 無 lang 宣告的頁面（pageHasConvertibleSignal，convertOnly 預檢）：整頁假名 /
+  //       諺文佔（假名 + 諺文 + 漢字）≥ 20% 且 ≥ 50 字 → 視為日文 / 韓文頁
+  // 不涵蓋：無 lang 宣告頁上、手動翻譯分流（translateUnits）遇到的純漢字短句——文字級
+  // 沒有可用訊號，仍會走本地轉換（結果多為可讀中文，如「国内」→「國內」）
+  SK.getOriginalDocLang = function getOriginalDocLang() {
+    const backup = SK.STATE?.docLangBackup;
+    return ((backup ? (backup.orig || '') : (document.documentElement.lang || '')) + '');
+  };
+  const _KANA_HANGUL_G = /[\u3040-\u30FF\u31F0-\u31FF\uFF66-\uFF9D\uAC00-\uD7AF]/gu;
+  const _HAN_G = /[\u3400-\u4DBF\u4E00-\u9FFF]/gu;
+  function _isKanaOrHangulCode(code) {
+    return (code >= 0x3040 && code <= 0x30FF) || (code >= 0x31F0 && code <= 0x31FF) ||
+      (code >= 0xFF66 && code <= 0xFF9D) || (code >= 0xAC00 && code <= 0xD7AF);
+  }
+  const _PAGE_KANA_MIN_COUNT = 50;
+  const _PAGE_KANA_MIN_RATIO = 0.2;
+  function _textIsKanaHangulDominant(text) {
+    const kana = (text.match(_KANA_HANGUL_G) || []).length;
+    if (kana < _PAGE_KANA_MIN_COUNT) return false;
+    const han = (text.match(_HAN_G) || []).length;
+    return kana / (kana + han) >= _PAGE_KANA_MIN_RATIO;
+  }
+
   SK.pageHasConvertibleSignal = function pageHasConvertibleSignal(direction, root) {
     if (direction !== 'cn2twp' && direction !== 'twp2cn') return false;
+    if (NON_CHINESE_LANG_PREFIX.test(SK.getOriginalDocLang())) return false;
     const re = direction === 'cn2twp' ? _SIMP_ONLY_RE : _ANY_CJK_RE;
     const scope = root || document.body;
     if (!scope) return false;
-    if (re.test(scope.textContent || '')) return true;
+    const texts = [scope.textContent || ''];
     if (typeof SK.findOpenShadowRoots === 'function') {
-      for (const sr of SK.findOpenShadowRoots(scope)) {
-        if (re.test(sr.textContent || '')) return true;
-      }
+      for (const sr of SK.findOpenShadowRoots(scope)) texts.push(sr.textContent || '');
     }
-    return false;
+    if (!texts.some(t => re.test(t))) return false;
+    // 有來源變體特徵字，但整頁是日文 / 韓文（無 lang 宣告的日文站）→ 不轉
+    if (_textIsKanaHangulDominant(texts.join('\n'))) return false;
+    return true;
   };
 
   SK.isConvertibleVariant = function isConvertibleVariant(text, direction) {
     if (direction !== 'cn2twp' && direction !== 'twp2cn') return false;
     const wantLang = direction === 'cn2twp' ? 'zh-Hans' : 'zh-Hant';
-    if (SK.detectTextLang(text) === wantLang) return true;
+    // D-1：日文 / 韓文頁（原始 lang 宣告）與日文 / 韓文文字不是中文變體，見上方說明
+    if (NON_CHINESE_LANG_PREFIX.test(SK.getOriginalDocLang())) return false;
+    const detected = SK.detectTextLang(text);
+    if (detected === wantLang) return true;
+    if (detected === 'ja' || detected === 'ko') return false;
     const lettersOnly = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
     if (lettersOnly.length === 0) return false;
     let cjkCount = 0, simpCount = 0, tradCount = 0;
@@ -150,6 +187,8 @@
         cjkCount++;
         if (SIMPLIFIED_ONLY_CHARS.has(ch)) simpCount++;
         if (TRADITIONAL_ONLY_CHARS.has(ch)) tradCount++;
+      } else if (_isKanaOrHangulCode(code)) {
+        return false;   // 放寬分支只服務中英混排，含假名 / 諺文一律不轉
       }
     }
     if (cjkCount < 2 || cjkCount / lettersOnly.length < 0.3) return false;
@@ -635,34 +674,8 @@
     return false;
   }
 
-  // Case D 用：祖先鏈是否已被某條路徑抽過 fragment。SPAN 嵌套（host > inner-span > a)
-  // 在 YouTube / 通用 web 都很常見，父抽完後子的 walker visit 仍會發生（NodeFilter.FILTER_SKIP
-  // 不阻擋 walker 訪問子節點)，不擋祖先會把同一段文字重複抽兩次，deserialize 時佔位符 slot
-  // 對不上譯文。Case A/B/C 因為 CONTAINER_TAGS 限定 DIV/SECTION 等少嵌套 tag 沒踩到，
-  // Case D 把 SPAN 納入後必須補上。
-  //
-  // v1.9.31: 加 block-boundary 邏輯 — 若 inner el 到 extracted ancestor 之間隔了一層
-  // BLOCK tag (LI / P / 等),則 inner el 的內容不可能在 extracted ancestor 的 fragment 內
-  // (extractInlineFragments 在 BLOCK 子孫處 flushRun,inline run 不會跨越 block 邊界)。
-  // 真實 case: IG modal 留言 outer LI 因含 block 子孫 + 文字 >= 300 字走 containsBlockDescendant
-  // 路徑(line 815)被加進 fragmentExtracted,內層 reply LI > 嵌套 DIV > SPAN[dir=auto] 的
-  // Case D 會被原 hasAncestorExtracted 誤擋(outer LI 是祖先),但 UL/LI 已切斷 inline run,
-  // inner SPAN 內容根本不在 outer LI 的 fragment 範圍內,擋住純粹是 over-block。
-  function hasAncestorExtracted(el, fragmentExtracted) {
-    let cur = el.parentElement;
-    let crossedBlock = false;
-    while (cur && cur !== document.body) {
-      if (fragmentExtracted.has(cur)) {
-        // 跨越 block 邊界後遇到的 extracted ancestor:其 fragment 用 inline-run 抽,
-        // block 邊界把 inner el 隔在 fragment 外。繼續往上找。
-        if (crossedBlock) { cur = cur.parentElement; continue; }
-        return true;
-      }
-      if (SK.BLOCK_TAGS_SET.has(cur.tagName)) crossedBlock = true;
-      cur = cur.parentElement;
-    }
-    return false;
-  }
+  // 「祖先已涵蓋」判斷（isCoveredByCollectedAncestor / hasAncestorExtracted）住在
+  // _collectParagraphsImpl 內——需要該輪收集的 run 成員與 element 單元集合，見該處說明。
 
   // ─── Fragment 抽取 ────────────────────────────────────
 
@@ -1058,6 +1071,52 @@
     // 之後),walker 期間不會用到 hasBlockAncestor。
     const widgetRejectedBlocks = new Set();
     const structurallySkippedBlocks = new Set();
+    // ─── 「祖先已涵蓋」判斷（2026-11-15 code review D-2 / D-3，單一資料源）─────
+    // 一個元素的文字「已被別的單元送翻」只有兩種情況：
+    //   (a) 它（或它的某個祖先）是某個 fragment run 的直屬成員（runMembers）——fragment
+    //       單元序列化 startNode..endNode 這串兄弟節點的整個子樹
+    //   (b) 它的某個祖先整顆被收成 element 單元（wholeUnitEls）
+    // fragmentExtracted 只代表「這個容器抽過 fragment」，不代表容器內所有子孫都被涵蓋：
+    // run 會在 block 子孫、含 block 子孫的容器、自成段落的容器（extraBoundary）、媒體
+    // 群組處斷開，斷點那棵子樹不屬於任何 run。舊版 hasAncestorExtracted 用「el 與
+    // extracted 祖先之間有沒有隔 BLOCK tag」近似 run 邊界，兩個方向都錯：
+    //   - D-3 漏翻：斷點是非 BLOCK tag 的容器（DIV 包 P、inline wrapper 包自成段落的
+    //     DIV）時，斷點子樹內的 mixed SPAN / inline prose 被當成「已涵蓋」，永遠不翻
+    //   - D-2 雙收：三條補抓 pass（BUTTON / leaf anchor / leaf div·span）完全不查涵蓋，
+    //     run 成員或 element 單元內層的元素再被收一次，同段文字送翻兩次
+    // wholeUnitEls 由 results 增量同步（不逐一改各 push 點，新增收集入口也不會漏登記）。
+    const runMembers = new Set();
+    const wholeUnitEls = new Set();
+    let _wholeUnitCursor = 0;
+    function isCoveredByCollectedAncestor(el) {
+      for (; _wholeUnitCursor < results.length; _wholeUnitCursor++) {
+        const u = results[_wholeUnitCursor];
+        if (u.kind === 'element' && u.el) wholeUnitEls.add(u.el);
+      }
+      if (runMembers.has(el)) return true;
+      let cur = el.parentElement;
+      while (cur && cur !== document.body) {
+        if (runMembers.has(cur) || wholeUnitEls.has(cur)) return true;
+        cur = cur.parentElement;
+      }
+      return false;
+    }
+    // 「拆 leaf」容器（Case F、INCLUDE_BY_SELECTOR 全 leaf SPAN 拆分）：容器自己不成單元、
+    // 內部 leaf 各自成單元，wrapper SPAN 的裸文字由 Case F 內的補抓迴圈處理。這類容器
+    // 的子孫不再走 Case D / E / inline prose（否則同一 wrapper 抽兩次），沿用舊版
+    //「中間隔了 BLOCK tag 就不算」的界線。
+    const leafSplitContainers = new Set();
+    // Case D / E / inline prose 補抓用：已被涵蓋，或位於拆 leaf 容器內
+    function hasAncestorExtracted(el) {
+      if (isCoveredByCollectedAncestor(el)) return true;
+      let cur = el.parentElement;
+      while (cur && cur !== document.body) {
+        if (leafSplitContainers.has(cur)) return true;
+        if (SK.BLOCK_TAGS_SET.has(cur.tagName)) return false;
+        cur = cur.parentElement;
+      }
+      return false;
+    }
     const shortBlockRejectedBlocks = new Set();
     function hasBlockAncestor(el) {
       if (blockAncestorMemo.has(el)) return blockAncestorMemo.get(el);
@@ -1221,7 +1280,7 @@
                   results.push(f);
                   seen.add(f.startNode);
                   let _n = f.startNode;
-                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
                   if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
                 }
               }
@@ -1252,7 +1311,7 @@
                   results.push(f);
                   seen.add(f.startNode);
                   let _n = f.startNode;
-                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
                   if (stats) stats.containerWithBrSplit = (stats.containerWithBrSplit || 0) + 1;
                 }
               } else {
@@ -1287,7 +1346,7 @@
                   results.push(f);
                   seen.add(f.startNode);
                   let _n = f.startNode;
-                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
                   if (stats) stats.inlineMixedFragment = (stats.inlineMixedFragment || 0) + 1;
                 }
               }
@@ -1303,7 +1362,7 @@
               // CONTAINER_TAGS 限定 DIV/SECTION 等不嵌套 tag 沒踩到 dedup;Case D 必須補上)。
               el.tagName === 'SPAN' &&
               !seen.has(el) &&
-              !hasAncestorExtracted(el, fragmentExtracted) &&
+              !hasAncestorExtracted(el) &&
               hasDirectText &&
               hasDirectNonBrElement(el) &&
               // v1.9.31: 原本只看 directTextLength >= 20,但 IG / Threads / Mastodon 等
@@ -1335,7 +1394,7 @@
                   results.push(f);
                   seen.add(f.startNode);
                   let _n = f.startNode;
-                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
                   if (stats) stats.inlineMixedSpan = (stats.inlineMixedSpan || 0) + 1;
                 }
               }
@@ -1353,7 +1412,7 @@
               // 與 Case D 互斥:Case D 要 hasDirectNonBrElement、本案明確 !hasDirectNonBrElement。
               el.tagName === 'SPAN' &&
               !seen.has(el) &&
-              !hasAncestorExtracted(el, fragmentExtracted) &&
+              !hasAncestorExtracted(el) &&
               hasDirectText &&
               hasBrChild(el) &&
               !hasDirectNonBrElement(el) &&
@@ -1431,6 +1490,7 @@
               if (stats) stats.multiSegmentInlineBlock = (stats.multiSegmentInlineBlock || 0) + 1;
               widgetRejectedBlocks.add(el);
               fragmentExtracted.add(el);
+              leafSplitContainers.add(el);
               const leaves = el.querySelectorAll('span:not(:has(*))');
               for (const leaf of leaves) {
                 if (seen.has(leaf)) continue;
@@ -1476,7 +1536,7 @@
                   results.push(f);
                   seen.add(f.startNode);
                   let _n = f.startNode;
-                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
                   if (stats) stats.multiSegmentWrapperFragment = (stats.multiSegmentWrapperFragment || 0) + 1;
                 }
               }
@@ -1627,7 +1687,7 @@
                 results.push(f);
                 seen.add(f.startNode);
                 let _n = f.startNode;
-                while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
                 if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
                 if (stats) stats.mediaCardDirectTextFragment = (stats.mediaCardDirectTextFragment || 0) + 1;
               }
@@ -1652,7 +1712,7 @@
                 results.push(f);
                 seen.add(f.startNode);
                 let _n = f.startNode;
-                while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
                 if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
               }
             }
@@ -1716,7 +1776,7 @@
               results.push(f);
               seen.add(f.startNode);
               let _n = f.startNode;
-              while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+              while (_n) { if (_n.nodeType === 1) { seen.add(_n); runMembers.add(_n); } if (_n === f.endNode) break; _n = _n.nextSibling; }
               if (stats) stats.blockBrSplit = (stats.blockBrSplit || 0) + 1;
             }
             // node 與內層 wrapper 都標記，避免 walker 後續訪問 wrapper 時 Case B 重複收集。
@@ -1738,7 +1798,7 @@
       // 不標 fragmentExtracted 的話，Case D/E 的 hasAncestorExtracted 查不到祖先已被收，
       // 同段文字會再抽一次 fragment(P>SPAN 變體，probe 實測重現)。被 accept 的 block
       // 必無 block 子孫(containsBlockDescendant 分支先擋)，整顆 unit 涵蓋全部後代，
-      // 標記安全，hasAncestorExtracted 的 crossedBlock 豁免也不會誤觸發。
+      // 標記安全。
       fragmentExtracted.add(node);
     }
 
@@ -1749,6 +1809,9 @@
     qsaOnPath(scopeRoot, 'button').forEach(btn => {
       if (!onPath(btn)) return;
       if (seen.has(btn)) return;
+      // D-2：按鈕位於已收單元內（P 整顆收時，有文字的 inline BUTTON 會跟著段落一起
+      // 序列化送翻）→ 不再單獨收
+      if (isCoveredByCollectedAncestor(btn)) return;
       const text = (btn.textContent || '').trim();
       if (text.length < _buttonThreshold(text)) return;
       if (btn.hasAttribute('data-shinkansen-translated')) return;
@@ -1888,6 +1951,7 @@
           if (allLeafSpan) {
             if (stats) stats.includeSelectorLeafSplit = (stats.includeSelectorLeafSplit || 0) + 1;
             fragmentExtracted.add(el);
+            leafSplitContainers.add(el);
             widgetRejectedBlocks.add(el);
             for (const leaf of directChildren) {
               if (seen.has(leaf)) continue;
@@ -1937,7 +2001,7 @@
       if (seen.has(el)) return;
       if (el.hasAttribute('data-shinkansen-translated')) return;
       if (hasBlockAncestor(el)) return;
-      if (hasAncestorExtracted(el, fragmentExtracted)) return;
+      if (hasAncestorExtracted(el)) return;
       if (SK.containsBlockDescendant(el)) return;
       if (isInsideExcludedContainer(el, excludedMemo)) return;
       if (isInteractiveWidgetContainer(el)) return;
@@ -1961,6 +2025,9 @@
       if (seen.has(a)) return;
       if (a.hasAttribute('data-shinkansen-translated')) return;
       if (hasBlockAncestor(a)) return;
+      // D-2：連結位於祖先 fragment run 或 element 單元內 → 已涵蓋，不再單獨收
+      //（放在有 memo 的 hasBlockAncestor 之後：段落內連結佔大宗，先被那條擋掉）
+      if (isCoveredByCollectedAncestor(a)) return;
       if (SK.containsBlockDescendant(a)) return;
       if (a.querySelector(SK.CONTAINER_TAG_SELECTOR)) {
         // 外語頁短文字 anchor 允許含 CONTAINER child（icon + text 的 <a><div>text</div></a> 結構）
@@ -2020,6 +2087,9 @@
       if (d.hasAttribute('data-shinkansen-translated')) return;
       // d.children.length > 0 過濾已由 :not(:has(*)) selector 取代，移除
       if (hasBlockAncestor(d)) return;
+      // D-2：leaf 位於祖先 fragment run 或 element 單元內 → 已涵蓋，不再單獨收
+      //（放在有 memo 的 hasBlockAncestor 之後，理由同 leaf anchor 補抓）
+      if (isCoveredByCollectedAncestor(d)) return;
       if (isInsideExcludedContainer(d, excludedMemo)) return;
       if (isInteractiveWidgetContainer(d)) return;
       if (!SK.isVisible(d)) return;
@@ -2051,7 +2121,7 @@
         } else {
           const cs = SK.getCS(d);
           const fs = parseFloat(cs?.fontSize) || 0;
-          const disp = cs.display;
+          const disp = cs?.display;
           const isBlockDisplay = disp === 'block' || disp === 'flex' ||
                                  disp === 'grid' || disp === 'list-item';
           if (!(isBlockDisplay && fs >= 24)) return;

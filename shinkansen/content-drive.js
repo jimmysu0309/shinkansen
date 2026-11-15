@@ -157,7 +157,8 @@
         if (t) bits.push(t);
       }
     }
-    return bits.join(' ');
+    // 依字幕語言決定接合字元（中日文不補空白），與 YouTube / X 共用
+    return typeof SK.ASR?.joinSegTexts === 'function' ? SK.ASR.joinSegTexts(bits, DRIVE.captionLang) : bits.join(' ');
   }
 
   // v1.8.54:雙語走 .src + .tgt 兩行,純中文只寫 .tgt 並把 .src hidden。
@@ -237,6 +238,9 @@
   // 實際走的 background geminiOverrides.model 同源）；空值時 background LOG_USAGE
   // handler 自己 fallback geminiConfig.model
   let _ytModel = '';
+  // 目標語言：Drive 頁自己從設定讀（SK.STATE.targetLanguage 要等整頁翻譯跑過才會寫入）
+  let _targetLanguage = 'zh-TW';
+  const _normalizeTarget = (v) => ((typeof v === 'string' && SK.TARGET_LANGUAGES?.includes(v)) ? v : 'zh-TW');
 
   // ─── 關掉 YouTube embed player 的原生 CC ──────────────
   // 透過 IFrame Player API postMessage 'command' func='unloadModule' arg='captions'。
@@ -304,7 +308,7 @@
   // （background 走 handleTranslate / handleTranslateCustom）與 log 標籤；兩者都用同一份
   // ASR JSON timestamp 協定 + parseAsrResponse，跟 YouTube ASR 自訂 Provider 路徑同源。
   async function _runOneBatchLlm(batch, batchIdx, totalBatches, msgType, engineLabel, runId) {
-    if (batch.length === 0) return;
+    if (batch.length === 0) return true;
 
     // v2.0.54:批次末條 e 改查 DRIVE.rawSegments 真實後繼片段起點(跟 YT _runAsrSubBatch
     // 同源修法,固定 +1500ms 讓每批最後一句系統性提早消失)
@@ -317,20 +321,21 @@
     try {
       res = await SK.safeSendMessage({
         type: msgType,
-        payload: { texts: [inputJson], glossary: null },
+        // 源語言給背景的字幕 prompt 用（原本不帶，背景一律當成 en）
+        payload: { texts: [inputJson], glossary: null, sourceLanguage: DRIVE.captionLang || 'en' },
       });
     } catch (e) {
       SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} sendMessage failed`, {
         error: e?.message || String(e),
       });
-      return;
+      return false;
     }
 
     if (!res?.ok) {
       SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} failed`, {
         error: res?.error || 'unknown',
       });
-      return;
+      return false;
     }
 
     // 記帳放在 parse 之前——API 已回應即已付費，parseAsrResponse 失敗丟棄結果錢也花了
@@ -338,7 +343,7 @@
 
     // §3.4-3：await 期間換軌（新 payload 進來 runId 已 +1、entries 已清）→ 本批屬舊軌，
     // 譯文丟棄（錢已記帳），不可 push 進新軌 entries 造成新舊譯文交錯
-    if (_isStaleRun(runId, batchIdx, totalBatches, engineLabel)) return;
+    if (_isStaleRun(runId, batchIdx, totalBatches, engineLabel)) return false;
 
     const rawText = res.result?.[0] || '';
     let entries;
@@ -349,7 +354,7 @@
         error: e?.message || String(e),
         rawHead: rawText.slice(0, 200),
       });
-      return;
+      return false;
     }
 
     // v2.0.54: 驗證 + 顯示區間收斂到 SK.ASR.resolveEntryTimeline(YT _runAsrSubBatch 同源,
@@ -379,12 +384,13 @@
       totalOverlayEntries: DRIVE.entries.length,
       usage: res.usage,
     });
+    return true;
   }
 
   // ─── 單批翻譯:Google Translate 模式(逐段翻、不合句、免費) ──
   // input/output 都是 N 條 1:1 對應(ASR 不合句),時間戳沿用 raw segment 的 startMs。
   async function _runOneBatchGoogle(batch, batchIdx, totalBatches, runId) {
-    if (batch.length === 0) return;
+    if (batch.length === 0) return true;
 
     const texts = batch.map(seg => seg.text);
 
@@ -398,18 +404,18 @@
       SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google sendMessage failed`, {
         error: e?.message || String(e),
       });
-      return;
+      return false;
     }
 
     if (!res?.ok) {
       SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google failed`, {
         error: res?.error || 'unknown',
       });
-      return;
+      return false;
     }
 
     // §3.4-3：同 LLM 路徑——await 期間換軌則丟棄本批
-    if (_isStaleRun(runId, batchIdx, totalBatches, 'google')) return;
+    if (_isStaleRun(runId, batchIdx, totalBatches, 'google')) return false;
 
     const translations = Array.isArray(res.result) ? res.result : [];
     let pushedCount = 0;
@@ -435,6 +441,7 @@
       totalOverlayEntries: DRIVE.entries.length,
       usage: res.usage,
     });
+    return true;
   }
 
   // ─── DRIVE_ASR_CAPTIONS handler ───────────────────────
@@ -443,7 +450,7 @@
       SK.sendLog('info', 'drive', 'autoTranslate off — skipping captions');
       return;
     }
-    const { json3 } = message.payload || {};
+    const { json3, url } = message.payload || {};
     if (!json3) {
       SK.sendLog('warn', 'drive', 'DRIVE_ASR_CAPTIONS payload missing json3');
       return;
@@ -461,10 +468,32 @@
 
     if (rawSegments.length === 0) return;
 
+    // 字幕語言：已是目標語言就不翻（同 YouTube / X）。原本整條路徑不看語言——中文影片對繁中
+    // 使用者仍整支送翻、非英文影片的 prompt 被告知源語是 en、雙語原文行在中日文字間插空白
+    const _sample = rawSegments.slice(0, 30).map(s => s.text || '').join('').slice(0, 500);
+    const captionLang = SK.ASR.resolveCaptionLang ? SK.ASR.resolveCaptionLang(url, _sample) : '';
+    if (captionLang && SK.ASR.isCaptionAlreadyInTarget?.(captionLang, _sample, _targetLanguage)) {
+      SK.sendLog('info', 'drive', 'captions already in target language — skipping', { captionLang, target: _targetLanguage });
+      // 前一條軌的譯文與在途批次作廢（換到不需翻的軌時不留舊譯文）；原生 CC 不關
+      DRIVE.entries = [];
+      DRIVE.currentEntryIdx = -2;
+      DRIVE.runId++;
+      DRIVE._lastCaptionsFp = null;
+      return;
+    }
+
     // v1.10.46: 重入 guard——同一支字幕重複送進來（iframe reload / PerformanceObserver
     // 重複捕捉）時不重翻：entries 疊加 + 整支重翻 token ×2。指紋 = 條數 + 首尾 startMs。
     const _fp = `${rawSegments.length}|${rawSegments[0].startMs}|${rawSegments[rawSegments.length - 1].startMs}`;
     if (DRIVE._lastCaptionsFp === _fp) {
+      // 2026-11-15 code review Y-3：同一支字幕再送進來（重按 CC）時，上一輪有批次失敗就只
+      // 補那幾批——原本一律 skip，部分批次失敗的影片到重新整理前都缺那幾段譯文
+      const st = DRIVE._batchState;
+      if (st && !DRIVE._batchRunning && SK.ASR.reviveFailedBatches(st, { resetAttempts: true }) > 0) {
+        SK.sendLog('info', 'drive', 'duplicate captions payload — retrying failed batches only', { fp: _fp, batches: SK.ASR.summarizeBatchState(st) });
+        await _runPendingBatches(_fp);
+        return;
+      }
       SK.sendLog('info', 'drive', 'duplicate captions payload — skipping retranslation', { fp: _fp });
       return;
     }
@@ -481,59 +510,79 @@
 
     // v1.8.54:存 raw segments 給雙語 overlay .src 撈對應時段原文
     DRIVE.rawSegments = rawSegments;
+    DRIVE.captionLang = captionLang;
 
     // commit 5c:timedtext 已被 PerformanceObserver 捕捉(ASR_CAPTIONS 都送進來了),
     // 這時關 player CC 安全 — 不會影響字幕翻譯 pipeline。
     // v1.8.54:雙語也走 overlay(中英並排於 .cue-block 共用黑底),native CC 一律關。
     _disablePlayerCaptions();
 
-    // commit 5a:整支切批 throttled 並行
+    // commit 5a:整支切批 throttled 並行。逐批狀態放 DRIVE（Y-3：失敗批次之後補得回來）
     const batches = [];
     for (let i = 0; i < rawSegments.length; i += BATCH_SIZE) {
       batches.push(rawSegments.slice(i, i + BATCH_SIZE));
     }
+    DRIVE._batches = batches;
+    DRIVE._batchState = SK.ASR.createBatchState(batches.length);
+    DRIVE._batchRunId = runId;
+    await _runPendingBatches(_fp);
+  }
+
+  // 把 DRIVE._batchState 內 pending 的批次翻掉（首輪 = 全部；重按 CC 的補翻輪 = 上輪失敗的）。
+  // 派工迴圈走 SK.ASR.runTranscript（與 content-x.js 共用）
+  async function _runPendingBatches(_fp) {
+    const batches = DRIVE._batches;
+    const state = DRIVE._batchState;
+    const runId = DRIVE._batchRunId;
     const totalBatches = batches.length;
 
-    // v1.10.46: engine 在整支翻譯開始前 latch 成 const——原註解宣稱 latch 但實作每批
+    // v1.10.46: engine 在整輪翻譯開始前 latch 成 const——原註解宣稱 latch 但實作每批
     // 重讀 _engine,mid-run 切設定會跨批混用 google / gemini / openai-compat 結果
     const engine = _engine;
 
     SK.sendLog('info', 'drive', 'starting full transcript translation', {
-      totalSegments: rawSegments.length,
+      totalSegments: DRIVE.rawSegments.length,
       totalBatches,
+      pendingBatches: state.filter(b => b.status === 'pending').length,
       maxConcurrent: MAX_CONCURRENT,
       engine,
     });
 
-    let nextBatchIdx = 0;
-    async function _worker() {
-      while (true) {
-        const idx = nextBatchIdx++;
-        if (idx >= totalBatches) return;
-        // 設定途中被關閉就停止後續批次(已送的 in-flight 仍會完成)
-        if (!_autoTranslateEnabled) {
-          SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
-          return;
-        }
-        // §3.4-3：換軌後舊輪 worker 不再派新批（in-flight 的由批次函式內 stale guard 丟棄）
-        if (runId !== DRIVE.runId) {
-          SK.sendLog('info', 'drive', 'track switched mid-translation, old run stops dispatching', { runId, currentRunId: DRIVE.runId });
-          return;
-        }
-        if (engine === 'google') {
-          await _runOneBatchGoogle(batches[idx], idx, totalBatches, runId);
-        } else if (engine === 'openai-compat') {
-          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat', runId);
-        } else {
-          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH', 'gemini', runId);
-        }
-      }
-    }
-
     const tStart = Date.now();
-    await Promise.all(Array(MAX_CONCURRENT).fill(0).map(_worker));
+    DRIVE._batchRunning = true;
+    let summary;
+    try {
+      summary = await SK.ASR.runTranscript({
+        state,
+        maxConcurrent: MAX_CONCURRENT,
+        // 設定途中被關閉就停止後續批次(已送的 in-flight 仍會完成)；
+        // §3.4-3：換軌後舊輪不再派新批（in-flight 的由批次函式內 stale guard 丟棄）
+        shouldStop: () => {
+          if (!_autoTranslateEnabled) {
+            SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
+            return true;
+          }
+          if (runId !== DRIVE.runId) {
+            SK.sendLog('info', 'drive', 'track switched mid-translation, old run stops dispatching', { runId, currentRunId: DRIVE.runId });
+            return true;
+          }
+          return false;
+        },
+        runBatch: (idx) => {
+          if (engine === 'google') return _runOneBatchGoogle(batches[idx], idx, totalBatches, runId);
+          if (engine === 'openai-compat') {
+            return _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat', runId);
+          }
+          return _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH', 'gemini', runId);
+        },
+      });
+    } finally {
+      // 換軌後新輪已接手時不動旗標（新輪自己管）
+      if (DRIVE._batchState === state) DRIVE._batchRunning = false;
+    }
     SK.sendLog('info', 'drive', 'full transcript translation completed', {
       totalBatches,
+      batches: summary,
       totalEntries: DRIVE.entries.length,
       elapsedMs: Date.now() - tStart,
       runId,
@@ -542,8 +591,9 @@
     // v2.0.78（批次 3 C3）：翻譯全失敗（無 API key / 網路斷 / !res.ok 都只 log 就
     // return）時回滾 fingerprint——fp 在翻譯開始「前」latch，全失敗不回滾的話，
     // 使用者設好 key 後重按 CC 重觸發同一 payload 會被 fp 判 duplicate skip，
-    // 到 reload 前永遠翻不出來（fp 判重是唯一重試入口）。只在 fp 仍是本輪值時清
-    // （await 期間換軌進來的新 payload 已 re-latch，不可誤清）
+    // 到 reload 前永遠翻不出來。只在 fp 仍是本輪值時清
+    // （await 期間換軌進來的新 payload 已 re-latch，不可誤清）。
+    // 部分批次失敗（entries 不為空）則保留 fp 與逐批狀態，重按 CC 走上方「只補失敗批次」
     if (DRIVE.entries.length === 0 && DRIVE._lastCaptionsFp === _fp) {
       DRIVE._lastCaptionsFp = null;
       SK.sendLog('warn', 'drive', 'translation yielded no entries — fingerprint cleared for retry', { fp: _fp });
@@ -554,6 +604,7 @@
   SK._driveHandleCaptionsMessage = _handleCaptionsMessage;
   SK._driveSetEngine = (v) => { _engine = _normalizeDriveEngine(v); };
   SK._driveSetAutoTranslate = (v) => { _autoTranslateEnabled = v !== false; };
+  SK._driveSetTargetLanguage = (v) => { _targetLanguage = _normalizeTarget(v); };
 
   // ─── Runtime gate ───────────────────────────────────
   // 只在 Drive viewer top frame 啟動實際 runtime(message listener / batch 翻譯 / iframe 偵測)。
@@ -567,7 +618,8 @@
     try {
       // v2.0.85:字幕雙語對照與整頁「顯示模式」合併——bilingualMode 唯一來源是
       // displayMode === 'dual'(舊 ytSubtitle.bilingualMode 殘留 key 忽略)
-      const { ytSubtitle = {}, displayMode } = await browser.storage.sync.get(['ytSubtitle', 'displayMode']);
+      const { ytSubtitle = {}, displayMode, targetLanguage } = await browser.storage.sync.get(['ytSubtitle', 'displayMode', 'targetLanguage']);
+      _targetLanguage = _normalizeTarget(targetLanguage);
       _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
       _engine = _normalizeDriveEngine(ytSubtitle.engine);
       _ytModel = ytSubtitle.model || '';
@@ -581,6 +633,7 @@
   })();
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return;
+    if (changes.targetLanguage) _targetLanguage = _normalizeTarget(changes.targetLanguage.newValue);
     if (changes.ytSubtitle) {
       const newVal = changes.ytSubtitle.newValue || {};
       const nextEnabled = newVal.autoTranslate !== false;
@@ -755,6 +808,23 @@
     }
     DRIVE.renderLoopId = requestAnimationFrame(loop);
   }
+
+  // 工具列圖示選單 ↔ 本分頁的字幕翻譯開關（與 content-x.js 同訊息型別、同語意：
+  // 只影響當前分頁、不寫 storage；GET 讓選單顯示本分頁實際狀態）
+  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === 'GET_TAB_SUBTITLE') {
+      sendResponse({ enabled: _autoTranslateEnabled });
+      return;
+    }
+    if (message?.type === 'SET_TAB_SUBTITLE') {
+      const next = !!message.payload?.enabled;
+      if (next !== _autoTranslateEnabled) {
+        _autoTranslateEnabled = next;
+        SK.sendLog('info', 'drive', 'autoTranslate toggled for this tab', { enabled: next });
+      }
+      sendResponse({ enabled: _autoTranslateEnabled });
+    }
+  });
 
   browser.runtime.onMessage.addListener((message) => {
     if (message?.type !== 'DRIVE_ASR_CAPTIONS') return;

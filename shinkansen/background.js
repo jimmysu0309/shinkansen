@@ -3,14 +3,14 @@
 
 import { browser } from './lib/compat.js';
 import { IS_IOS_BUILD } from './lib/distribution.js'; // Phase 2: host app 設定橋接只在 iOS build 走 native messaging
-import { translateBatch, extractGlossary, extractTermRenderings, translateBatchStream, summarizeArticle } from './lib/gemini.js';
+import { modelDropsSamplingParams, translateBatch, extractGlossary, extractTermRenderings, translateBatchStream, summarizeArticle } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt, LANG_LABELS, isPromptUnchangedFromAnyTargetDefault, DEFAULT_SETTINGS } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, getAnomalyLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
-import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
+import { getPricingForModel, isExpiredPromoPricing } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
 import { detectForbiddenTermLeaks } from './lib/forbidden-terms.js'; // v1.5.6
 import { filterEchoPairsForCache } from './lib/system-instruction.js'; // v2.0.52: echo 快取防護（pipeline.writeBatchCache 注入用）
 import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/update-check.js'; // v1.6.1
@@ -23,7 +23,7 @@ import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 erro
 // 內容與 getSettings 相同（test/regression/bg-settings-cache-invalidation.spec.js 鎖「改設定後下一筆
 // 請求立即看到新值」）。
 // 2026-09-12 批次 6（§5.1）：計費公式單一資料源 + 三條翻譯 handler 共用 pipeline
-import { computeBilling, geminiCachedRate, resolveCustomProviderCachedRate, customProviderPricing } from './lib/billing.js';
+import { computeBilling, geminiCachedRate, resolveCustomProviderCachedRate, customProviderPricing, withServiceTier } from './lib/billing.js';
 import { createTranslatePipeline } from './lib/translate-pipeline.js';
 import { saveToInstapaper, buildInstapaperPayload } from './lib/instapaper.js'; // 送到 Instapaper（Alt+I 快捷鍵路徑）
 import { planStreamingPartialReuse } from './lib/stream-reuse.js'; // v1.10.61: streaming 批次 missing-only 分流
@@ -359,6 +359,15 @@ function preferArticleGlossaryEntries(fixedGlossaryEntries, articleGlossary, ena
 //   + '_p<hash8>'（customPrompt 非空時。呼叫端只在「effective system prompt ≠ 該路徑任一
 //     target 的預設 prompt」時傳入使用者 saved 字面值（見 customPromptForKey）——未客製
 //     不加，既有快取不失效；客製後改 prompt 既有快取自動失效，改回預設回原 key）
+// Gemini 3.6+ / 3.5 Flash-Lite 已淘汰 temperature（lib/model-pricing.js modelDropsSamplingParams，
+// 請求端 buildTemperatureField 不送）。這些模型的譯文與 temperature 無關，進 key 的值改用
+// 「該路徑的預設值」：網頁 / 字幕路徑 = temperatureDefault → 不加 _t 段；文件路徑一律加 _t
+// 的既有形態不變（_t1.00），預設使用者的既有快取不失效。使用者在設定頁改 temperature
+// 不再讓這些模型的快取失效重翻（重新計費卻拿到同性質的譯文）。
+function temperatureForKey(model, temperature, pathDefault) {
+  return modelDropsSamplingParams(model) ? pathDefault : temperature;
+}
+
 async function buildCacheKeySuffix({
   cacheTag = '',
   glossary = null,
@@ -615,7 +624,7 @@ async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
     temperature: yt.temperature ?? 0.1,
   };
   if (yt.model) geminiOverrides.model = yt.model;
-  const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+  const pricingOverride = ytPricingOverride(yt);
   // ASR 路徑不套用固定術語表 / 黑名單（ASR prompt 已內含禁用詞規則，且 JSON 包裝增加術語注入難度）
   return handleTranslate(payload, sender, geminiOverrides, pricingOverride, cacheTag,
     false, false,
@@ -733,7 +742,7 @@ const messageHandlers = {
           temperature: yt.temperature ?? 0.1,
         };
         if (yt.model) geminiOverrides.model = yt.model;
-        const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+        const pricingOverride = ytPricingOverride(yt);
         await handleTranslateStream(payload, sender, streamId, tabId, {
           cacheTag: '_yt',
           geminiOverrides,
@@ -798,7 +807,7 @@ const messageHandlers = {
       // 若使用者設定了獨立 YouTube 模型，覆蓋 geminiConfig.model
       if (yt.model) geminiOverrides.model = yt.model;
       // ytSubtitle.pricing 非空時傳入，讓 handleTranslate 用正確計價計算費用
-      const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+      const pricingOverride = ytPricingOverride(yt);
       // v1.5.8: 字幕路徑預設不套用固定術語表 / 黑名單，使用者可在 YouTube 字幕分頁開 toggle
       return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt',
         yt.applyFixedGlossary === true,
@@ -1568,6 +1577,8 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   let effectivePricing = pricingOverride;
   if (!effectivePricing && overrides.model) effectivePricing = getPricingForModel(overrides.model, settings);
   if (!effectivePricing) effectivePricing = settings.pricing;
+  // 費用依這次請求送出的 service tier 計（Flex 半價 / Priority 1.8 倍，lib/billing.js）
+  effectivePricing = withServiceTier(effectivePricing, effectiveSettings.geminiConfig?.serviceTier);
 
   // 失敗路徑記帳（v1.10.46 批次 2-5 streaming 版）：中途失敗 / 取消 / hadMismatch 丟棄結果時，
   // SSE 已解析出的 usage 是已付費 token，content 端不會發 LOG_USAGE（error 路徑）或會在累計前
@@ -1594,7 +1605,9 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
       customPrompt: ('systemInstruction' in geminiOverrides)
         ? (customPromptOpt || '')
         : customPromptForKey(settings.geminiConfig?.systemInstruction, getEffectiveSystemPrompt),
-      temperature: effectiveSettings.geminiConfig?.temperature,
+      temperature: temperatureForKey(effectiveSettings.geminiConfig?.model,
+        effectiveSettings.geminiConfig?.temperature,
+        temperatureDefaultOpt ?? DEFAULT_SETTINGS.geminiConfig.temperature),
       temperatureDefault: temperatureDefaultOpt ?? DEFAULT_SETTINGS.geminiConfig.temperature,
     },
   });
@@ -1778,6 +1791,15 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   }
 }
 
+// 字幕獨立計價（ytSubtitle.pricing）。回 null = 沒填，改走 model 查表 / settings.pricing。
+// 數字等於「已過期促銷價」時也視為沒填：那是設定頁選字幕模型時自動帶入的舊內建價，
+// 不是使用者自訂（lib/model-pricing.js isExpiredPromoPricing）
+function ytPricingOverride(yt) {
+  if (!yt?.pricing || yt.pricing.inputPerMTok == null) return null;
+  if (isExpiredPromoPricing(yt.model, yt.pricing)) return null;
+  return yt.pricing;
+}
+
 // pricingOverride：傳入時（如 YouTube 獨立計價）使用；null 則沿用 settings.pricing
 // keyExtras（2026-09-11 §3.6-4）：{ customPrompt, temperatureDefault } — caller 覆蓋 systemInstruction
 // 的路徑（字幕 / 文件）自帶客製 prompt 判定結果與該路徑 temperature 預設值；網頁主路徑不傳。
@@ -1814,6 +1836,8 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   if (!effectivePricing) {
     effectivePricing = settings.pricing;
   }
+  // 費用依這次請求送出的 service tier 計（Flex 半價 / Priority 1.8 倍，lib/billing.js）
+  effectivePricing = withServiceTier(effectivePricing, effectiveSettings.geminiConfig?.serviceTier);
 
   // 術語表 / 禁用詞 / cache key / 快取 / API / echo 過濾 / 寫快取 / 計費 / 落地 / 合併：共用 pipeline
   return pipeline.runTranslatePipeline({
@@ -1832,7 +1856,11 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
       targetLanguage: effectiveSettings.targetLanguage,
       // temperature 進 key：文件路徑不帶 default（W7 起一律進 key，維持既有 _doc key 形態）；
       // 網頁 / 字幕路徑帶該路徑預設值，只有使用者改過才進 key（§3.6-4）
-      temperature: effectiveSettings.geminiConfig?.temperature,
+      temperature: temperatureForKey(effectiveSettings.geminiConfig?.model,
+        effectiveSettings.geminiConfig?.temperature,
+        cacheTag === '_doc'
+          ? DEFAULT_SETTINGS.translateDoc.temperature
+          : (keyExtras.temperatureDefault ?? DEFAULT_SETTINGS.geminiConfig.temperature)),
       temperatureDefault: cacheTag === '_doc'
         ? undefined
         : (keyExtras.temperatureDefault ?? DEFAULT_SETTINGS.geminiConfig.temperature),
@@ -2109,6 +2137,8 @@ async function handleTranslateGoogle(payload, sender, cacheSuffix) {
     // 4. 記錄用量（費用 $0，以字元計）
     // v1.5.7: 走 upsertGoogleUsage 合併同一篇 URL 一小時內的批次到單一紀錄，
     // 避免一篇 BBC 長文炸出 5–20 筆同 URL Google MT entry。
+    // 記帳失敗（IndexedDB 配額 / 交易中止）不可讓已翻好、已寫快取的整批變成失敗
+    try {
     await usageDB.upsertGoogleUsage({
       url: sender?.tab?.url || '',
       title: '',
@@ -2125,6 +2155,9 @@ async function handleTranslateGoogle(payload, sender, cacheSuffix) {
       durationMs: 0,
       timestamp: Date.now(),
     });
+    } catch (err) {
+      debugLog('warn', 'api', 'google usage log failed', { error: err?.message || String(err) });
+    }
   }
 
   // 5. 合併結果
@@ -2207,7 +2240,7 @@ async function handleExtractGlossary(payload, sender) {
   let glossaryBilledCostUSD = 0;
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
     const glossaryModel = effGlossaryModel || 'unknown';
-    const glossaryPricing = getPricingForModel(glossaryModel, settings) || settings.pricing;
+    const glossaryPricing = withServiceTier(getPricingForModel(glossaryModel, settings) || settings.pricing, settings.geminiConfig?.serviceTier);
     // v1.9.2: cache 命中折扣從 glossaryPricing.cachedDiscount 讀（預設 Gemini 90% off）；公式 lib/billing.js
     const { billedInputTokens, billedCostUSD } = computeBilling(usage, glossaryPricing, geminiCachedRate(glossaryPricing));
     glossaryBilledCostUSD = billedCostUSD;
@@ -2344,7 +2377,7 @@ async function handleScanTermRenderings(payload, sender) {
   let scanBilledCostUSD = 0;
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
     const scanModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model || 'unknown';
-    const scanPricing = getPricingForModel(scanModel, settings) || settings.pricing;
+    const scanPricing = withServiceTier(getPricingForModel(scanModel, settings) || settings.pricing, settings.geminiConfig?.serviceTier);
     const { billedInputTokens, billedCostUSD } = computeBilling(usage, scanPricing, geminiCachedRate(scanPricing));
     scanBilledCostUSD = billedCostUSD;
     await usageDB.logTranslation({
@@ -2425,7 +2458,7 @@ async function generateInstapaperSummary(text, sender) {
 
     // 記用量(對齊 handleExtractGlossary 的記帳:source 分流、cache 折扣換算 billed)
     if (usage && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
-      const pricing = getPricingForModel(INSTAPAPER_SUMMARY_MODEL, settings) || settings.pricing;
+      const pricing = withServiceTier(getPricingForModel(INSTAPAPER_SUMMARY_MODEL, settings) || settings.pricing, settings.geminiConfig?.serviceTier);
       const { billedInputTokens, billedCostUSD } = computeBilling(usage, pricing, geminiCachedRate(pricing));
       try {
         await usageDB.logTranslation({

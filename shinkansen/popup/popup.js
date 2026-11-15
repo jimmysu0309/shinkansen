@@ -1,7 +1,7 @@
 // popup.js — 工具列面板邏輯
 
 import { browser } from '../lib/compat.js';
-import { formatBytes, formatTokens, formatUSD, formatMoney } from '../lib/format.js';
+import { formatBytes, formatTokens, formatUSD, formatMoney, resolveDisplayCurrency } from '../lib/format.js';
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 import { RELEASE_HIGHLIGHT_KEYS } from '../lib/release-highlights.js';
 import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
@@ -129,11 +129,13 @@ async function refreshUsageInfo() {
 // v1.8.41：讀 displayCurrency + cached rate 組成 formatMoney opts
 async function readCurrencyState() {
   try {
-    const [{ displayCurrency = 'TWD' }, rateInfo] = await Promise.all([
-      browser.storage.sync.get('displayCurrency'),
+    const [{ displayCurrency, uiLanguage }, rateInfo] = await Promise.all([
+      browser.storage.sync.get(['displayCurrency', 'uiLanguage']),
       getCachedRate(),
     ]);
-    return { currency: displayCurrency, rate: rateInfo?.rate || FALLBACK_USD_TWD_RATE };
+    // 非繁中介面一律 USD（幣別選項只在繁中介面出現，lib/format.js resolveDisplayCurrency）
+    const uiLang = I18N ? I18N.getUiLanguage(uiLanguage || 'auto') : 'zh-TW';
+    return { currency: resolveDisplayCurrency(displayCurrency, uiLang), rate: rateInfo?.rate || FALLBACK_USD_TWD_RATE };
   } catch {
     return { currency: 'TWD', rate: FALLBACK_USD_TWD_RATE };
   }
@@ -441,19 +443,26 @@ async function init() {
         $('yt-subtitle-row').hidden = false;
         // 沒設定過視為 true（與 DEFAULT_SETTINGS.ytSubtitle.autoTranslate 對齊）
         $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
+        // 開關只影響當前分頁 → 顯示本分頁實際狀態；分頁回 null（尚未啟動也沒被手動切過）
+        // 或沒回應才維持設定值
+        const ytState = await browser.tabs.sendMessage(tab.id, { type: 'GET_SUBTITLE' }, { frameId: 0 })
+          .catch(() => null);
+        if (typeof ytState?.enabled === 'boolean') $('yt-subtitle-toggle').checked = ytState.enabled;
         // 字幕大小 scale（全平台統一,只在 YouTube 影片頁顯示）。預設 100。
         $('yt-caption-size-row').hidden = false;
         $('yt-caption-size').value = String(ytSubtitle.captionScale ?? 100);
       }
       // commit 5a':Drive 影片 viewer toggle 共用 ytSubtitle.autoTranslate
       // （user 不需要為 Drive 多做設定，跟 YouTube 字幕用同一個開關）
-      if (isDriveFile) {
-        $('drive-subtitle-row').hidden = false;
-        $('drive-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
-      }
-      if (isXStatus) {
-        $('x-subtitle-row').hidden = false;
-        $('x-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
+      // Drive / X：開關只影響當前分頁（與 YouTube 同語意），所以顯示「本分頁實際狀態」；
+      // 分頁沒回應（content script 尚未就緒）才退回全域設定值
+      if (isDriveFile || isXStatus) {
+        const toggle = $(isDriveFile ? 'drive-subtitle-toggle' : 'x-subtitle-toggle');
+        $(isDriveFile ? 'drive-subtitle-row' : 'x-subtitle-row').hidden = false;
+        toggle.checked = ytSubtitle.autoTranslate !== false;
+        const tabState = await browser.tabs.sendMessage(tab.id, { type: 'GET_TAB_SUBTITLE' }, { frameId: 0 })
+          .catch(() => null);
+        if (typeof tabState?.enabled === 'boolean') toggle.checked = tabState.enabled;
       }
       // v2.0.85:字幕雙語對照 toggle 已移除——雙語與否跟隨「顯示模式」(displayMode),
       // content-youtube.js / content-drive.js 由 displayMode === 'dual' 導出
@@ -600,24 +609,27 @@ $('yt-subtitle-toggle').addEventListener('change', async (e) => {
   }
 });
 
-// commit 5a':Drive toggle 共用 ytSubtitle.autoTranslate（寫 storage，跟 YouTube popup
-// 的 SET_SUBTITLE message 設計不同——因 Drive 沒 SPA 切影片，單純 storage 即時 sync 即可。
-// content-drive.js listen onChanged 即時生效）。
-// 2026-10-19:X 影片字幕 toggle 同一條路徑（content-x.js 也 listen onChanged）
-async function _setSubtitleAutoTranslateFromToggle(e) {
+// Drive / X 的字幕開關：與上面 YouTube 同語意——只通知當前分頁即時啟 / 停，**不寫** storage。
+// 2026-11-15 前這兩個開關直接寫全域 ytSubtitle.autoTranslate，在 X 關掉會連 YouTube / Drive
+// 的自動字幕翻譯一起關。全域預設值只由設定頁管；content-x.js / content-drive.js 收
+// SET_TAB_SUBTITLE 改本分頁狀態（設定頁改全域值時仍經 storage.onChanged 即時生效）。
+async function _setTabSubtitleFromToggle(e) {
   const enabled = e.target.checked;
   try {
-    const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
-    await browser.storage.sync.set({
-      ytSubtitle: { ...ytSubtitle, autoTranslate: enabled },
-    });
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      await browser.tabs.sendMessage(tab.id, {
+        type: 'SET_TAB_SUBTITLE',
+        payload: { enabled },
+      }, { frameId: 0 }).catch(() => {});
+    }
   } catch (err) {
     statusEl.textContent = t('popup.status.subtitleToggleFailed');
     statusEl.style.color = '#ff3b30';
   }
 }
-$('drive-subtitle-toggle').addEventListener('change', _setSubtitleAutoTranslateFromToggle);
-$('x-subtitle-toggle').addEventListener('change', _setSubtitleAutoTranslateFromToggle);
+$('drive-subtitle-toggle').addEventListener('change', _setTabSubtitleFromToggle);
+$('x-subtitle-toggle').addEventListener('change', _setTabSubtitleFromToggle);
 
 // 字幕大小 scale change handler（寫 ytSubtitle.captionScale；content-youtube onChanged
 // 即時套用 overlay + iOS ::cue,不需 reload 影片頁）

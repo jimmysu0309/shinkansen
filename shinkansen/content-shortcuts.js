@@ -20,7 +20,7 @@
 //   這些情境 manifest 預設鍵（browser 層，桌面）仍然有效，作為 fallback。
 (function (SK) {
   'use strict';
-  if (!SK) return;
+  if (!SK || SK.disabled) return;  // iframe gate（見 content-ns.js）：被擋的 frame 不掛 listener
   const SC = window.__SKShortcuts;
   if (!SC) return;
   if (SK.customShortcuts) return; // 防重複注入（SPA 導航再注入保險）

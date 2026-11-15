@@ -71,6 +71,18 @@ export function formatMoney(usd, opts = {}) {
 }
 
 /**
+ * 實際顯示用的幣別（code review 2026-11-15 O-1）。幣別選項只在繁中介面出現（設定頁
+ * _updateCurrencySectionVisibility），其他介面語言的使用者沒有地方可改，存下來的值
+ *（預設 TWD）也不是他們選的 → 非繁中介面一律 USD；繁中介面照存下來的選擇，沒存過為 TWD。
+ * uiLang 傳「已解析的介面語言」（I18N.getUiLanguage 的結果），不是 'auto'。
+ * content script 世界的同一份實作在 lib/format-currency.js（雙實作，改任一份兩份一起改）。
+ */
+export function resolveDisplayCurrency(savedCurrency, uiLang) {
+  if (uiLang !== 'zh-TW') return 'USD';
+  return savedCurrency === 'USD' ? 'USD' : 'TWD';
+}
+
+/**
  * 解析使用者輸入的數字。空字串/非法字元走 default，合法有限數字（含 0、負數）保留。
  *
  * 取代 `Number(v) || default`（舊寫法會把 0 當 falsy 改回預設值，造成

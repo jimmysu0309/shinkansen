@@ -39,7 +39,12 @@ export function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pr
  * 沒填 / 不合法 → 回 null，呼叫端決定 fallback。
  */
 export function pricingToCachedRate(pricing) {
-  const d = Number(pricing?.cachedDiscount);
+  // null / undefined / 空字串 = 沒填（設定頁欄位留空存的是 null）。不可直接 Number()：
+  // Number(null) 與 Number('') 都是 0，會被當成「折扣 0%」，自訂 Provider 的
+  // baseUrl 自動推導永遠走不到（code review 2026-11-15 B-1）
+  const raw = pricing?.cachedDiscount;
+  if (raw == null || raw === '') return null;
+  const d = Number(raw);
   if (!Number.isFinite(d) || d < 0 || d > 1) return null;
   return 1 - d;
 }
@@ -81,12 +86,38 @@ export function customProviderPricing(cp) {
   return { inputPerMTok: cp?.inputPerMTok || 0, outputPerMTok: cp?.outputPerMTok || 0 };
 }
 
+// ─── Gemini service tier 計價倍率（code review 2026-11-15 B-2）────────────
+// model-pricing.js 的內建表是 Standard 價。Flex 為 Standard 的 50%，Priority 為 1.8 倍
+//（官方定價頁 2026-11-15 校準：四個內建模型的 input / output 全部符合這兩個倍率）。
+// DEFAULT（不送 service_tier）與 STANDARD 為 1。
+// 不精確處：個別模型的 Flex 快取命中價不是剛好減半（例 gemini-3-flash-preview），
+// 這裡一律套同一倍率，誤差只落在快取命中那一小部分。
+export const SERVICE_TIER_MULTIPLIER = { FLEX: 0.5, PRIORITY: 1.8 };
+
+export function serviceTierMultiplier(tier) {
+  return SERVICE_TIER_MULTIPLIER[String(tier || '').toUpperCase()] ?? 1;
+}
+
+/**
+ * 把這次請求送出的 service tier 掛到 pricing 上（單價本身不動，倍率由 computeBilling 套）。
+ * 只給 Gemini 路徑用；自訂 Provider 沒有 tier 概念，不呼叫即為 1。
+ */
+export function withServiceTier(pricing, tier) {
+  const m = serviceTierMultiplier(tier);
+  if (!pricing || m === 1) return pricing;
+  return { ...pricing, tierMultiplier: m };
+}
+
 /**
  * 一批用量的完整計費：原始費用 + 套 cache 折扣後的「實付」input token 數與費用。
  * toast / popup / usage-db 顯示的都是 billed* 這組（v0.48 起）；raw 數字保留給 hit% / saved%。
  *
- * @param {{inputTokens?:number, outputTokens?:number, cachedTokens?:number}} usage
- * @param {object|null} pricing { inputPerMTok, outputPerMTok }
+ * service tier：pricing.tierMultiplier（withServiceTier 掛的）乘在費用上，token 數不變。
+ * usage.std*Tokens 是「要求 Priority 但被降級成 Standard 處理」的那部分（gemini.js 依回應
+ * 標頭標記），官方對降級請求照 Standard 計價 → 這部分不乘倍率。
+ *
+ * @param {{inputTokens?:number, outputTokens?:number, cachedTokens?:number, stdInputTokens?:number, stdOutputTokens?:number, stdCachedTokens?:number}} usage
+ * @param {object|null} pricing { inputPerMTok, outputPerMTok, tierMultiplier? }
  * @param {number} cachedRate cache 命中部分相對全價的比例（0-1）
  * @returns {{ inputTokens:number, outputTokens:number, cachedTokens:number, costUSD:number, billedInputTokens:number, billedCostUSD:number }}
  */
@@ -95,12 +126,25 @@ export function computeBilling(usage, pricing, cachedRate) {
   const outputTokens = usage?.outputTokens || 0;
   const cachedTokens = usage?.cachedTokens || 0;
   const cachedSavedRatio = 1 - cachedRate;
+  const m = (typeof pricing?.tierMultiplier === 'number' && pricing.tierMultiplier > 0) ? pricing.tierMultiplier : 1;
+  let costUSD = computeCostUSD(inputTokens, outputTokens, pricing) * m;
+  let billedCostUSD = computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing, cachedRate) * m;
+  if (m !== 1) {
+    // 被降級成 Standard 的部分退回 1 倍（上限夾在總量內，防標記與總量不一致）
+    const stdIn = Math.min(inputTokens, usage?.stdInputTokens || 0);
+    const stdOut = Math.min(outputTokens, usage?.stdOutputTokens || 0);
+    const stdCached = Math.min(cachedTokens, stdIn, usage?.stdCachedTokens || 0);
+    if (stdIn > 0 || stdOut > 0) {
+      costUSD -= computeCostUSD(stdIn, stdOut, pricing) * (m - 1);
+      billedCostUSD -= computeBilledCostUSD(stdIn, stdCached, stdOut, pricing, cachedRate) * (m - 1);
+    }
+  }
   return {
     inputTokens,
     outputTokens,
     cachedTokens,
-    costUSD: computeCostUSD(inputTokens, outputTokens, pricing),
+    costUSD,
     billedInputTokens: Math.max(0, Math.round(inputTokens - cachedTokens * cachedSavedRatio)),
-    billedCostUSD: computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing, cachedRate),
+    billedCostUSD,
   };
 }

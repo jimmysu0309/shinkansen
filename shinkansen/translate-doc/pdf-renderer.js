@@ -176,6 +176,13 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
   const pageCount = layoutDoc.pages.length;
   // 一次 embedPages 全部頁(比 for-loop 內逐頁 embedPage 快；pdf-lib 內部 batch parse)
   const origPages = origDoc.getPages().slice(0, pageCount);
+  // 沒有 /Contents 的頁（PDF 規格允許的空白頁）pdf-lib 拒絕嵌入、整份生成 throw——
+  // 替它補一條空的內容流（只動這份載入的副本）
+  for (const p of origPages) {
+    if (!p.node.Contents()) {
+      p.node.set(window.PDFLib.PDFName.of('Contents'), origDoc.context.register(origDoc.context.stream(new Uint8Array(0))));
+    }
+  }
   const embeddedPages = await newDoc.embedPages(origPages);
 
   // 抽原 PDF 每頁的 link / 底色 / viewport metadata。共用解析階段已開的 PDF.js doc
@@ -186,6 +193,10 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
   let pdfMetaByPage = Array.isArray(layoutDoc._overlayMeta) && layoutDoc._overlayMeta.length >= pageCount
     ? layoutDoc._overlayMeta
     : null;
+  // 快取的底色取樣要涵蓋「現在有譯文」的每個 block：首次生成時整頁還沒有譯文的頁不會取樣
+  //（省 render），之後擴大頁數再翻 / 重試成功，這些 block 在彩色底上會變成白色遮罩加黑字。
+  // 發現有 block 沒取樣到就整份重抽一次（取樣過的頁涵蓋該頁全部可翻 block，不會反覆觸發）
+  if (pdfMetaByPage && overlayMetaMissingColors(pdfMetaByPage, layoutDoc, pageCount)) pdfMetaByPage = null;
   if (!pdfMetaByPage) {
     pdfMetaByPage = await extractPdfMetaForOverlay(originalArrayBuffer, pageCount, layoutDoc, sharedPdfDoc);
     if (pdfMetaByPage.length >= pageCount) layoutDoc._overlayMeta = pdfMetaByPage;
@@ -251,6 +262,20 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
 // 每頁 overlay 用的 metadata 決議（§3.9-4）：抽取成功用抽取結果；抽取失敗（整份或
 // 單頁）退回解析階段記在 layoutPage.viewport 的 transform / rotation——/Rotate 或
 // CropBox 頁的譯文座標仍正確，只少 link / 底色。export 供 unit spec 直接驗
+// 快取的 metadata 是否缺某個「已有譯文」block 的底色取樣。colorsFinal = 該頁不會再有更多資訊
+//（純文字頁不需取樣 / 取樣失敗）
+export function overlayMetaMissingColors(metaByPage, layoutDoc, pageCount) {
+  for (let i = 0; i < pageCount; i++) {
+    const m = metaByPage[i];
+    if (!m || m.colorsFinal) continue;
+    const colors = m.blockColors || {};
+    for (const b of ((layoutDoc.pages[i] && layoutDoc.pages[i].blocks) || [])) {
+      if (TRANSLATABLE_TYPES.has(b.type) && b.translation && Array.isArray(b.bbox) && !(b.blockId in colors)) return true;
+    }
+  }
+  return false;
+}
+
 export function resolveOverlayMeta(extracted, layoutPage) {
   if (extracted) return extracted;
   const vp = (layoutPage && layoutPage.viewport) || {};
@@ -423,22 +448,18 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
   // padBottom 涵蓋原文字身 descender 殘影(PDF.js textRun bbox 不一定完整包到字身底)。
   // 對非 cell-block 用 fontSize × 0.3(原行為);對 cell-block 限制較小,因為 cell.y1
   // 跟下方 row 邊線距離通常 3-4pt。
-  // cell-block buffer:cell-split sub-block 的 block.bbox 邊界跟原 PDF 表格邊線
-  // 重合(cell.x0 = 垂直邊線 x、cell.y0 = 水平邊線 y),mask 從 cell.bbox 邊開始
-  // 會蓋邊線。對 cell-block 上左右各收 0.5pt buffer 留邊線(中文沒突出 ascender 寬,
-  // 0.5pt 不會留明顯殘影)
+  // cell-block:block.bbox 是原文 run 的聯集(不是表格格線),遮罩以原文 item 範圍加邊距計算,
+  // 不夾回 bbox(見下方 isCellBlock 分支註解)
   for (const { block, fit } of prepared) {
     const isCellBlock = block._isCellBlock === true;
     if (isCellBlock) {
-      // cell-block mask:蓋「原文 item 形狀 + descender padding」而非整格內縮矩形。
-      // 舊法(cell.bbox 內縮 1pt、無 padBottom)在原文字身貼近 cell 底時留 1-2pt
-      // 字身底殘影(zoom 下呈虛線,Quotation 表頭列實測)。文字通常不貼表格邊線,
-      // 以 item bbox 起算的 mask 蓋得住字身(含 PDF.js bbox 常低估的 descender)
-      // 又碰不到邊線;item 貼邊時 clamp 回 cell 內縮 0.5pt(殘影只剩貼邊側極窄條,
-      // 仍優於全周內縮)。cell 內找不到 item 時 fallback 舊內縮矩形(寧可壓邊線
-      // 也不漏蓋原文,對齊 v1.10.39 M5 窄 cell 原則)
+      // cell-block mask:蓋「原文 item 形狀 + 邊距」而非整格內縮矩形。
+      // cell block 的 bbox 是原文 run 的聯集(底邊 = 基線),不是表格格線——原本把遮罩夾回
+      // bbox 內縮 0.5pt,底邊因此停在基線上方,下伸字母(g / p / y)的下緣與左右各 0.5pt
+      // 完全沒被蓋住(實測 14pt 字每格殘留數百個深色像素)。現在不夾:遮罩 = item 範圍 + 邊距。
+      // 格線通常離基線 3-4pt 以上,邊距(下方 max(1.5, 字級 × 0.25))碰不到;貼得更近的密表格
+      // 會壓到線,取捨是「不露原文殘影」優先。cell 內找不到 item 時 fallback 內縮矩形
       const [bx0, by0, bx1, by1] = block.bbox;
-      const buf = 0.5;
       const fs = block.fontSize || 10;
       const padX = fs * 0.1;
       const padTop = fs * 0.1;
@@ -448,10 +469,10 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
         const [ix0, iy0, ix1, iy1] = it.bbox;
         // 只取與 cell 相交的 item(相鄰 cell 的 item 不會與本 cell bbox 相交)
         if (ix1 < bx0 || ix0 > bx1 || iy1 < by0 || iy0 > by1) continue;
-        const mx0 = Math.max(ix0 - padX, bx0 + buf);
-        const mx1 = Math.min(ix1 + padX, bx1 - buf);
-        const my0 = Math.max(iy0 - padTop, by0 + buf);
-        const my1 = Math.min(iy1 + padBottomCell, by1 - buf);
+        const mx0 = ix0 - padX;
+        const mx1 = ix1 + padX;
+        const my0 = iy0 - padTop;
+        const my1 = iy1 + padBottomCell;
         if (mx1 <= mx0 || my1 <= my0) continue;
         page.drawRectangle({
           x: mx0,
@@ -969,8 +990,10 @@ function sampleBlockColors(img, w, h, bbox, scale) {
 // 頁面繪圖指令是否含「可能畫出底色」的操作：填色路徑 / 影像 / 漸層 / 巢狀 form（form 內容看不到，保守當有）
 // pageMayHaveColoredBackground：移到 pdf-oplist.js（解析階段與 renderer 單一資料源，批次 7 §6.4）
 async function renderPageSamples(page, viewport, layoutPage) {
-  const blocks = ((layoutPage && layoutPage.blocks) || []).filter((b) => TRANSLATABLE_TYPES.has(b.type) && b.translation && Array.isArray(b.bbox));
-  if (blocks.length === 0) return {};
+  // 整頁還沒有任何譯文：不 render（回 null = 沒取樣，之後有譯文時 overlayMetaMissingColors 會觸發重抽）。
+  // 要取樣就取該頁全部可翻 block——不只當下有譯文的，之後重試成功的 block 才不會缺色
+  const blocks = ((layoutPage && layoutPage.blocks) || []).filter((b) => TRANSLATABLE_TYPES.has(b.type) && Array.isArray(b.bbox));
+  if (!blocks.some((b) => b.translation)) return null;
   const area = viewport.width * viewport.height;
   const scale = area > SAMPLE_MAX_PIXELS ? Math.sqrt(SAMPLE_MAX_PIXELS / area) : 1;
   const vp = page.getViewport({ scale });
@@ -1066,6 +1089,7 @@ async function extractPageMetaForOverlay(page, i, layoutDoc) {
   // 座標系,需要 viewport.transform(PDF user space → canvas)供 buildBilingualPdf 反算
   // 底色 / 字色取樣（失敗不擋生成，退回白底黑字）
   let blockColors = {};
+  let colorsFinal = false;
   try {
     // 純文字頁（沒有任何填色 / 影像 / 漸層 / form 繪圖指令）不可能有彩色底，跳過 render：
     // 書籍 / 論文類 200 頁文件實測 render 每頁 ≈ 0.2s，跳過後生成時間回到取樣前
@@ -1076,12 +1100,15 @@ async function extractPageMetaForOverlay(page, i, layoutDoc) {
       ? layoutPage.mayHaveColoredBackground
       : pageMayHaveColoredBackground(await page.getOperatorList());
     if (mayColor) {
-      blockColors = await renderPageSamples(page, viewport, layoutPage);
+      blockColors = (await renderPageSamples(page, viewport, layoutPage)) || {};
+    } else {
+      colorsFinal = true;
     }
   } catch (err) {
     console.warn('[Shinkansen] 底色取樣失敗，該頁維持白底黑字：', err && err.message);
+    colorsFinal = true;
   }
-  return { links, items, blockColors, rotation: ((page.rotate % 360) + 360) % 360, viewportTransform: viewport.transform.slice() };
+  return { links, items, blockColors, colorsFinal, rotation: ((page.rotate % 360) + 360) % 360, viewportTransform: viewport.transform.slice() };
 }
 
 // 對單一新 page 加回 Link annotations。每條 Link 構造一個 PDFDict 註冊成

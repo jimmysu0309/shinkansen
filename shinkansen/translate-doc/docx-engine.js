@@ -95,7 +95,10 @@ export function escapeXmlAttr(s) {
 // 深度感知：巢狀（textbox w:txbxContent 內的 w:p）時外層不算 leaf——
 // 外層段落自身通常只有 drawing anchor（無文字），內層各自成獨立翻譯單位。
 // <w:p/> 自閉合（空段落）不收。lookahead [\s>/] 排除 <w:pPr / <w:pict 等前綴撞名。
-export function scanLeafParagraphSpans(xml) {
+// opts.includeOuter：一併回傳含巢狀段落的外層段落（outer: true）。外層段落掛著文字方塊的錨點，
+// 但本身常常也有內文（Word 把浮動文字方塊錨在最近的一般段落上；100 檔語料 43 個外層段落裡
+// 6 個有自己的內文，其中幾個是文件標題）——解析端只收「自己有可翻文字」的外層段落
+export function scanLeafParagraphSpans(xml, opts = {}) {
   const spans = [];
   const re = /<w:p(?=[\s>/])|<\/w:p>/g;
   const stack = []; // { start, hasChildP }
@@ -106,6 +109,8 @@ export function scanLeafParagraphSpans(xml) {
       if (!top) continue; // 不平衡（理論不會發生）：忽略
       if (!top.hasChildP) {
         spans.push({ start: top.start, end: m.index + 6 /* '</w:p>'.length */ });
+      } else if (opts.includeOuter) {
+        spans.push({ start: top.start, end: m.index + 6, outer: true });
       }
       continue;
     }
@@ -440,8 +445,76 @@ export function stripPPrChildren(pPrXml, tags) {
   return out;
 }
 
-export function composeDualParagraph(para, runsXml) {
-  return '<w:p>' + stripPPrChildren(para.pPrXml, DUAL_PPR_STRIP_TAGS) + runsXml + '</w:p>';
+// 編號掛在樣式上的段落樣式（styles.xml 的樣式定義帶 numPr、numId ≠ 0；沒有自己的 numPr 的樣式
+// 沿 basedOn 繼承）。回傳 { ids: Set<styleId>, defaultNumbered }——defaultNumbered = 預設段落樣式
+// 本身帶編號（沒有 pStyle 的段落適用）
+export function numberedParagraphStyles(stylesXml) {
+  const info = new Map();
+  let defaultId = null;
+  const re = /<w:style\b([^>]*)>([\s\S]*?)<\/w:style>/g;
+  let m;
+  while ((m = re.exec(stylesXml || '')) !== null) {
+    const attrs = m[1];
+    if (!/w:type="paragraph"/.test(attrs)) continue;
+    const id = /w:styleId="([^"]*)"/.exec(attrs)?.[1];
+    if (id == null) continue;
+    if (/w:default="(?:1|true|on)"/.test(attrs)) defaultId = id;
+    const numPr = /<w:numPr\b[^>]*>([\s\S]*?)<\/w:numPr>/.exec(m[2])?.[1];
+    const numId = numPr != null ? (/<w:numId\s[^>]*w:val="([^"]*)"/.exec(numPr)?.[1] ?? null) : null;
+    info.set(id, {
+      basedOn: /<w:basedOn\s[^>]*w:val="([^"]*)"/.exec(m[2])?.[1] ?? null,
+      // true / false = 樣式自己決定；null = 沿 basedOn
+      own: numPr != null && numId != null ? numId !== '0' : null,
+    });
+  }
+  const ids = new Set();
+  for (const id of info.keys()) {
+    let cur = id;
+    const seen = new Set();
+    while (cur != null && info.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      const st = info.get(cur);
+      if (st.own != null) { if (st.own) ids.add(id); break; }
+      cur = st.basedOn;
+    }
+  }
+  return { ids, defaultNumbered: defaultId != null && ids.has(defaultId) };
+}
+
+// pPr 子元素有固定順序，numPr 之前只能有這幾個
+const PPR_BEFORE_NUMPR = ['w:pStyle', 'w:keepNext', 'w:keepLines', 'w:pageBreakBefore', 'w:framePr', 'w:widowControl'];
+const NUMPR_OFF = '<w:numPr><w:numId w:val="0"/></w:numPr>';
+
+// 在 pPr 內補「此段不編號」（numId 0）。pPrXml 為空時補一個只含它的 pPr
+function addNumberingOff(pPrXml) {
+  if (!pPrXml) return '<w:pPr>' + NUMPR_OFF + '</w:pPr>';
+  const open = /^<w:pPr\b[^>]*>/.exec(pPrXml);
+  if (!open) return pPrXml; // <w:pPr/> 自閉合等非預期形狀：不動
+  let at = open[0].length;
+  for (const tag of PPR_BEFORE_NUMPR) {
+    let idx = pPrXml.indexOf('<' + tag, open[0].length);
+    while (idx !== -1) {
+      const after = pPrXml.charCodeAt(idx + tag.length + 1);
+      if (after === 62 || after === 32 || after === 47) {
+        const { end } = findElementEnd(pPrXml, idx, tag);
+        if (end > at) at = end;
+        break;
+      }
+      idx = pPrXml.indexOf('<' + tag, idx + 1);
+    }
+  }
+  return pPrXml.slice(0, at) + NUMPR_OFF + pPrXml.slice(at);
+}
+
+// numbered：numberedParagraphStyles 的結果（null = 不處理樣式層編號）。原段的樣式帶編號時，
+// 譯文段沿用同一個 pStyle 會再編一次號——補 numId 0 關掉（段落自己的 numPr 已在上面剝掉）
+export function composeDualParagraph(para, runsXml, numbered = null) {
+  let pPr = stripPPrChildren(para.pPrXml, DUAL_PPR_STRIP_TAGS);
+  if (numbered) {
+    const styleId = /<w:pStyle\s[^>]*w:val="([^"]*)"/.exec(para.pPrXml || '')?.[1];
+    if (styleId != null ? numbered.ids.has(styleId) : numbered.defaultNumbered) pPr = addNumberingOff(pPr);
+  }
+  return '<w:p>' + pPr + runsXml + '</w:p>';
 }
 
 // 一個 text run 的 XML
@@ -636,16 +709,19 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
     return ranges;
   };
 
-  const htmlPerPart = new Map(); // path → { htmlDoc, paraEls: [] }
+  const htmlPerPart = new Map(); // path → { htmlDoc, paraEls: [], outerDoc, outerEls: [] }
 
   for (const [path, xml] of partsXml) {
     throwIfAborted();
     const rels = relsFor(path);
     const skipRanges = partKindOf(path) === 'notes' ? separatorRanges(xml) : [];
     const fieldRanges = crossParaFieldRanges(xml);
-    const spans = scanLeafParagraphSpans(xml);
+    const spans = scanLeafParagraphSpans(xml, { includeOuter: true });
     const htmlDoc = htmlDocFor();
     const paraEls = [];
+    // 外層段落（掛文字方塊的段落）另放一份 htmlDoc：block 編號與章節切分都不可動到既有段落
+    const outerDoc = htmlDocFor();
+    const outerEls = [];
     for (const span of spans) {
       if (skipRanges.some(([a, b]) => span.start >= a && span.end <= b)) continue;
       if (fieldRanges.some(([a, b]) => span.start > a && span.start < b)) continue;
@@ -665,6 +741,16 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
         islands: [],
         block: null,
       };
+      if (span.outer) {
+        // 巢狀內容（文字方塊）在 tokenizer 眼中是 island，不會被走進去；自己沒有可翻文字就不收
+        para.outer = true;
+        const oel = buildParagraphHtml(outerDoc, para, groups, rels, outerEls.length);
+        if (!oel) continue;
+        outerEls.push({ para, el: oel });
+        outerDoc.body.appendChild(oel);
+        paras.push(para);
+        continue;
+      }
       // 批次 7 §6.4：索引 = 目前已掛進 body 的 para 元素數（= paraEls.length），不再每段
       // querySelectorAll 整份 htmlDoc 數一次（O(n²)）
       const el = buildParagraphHtml(htmlDoc, para, groups, rels, paraEls.length);
@@ -674,7 +760,7 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
       }
       paras.push(para);
     }
-    htmlPerPart.set(path, { htmlDoc, paraEls });
+    htmlPerPart.set(path, { htmlDoc, paraEls, outerDoc, outerEls });
   }
 
   onProgress({ stage: 'blocks' });
@@ -710,18 +796,41 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
 
   for (const kindKey of partKindOrder) {
     let cur = null;
-    for (const [path, { htmlDoc, paraEls }] of htmlPerPart) {
+    // 還沒有章節可掛的外層段落 block（文件開頭就是掛文字方塊的段落）：等第一個章節出現再掛到它前面，
+    // 不因此多開一章（章節序號變動會讓既有工作階段的 blockId 全部錯位）
+    let pendingOuter = [];
+    for (const [path, { htmlDoc, paraEls, outerDoc, outerEls }] of htmlPerPart) {
       if (partKindOf(path) !== kindKey) continue;
-      const blocks = collectChapterBlocks(htmlDoc, chapters.length, SK);
+      const leafBlocks = collectChapterBlocks(htmlDoc, chapters.length, SK);
       // block ↔ para 連結：以 data-sk-docx-para 索引對回
       const byIdx = new Map(paraEls.map((pe, n) => [String(n), pe]));
-      for (const b of blocks) {
+      const linked = [];
+      for (const b of leafBlocks) {
         // 段落 HTML 是扁平 <p>，不會產生容器直接文字的 fragment block（el = null），防禦性守門
         if (!b.el) continue;
         const pe = byIdx.get(b.el.getAttribute('data-sk-docx-para'));
-        if (!pe) continue;
+        if (pe) linked.push({ b, pe });
+      }
+      if (outerEls.length > 0) {
+        const outerByIdx = new Map(outerEls.map((pe, n) => [String(n), pe]));
+        for (const b of collectChapterBlocks(outerDoc, chapters.length, SK)) {
+          if (!b.el) continue;
+          const pe = outerByIdx.get(b.el.getAttribute('data-sk-docx-para'));
+          if (!pe) continue;
+          b._docxOuter = true;
+          linked.push({ b, pe });
+        }
+        // 依文件位置排（外層段落的起點在它的文字方塊內容之前）；sort 穩定，既有段落彼此順序不變
+        linked.sort((x, y) => x.pe.para.start - y.pe.para.start);
+      }
+      for (const { b, pe } of linked) {
         pe.para.block = b;
         b.docxPara = pe.para;
+        if (b._docxOuter) {
+          if (cur) { cur.blocks.push(b); cur.charCount += b.plainText.length; }
+          else pendingOuter.push(b);
+          continue;
+        }
         if (kindKey === 'body') {
           const lvl = headingLevel(pe.para.pPrXml);
           if (lvl >= 1 && lvl <= 2) {
@@ -732,18 +841,29 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
           cur = newChapter(
             kindKey === 'body' ? filenameBase : extraChapterTitle[kindKey], kindKey);
         }
-        // blockId 重編（章節歸屬決定後）
-        b.blockId = `c${cur.index}-b${cur.blocks.length}`;
+        if (pendingOuter.length > 0 && cur.blocks.length === 0) {
+          for (const ob of pendingOuter) { cur.blocks.push(ob); cur.charCount += ob.plainText.length; }
+          pendingOuter = [];
+        }
         cur.blocks.push(b);
         cur.charCount += b.plainText.length;
       }
+    }
+    // 整類 part 只有外層段落有字：自成一章
+    if (pendingOuter.length > 0) {
+      if (!cur) cur = newChapter(kindKey === 'body' ? filenameBase : extraChapterTitle[kindKey], kindKey);
+      for (const ob of pendingOuter) { cur.blocks.push(ob); cur.charCount += ob.plainText.length; }
     }
   }
 
   const nonEmpty = chapters.filter((c) => c.blocks.length > 0);
   nonEmpty.forEach((c, i) => {
     c.index = i;
-    c.blocks.forEach((b, n) => { b.blockId = `c${i}-b${n}`; });
+    // blockId 重編（章節歸屬決定後）。外層段落走獨立的 o 序號——b 序號與加入外層段落之前完全相同，
+    // 既有工作階段（以 blockId 對回譯文）不受影響
+    let bn = 0;
+    let on = 0;
+    c.blocks.forEach((b) => { b.blockId = b._docxOuter ? `c${i}-o${on++}` : `c${i}-b${bn++}`; });
   });
   if (nonEmpty.length === 0) throw new DocxParseError('empty');
 
@@ -866,7 +986,15 @@ function countParaEls(htmlDoc) {
 export function buildTranslatedDocx(doc, targetLanguage, { bilingual = false, dedupe = null } = {}) {
   const SK = getSerializerSK();
   const editsByPart = new Map();
+  let numbered = null;
+  if (bilingual) {
+    const stylesU8 = doc.docxEntries && doc.docxEntries['word/styles.xml'];
+    if (stylesU8) {
+      try { numbered = numberedParagraphStyles(window.fflate.strFromU8(stylesU8)); } catch (_) { numbered = null; }
+    }
+  }
   for (const para of doc.docxParas) {
+    if (para.outer) continue; // 外層段落在下面第二輪處理（要先有巢狀段落的修改）
     const b = para.block;
     if (!b || b.translationStatus !== 'done') continue;
     const frag = fragmentForBlock(SK, b, dedupe ? dedupe.get(b.blockId) : null);
@@ -876,10 +1004,64 @@ export function buildTranslatedDocx(doc, targetLanguage, { bilingual = false, de
     const runsXml = buildRunsFromFragment(frag, para, { stripNoteAnchors: isDual });
     if (runsXml == null) continue;
     const replacement = isDual
-      ? doc.docxPartsXml.get(para.part).slice(para.start, para.end) + composeDualParagraph(para, runsXml)
+      ? doc.docxPartsXml.get(para.part).slice(para.start, para.end) + composeDualParagraph(para, runsXml, numbered)
       : composeTranslatedParagraph(para, runsXml);
     if (!editsByPart.has(para.part)) editsByPart.set(para.part, []);
     editsByPart.get(para.part).push({ start: para.start, end: para.end, replacement });
+  }
+
+  // 第二輪：外層段落（掛文字方塊、自己也有內文）。它的修改範圍包住文字方塊內各段的修改，
+  // 兩者不能各自依 offset 套用——把巢狀修改併進外層段落的替換字串，再從清單移除。
+  // 由小到大處理（文字方塊內再掛文字方塊時，內層的外層段落先完成）
+  const outers = doc.docxParas.filter((p) => p.outer).sort((x, y) => (x.end - x.start) - (y.end - y.start));
+  for (const para of outers) {
+    const b = para.block;
+    if (!b || b.translationStatus !== 'done') continue;
+    const frag = fragmentForBlock(SK, b, dedupe ? dedupe.get(b.blockId) : null);
+    if (!frag) continue;
+    const partXml = doc.docxPartsXml.get(para.part);
+    const isDual = bilingual && para.part === 'word/document.xml';
+    if (!editsByPart.has(para.part)) editsByPart.set(para.part, []);
+    const partEdits = editsByPart.get(para.part);
+    const kids = partEdits.filter((e) => e.start >= para.start && e.end <= para.end).sort((x, y) => x.start - y.start);
+    let replacement;
+    if (isDual) {
+      // 原文段原樣保留（文字方塊內各段照自己的雙語修改），譯文段不再帶一份文字方塊（同錨點會疊在一起）
+      const runsXml = buildRunsFromFragment(frag, para, { stripNoteAnchors: true, stripNestedIslands: true });
+      if (runsXml == null) continue;
+      const original = spliceEdits(partXml.slice(para.start, para.end),
+        kids.map((e) => ({ start: e.start - para.start, end: e.end - para.start, replacement: e.replacement })));
+      replacement = original + composeDualParagraph(para, runsXml, numbered);
+    } else {
+      // island 是重組過的字串，沒有原始 offset：巢狀段落的原文字串依文件順序在各 island 內逐一找到並換掉
+      //（island 索引順序 = 文件順序，巢狀段落也依起點排序，兩邊同序所以不會對錯）
+      const kidSrc = kids.map((e) => partXml.slice(e.start, e.end));
+      let k = 0;
+      const islandXml = para.islands.map((xml) => {
+        let out = xml;
+        let cursor = 0;
+        while (k < kids.length) {
+          const at = out.indexOf(kidSrc[k], cursor);
+          if (at === -1) break;
+          out = out.slice(0, at) + kids[k].replacement + out.slice(at + kidSrc[k].length);
+          cursor = at + kids[k].replacement.length;
+          k++;
+        }
+        return out;
+      });
+      // 有巢狀修改對不到 island（不預期）：這個外層段落不翻，巢狀修改照舊各自套用
+      if (k < kids.length) continue;
+      const emitted = new Set();
+      let runsXml = buildRunsFromFragment(frag, para, { islandXml, emitted });
+      if (runsXml == null) continue;
+      // 文字方塊不可因譯文（或使用者編輯）漏掉佔位符而整個消失：沒被回放的補在段尾
+      para.islands.forEach((xml, idx) => {
+        if (!emitted.has(idx) && NESTED_PARA_RE.test(xml)) runsXml += islandXml[idx];
+      });
+      replacement = composeTranslatedParagraph(para, runsXml);
+    }
+    for (const e of kids) partEdits.splice(partEdits.indexOf(e), 1);
+    partEdits.push({ start: para.start, end: para.end, replacement });
   }
 
   const outEntries = {};
@@ -909,6 +1091,11 @@ function fragmentForBlock(SK, b, override) {
 // 空編號錨，2026-09-03 L4 視覺驗證實測）。tab / 分頁 / 圖片等一般 island
 // 照常回放（與 EPUB 雙語行為一致）。
 const NOTE_ANCHOR_RE = /<w:(?:footnoteReference|endnoteReference|commentReference)(?=[\s/>])/;
+// island 內含巢狀段落（文字方塊）
+const NESTED_PARA_RE = /<w:p(?=[\s>])/;
+// opts.islandXml：以這份陣列取代 para.islands 回放（外層段落：文字方塊內各段的譯文已併入）
+// opts.stripNestedIslands：跳過內含巢狀段落的 island（雙語譯文段不重複文字方塊）
+// opts.emitted：Set，記下實際回放了哪些 island 索引
 
 export function buildRunsFromFragment(frag, para, opts = {}) {
   const out = [];
@@ -930,8 +1117,13 @@ export function buildRunsFromFragment(frag, para, opts = {}) {
       }
       const islandIdx = child.getAttribute && child.getAttribute('data-sk-docx-island');
       if (islandIdx != null) {
-        const xml = para.islands[parseInt(islandIdx, 10)];
-        if (xml && !(opts.stripNoteAnchors && NOTE_ANCHOR_RE.test(xml))) out.push(xml);
+        const iIdx = parseInt(islandIdx, 10);
+        const xml = (opts.islandXml || para.islands)[iIdx];
+        if (xml && !(opts.stripNoteAnchors && NOTE_ANCHOR_RE.test(xml))
+            && !(opts.stripNestedIslands && NESTED_PARA_RE.test(para.islands[iIdx] || ''))) {
+          out.push(xml);
+          if (opts.emitted) opts.emitted.add(iIdx);
+        }
         continue;
       }
       const rid = child.getAttribute && child.getAttribute('data-sk-rid');

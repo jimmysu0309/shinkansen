@@ -112,8 +112,8 @@ Shinkansen offers three customizable translation presets, each bound to a shortc
 
 | Shortcut | Default engine | Default model | Best for |
 |----------|----------------|---------------|----------|
-| `Alt+S` / `Option+S` | Gemini | Flash Lite ($0.25 / $1.50) | Daily reading, max savings |
-| `Alt+A` / `Option+A` | Gemini | 3.8 Flash ($0.75 / $3.75) | Important articles, quality first |
+| `Alt+S` / `Option+S` | Gemini | Flash Lite | Daily reading, max savings |
+| `Alt+A` / `Option+A` | Gemini | 3.8 Flash | Important articles, quality first |
 | `Alt+D` / `Option+D` | Google Translate | — | No API key needed, fast, free |
 
 **All customizable in the "Translation shortcuts" section of settings**: each preset's engine (Gemini / Google Translate), model (Flash Lite / Flash / Pro / custom), and display label can be changed. The keybindings themselves can also be customized right there — click a preset's key field and press the combination you want (on Chrome use `⌥ Option` or `⌃ Control`; on Safari — Mac / iPad / iPhone — use `⌃ Control`, since iOS Safari doesn't pass `⌥` / `⌘` to web pages; the settings page shows the available keys per browser automatically; press `ESC` to cancel). Works with iPad external keyboards too. You can also adjust the built-in default keys at `chrome://extensions/shortcuts` (Chrome) or `about:addons` (Firefox).
@@ -221,10 +221,10 @@ Human-uploaded captions (professional / community-contributed) are unaffected by
 
 ### X video subtitle translation
 
-For X (Twitter) videos that have auto-generated captions, Shinkansen translates the captions into your target language **when the video plays with sound (unmuted)**. Fragments are re-segmented into full sentences by AI, and the translation is shown as a caption track at the bottom of the video, styled like X's own captions (also in fullscreen). Videos auto-playing muted in the timeline are not translated, so scrolling past them costs nothing.
+For X (Twitter) videos that have auto-generated captions, Shinkansen translates the captions into your target language **when the video plays with sound (unmuted)**. Fragments are re-segmented into full sentences by AI, and the translation is shown as a caption track at the bottom of the video, styled like X's own captions (also in fullscreen). Videos auto-playing muted in the timeline are not translated, so scrolling past them costs nothing. Long videos are not sent in one go: only the captions for roughly the next three minutes from the playback position are translated, more are added as playback continues, translation stops when you pause, mute or scroll away, and seeking resumes it from the new position.
 
 - **X's CC button doubles as the translated-caption toggle**: "Hide captions" hides the translation, "Show captions" brings it back (showing the translation, not the English original). Right after the translation first appears, the first CC press may do nothing — press it again
-- **Toggle**: on an X post page, the Shinkansen toolbar icon menu shows an "X video subtitle translation" toggle; it shares the same setting as YouTube subtitle translation
+- **Toggle**: on an X post page, the Shinkansen toolbar icon menu shows an "X video subtitle translation" toggle that affects only the current tab; whether subtitles are translated automatically by default is set on the settings page (shared with YouTube subtitle translation)
 - **Engine and model** follow the YouTube subtitle settings; bilingual display follows the display mode
 - Captions already in the target language are not sent for translation; videos for which X provides no captions cannot be translated
 
@@ -346,7 +346,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.6.6 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.6.7 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

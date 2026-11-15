@@ -905,6 +905,13 @@ if (window.__shinkansen_loaded) {
     return true;
   };
 
+  // SVG 命名空間的元素（<svg> 本身與內部的 <title> / <desc> / <text> / 圖形）。
+  // 序列化與注入兩層共用：SVG 內部文字一律不是可翻正文
+  const _SVG_NS = 'http://www.w3.org/2000/svg';
+  SK.isSvgElement = function isSvgElement(el) {
+    return !!el && el.namespaceURI === _SVG_NS;
+  };
+
   // 是否含有需要保留的媒體元素
   SK.containsMedia = function containsMedia(el) {
     return !!el.querySelector('img, picture, video, svg, canvas, audio');
@@ -1166,6 +1173,9 @@ if (window.__shinkansen_loaded) {
         while (p && p !== el) {
           if (SK.HARD_EXCLUDE_TAGS.has(p.tagName)) return NodeFilter.FILTER_REJECT;
           if (p.tagName === 'PRE' && p.querySelector('code')) return NodeFilter.FILTER_REJECT;
+          // SVG 內的 <title> / <desc> 文字不可見也不是正文：算進來的話，title 比可見文字長
+          // 就會被挑成「最長文字節點」，譯文寫進看不見的 <title>
+          if (SK.isSvgElement(p)) return NodeFilter.FILTER_REJECT;
           const cs = p.ownerDocument?.defaultView?.getComputedStyle?.(p);
           if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) {
             return NodeFilter.FILTER_REJECT;

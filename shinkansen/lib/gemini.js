@@ -14,6 +14,7 @@ import {
   FETCH_TIMEOUT_MS, fetchWithRetry, readJsonBody, alignAndFallback, runChunkedBatch,
   emptyContentError, parseLlmJson, emptyUsage,
 } from './llm-common.js';
+import { modelDropsSamplingParams } from './model-pricing.js';
 
 // 「送到 Instapaper」摘要的輸入字元上限。摘要不需要全文,截斷把最壞 token 成本鎖死
 //(CLAUDE.md §4):flash-lite 下 ~12K 字元(~3-4K token)足夠抓主旨,每次摘要遠低於 $0.001。
@@ -69,6 +70,21 @@ export function pickThinkingConfig(model) {
 }
 
 /**
+ * 取一個 candidate 的可見文字：把所有「非思考、text 為字串」的 part 依序接起來。
+ * 只讀 parts[0] 的話，回應把文字拆成多個 part 時後段遺失；第一個 part 是思考摘要
+ *（thought: true）時拿到的是思考內容。翻譯 / 術語表 / 譯名掃描 / 摘要共用。
+ */
+export function candidateText(candidate) {
+  const parts = candidate?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+  let out = '';
+  for (const p of parts) {
+    if (p && p.thought !== true && typeof p.text === 'string') out += p.text;
+  }
+  return out;
+}
+
+/**
  * v1.10.18:統一解析 Gemini usageMetadata,三個呼叫點(translateChunk /
  * translateBatchStream / extractGlossary)共用,避免「同一份計費事實」三套實作 drift。
  *
@@ -99,6 +115,29 @@ export function parseGeminiUsage(meta) {
 }
 
 /**
+ * 要求 Priority tier 但被伺服器降級成 Standard 處理時（壅塞時官方行為，降級請求照
+ * Standard 計價），把這次 usage 整份標成 Standard 計價部分（std*Tokens，lib/billing.js
+ * computeBilling 對這部分不乘 Priority 倍率）。
+ * 實際處理的 tier 來源：回應 body 的 usageMetadata.serviceTier（2026-11-15 實測
+ * priority / flex / standard 三種請求都會回；串流每個 SSE event 也帶），沒有才看回應標頭
+ * x-gemini-service-tier。其他 tier、讀不到、與要求一致時 usage 原樣回傳。
+ */
+export function markTierDowngrade(usage, requestedTier, meta, resp) {
+  if (String(requestedTier || '').toUpperCase() !== 'PRIORITY') return usage;
+  let served = meta?.serviceTier || '';
+  if (!served) {
+    try { served = resp?.headers?.get?.('x-gemini-service-tier') || ''; } catch (_) { /* 無標頭 */ }
+  }
+  if (String(served).toLowerCase() !== 'standard') return usage;
+  return {
+    ...usage,
+    stdInputTokens: usage.inputTokens || 0,
+    stdOutputTokens: usage.outputTokens || 0,
+    stdCachedTokens: usage.cachedTokens || 0,
+  };
+}
+
+/**
  * v1.10.18:Gemini 3.x 的 generationConfig sampling 欄位。
  * Gemini 3 **不使用 top-k sampling**(topK 非允許參數,送了被後端忽略),且官方建議
  * Gemini 3 只靠 temperature=1.0、**不要設 topP/topK**(設了可能引發迴圈 / 退化)。
@@ -115,22 +154,9 @@ export function buildSamplingFields(model, { topP, topK } = {}) {
   return { topP, topK };
 }
 
-/**
- * v2.0.64:Gemini 3.6 Flash / 3.5 Flash-Lite 起官方淘汰 temperature / top_p / top_k
- * 取樣參數(目前被忽略,日後模型送了直接回 HTTP 400;官方指示「從所有要求中移除」),
- * 確定性需求改由 systemInstruction 明確規則承擔。
- * 判定:版本號 ≥ 3.6,或 3.5-flash-lite(此代起點;同版號的 gemini-3.5-flash 屬前代
- * 不在列)。版本解析對使用者自填的未來模型 ID(gemini-4-* 等)也命中,future-proof。
- */
-export function modelDropsSamplingParams(model) {
-  const m = String(model || '');
-  if (/gemini-3\.5-flash-lite/i.test(m)) return true;
-  const ver = m.match(/gemini-(\d+)(?:\.(\d+))?/i);
-  if (!ver) return false;
-  const major = Number(ver[1]);
-  const minor = Number(ver[2] || 0);
-  return major > 3 || (major === 3 && minor >= 6);
-}
+// modelDropsSamplingParams 本體在 lib/model-pricing.js（設定頁也要用，該檔無相依）；此處 re-export
+// 維持既有 import 路徑（openai-compat.js 註解與 unit spec 都從 gemini.js 取）。
+export { modelDropsSamplingParams };
 
 /**
  * temperature 欄位的模型 gating(與 buildSamplingFields 同哲學):淘汰取樣參數的
@@ -281,7 +307,7 @@ export async function extractGlossary(compressedText, settings) {
   }
   const ms = Date.now() - t0;
   // v1.10.18:outputTokens 計入 thoughtsTokenCount（見 parseGeminiUsage)。
-  const usage = parseGeminiUsage(json?.usageMetadata);
+  const usage = markTierDowngrade(parseGeminiUsage(json?.usageMetadata), serviceTier, json?.usageMetadata, resp);
 
   if (!resp.ok) {
     const errMsg = json?.error?.message || `HTTP ${resp.status}`;
@@ -290,7 +316,7 @@ export async function extractGlossary(compressedText, settings) {
     return { glossary: [], usage, _diag: `API error ${resp.status}: ${errMsg}` };
   }
 
-  const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const rawText = candidateText(json?.candidates?.[0]);
   const finishReason = json?.candidates?.[0]?.finishReason || 'unknown';
   await debugLog('info', 'glossary', 'glossary extraction response', {
     elapsed: ms, usage, rawChars: rawText.length, finishReason,
@@ -416,13 +442,13 @@ export async function extractTermRenderings(items, settings) {
   } finally {
     clearTimeout(abortTimer);
   }
-  const usage = parseGeminiUsage(json?.usageMetadata);
+  const usage = markTierDowngrade(parseGeminiUsage(json?.usageMetadata), geminiConfig.serviceTier, json?.usageMetadata, resp);
   if (!resp.ok) {
     const errMsg = json?.error?.message || `HTTP ${resp.status}`;
     await debugLog('error', 'scan', 'term renderings failed (API)', { status: resp.status, error: errMsg });
     return { renderings: [], usage, _diag: `API error ${resp.status}: ${errMsg}` };
   }
-  const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const rawText = candidateText(json?.candidates?.[0]);
   const parsedJson = parseLlmJson(rawText);
   if (!parsedJson.ok) {
     await debugLog('warn', 'scan', 'term renderings JSON parse failed', { error: parsedJson.error.message, preview: rawText.slice(0, 300) });
@@ -525,14 +551,14 @@ export async function summarizeArticle({ text, targetLangLabel, apiKey, model, s
     clearTimeout(abortTimer);
   }
 
-  const usage = parseGeminiUsage(json?.usageMetadata);
+  const usage = markTierDowngrade(parseGeminiUsage(json?.usageMetadata), serviceTier, json?.usageMetadata, resp);
   if (!resp.ok) {
     const errMsg = json?.error?.message || `HTTP ${resp.status}`;
     await debugLog('error', 'summary', 'instapaper summary failed (API)', { status: resp.status, error: errMsg });
     return { summary: '', usage, _diag: `API error ${resp.status}: ${errMsg}` };
   }
 
-  const rawText = (json?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+  const rawText = (candidateText(json?.candidates?.[0])).trim();
   await debugLog('info', 'summary', 'instapaper summary done', { elapsed: Date.now() - t0, usage, chars: rawText.length });
   return { summary: rawText, usage };
 }
@@ -670,14 +696,14 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   // 模型拒絕回應、promptFeedback.blockReason 不為空等情況）。
   const candidate = json?.candidates?.[0];
   const finishReason = candidate?.finishReason || 'unknown';
-  const text = candidate?.content?.parts?.[0]?.text || '';
+  const text = candidateText(candidate);
 
   // v1.10.18:outputTokens 計入 thoughtsTokenCount（見 parseGeminiUsage)。
   // cachedTokens 為 Gemini 3 系列 implicit cache 命中的 input 子集，未命中欄位不出現 → 0。
   // 2026-09-11 code review §3.5-2：提前到 blocked / empty 檢查之前——這兩條 throw 之前
   // input(+thinking)token 已計費，要掛 err.usage 讓 translateBatch 外層加總、background
   // 記帳（streaming 路徑早有掛，non-streaming 漏掉 → 兩路 drift,thinking 燒掉的 token 漏帳）。
-  const chunkUsage = parseGeminiUsage(json?.usageMetadata);
+  const chunkUsage = markTierDowngrade(parseGeminiUsage(json?.usageMetadata), serviceTier, json?.usageMetadata, resp);
 
   // 檢查 promptFeedback（整個 prompt 被擋的情況，candidates 會是空陣列）
   const blockReason = json?.promptFeedback?.blockReason;
@@ -905,7 +931,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
         }
 
         const candidate = json?.candidates?.[0];
-        const partText = candidate?.content?.parts?.[0]?.text || '';
+        const partText = candidateText(candidate);
         const fr = candidate?.finishReason;
         if (fr) finishReason = fr;
         if (json?.promptFeedback?.blockReason) blockReason = json.promptFeedback.blockReason;
@@ -919,7 +945,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
         // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
         const meta = json?.usageMetadata;
         if (meta) {
-          lastUsage = parseGeminiUsage(meta);
+          lastUsage = markTierDowngrade(parseGeminiUsage(meta), serviceTier, meta, resp);
         }
       }
     }

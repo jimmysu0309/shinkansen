@@ -647,6 +647,9 @@
       const text = (unit.el.textContent || '').trim();
       const savedHTML = STATE.translatedHTMLByText.get(text);
       if (!savedHTML) { remaining.push(unit); continue; }
+      // 框架管理中的元素不直接寫 innerHTML（會把框架掛著的子節點換成孤兒，之後的更新對不上）：
+      // 丟回正常翻譯路徑，那條路徑對這類元素走 nodeValue 改寫 / dual；譯文有背景快取，不會重新計費
+      if (SK.isFrameworkManaged?.(unit.el)) { remaining.push(unit); continue; }
       // LRU touch:命中即重插,讓熱 entry(virtualization 反覆 remount 的段)
       // 不被容量淘汰(review B8)
       STATE.translatedHTMLByText.delete(text);
@@ -662,6 +665,9 @@
         unit.el.setAttribute('data-shinkansen-translated', '1');
         STATE.translatedHTML.set(unit.el, savedHTML);
         STATE.originalText?.set?.(unit.el, text);
+        // 祖先若也在 translatedHTML（外層段落同時被收成單元），它的 baseline 還是 reuse 前的內容，
+        // 不刷新的話下一輪 Guard 會拿舊 baseline 把這裡沖回原文
+        SK.refreshAncestorSavedHTML?.(unit.el);
         SK._guardObserveEl?.(unit.el);
         reused.push(unit);
       } catch (_) {

@@ -79,7 +79,7 @@ export function sanitizeEditedHtml(html) {
 /**
  * 鏈 + DOM 化：edited → 消毒 fragment；raw → SK.deserializeWithPlaceholders（cloneReuse：frag 不注回
  * 序列化來源，slot 一律 clone 殼重建；接受條件 ok 或「無 slot 但有節點」）；plain → renderPlain
- *（預設純 text node）。raw 反序列化 throw 或不被接受時退到 plain。
+ *（預設純 text node）。raw 反序列化 throw 或不被接受時退到 plain，並把載體型 slot 補在尾端。
  * 回傳的節點屬於頁面 document；寫回 xhtmlDoc 的消費端自行 importNode。
  *
  * @param {object} SK content-serialize 命名空間（deserializeWithPlaceholders）
@@ -104,9 +104,18 @@ export function resolveBlockFragment(SK, b, override, { renderPlain } = {}) {
   }
   const plain = override?.translation ?? b?.translation;
   if (typeof plain === 'string' && plain.length > 0) {
-    if (typeof renderPlain === 'function') return { frag: renderPlain(plain), source: 'plain' };
-    const frag = document.createDocumentFragment();
-    frag.appendChild(document.createTextNode(plain));
+    let frag;
+    if (typeof renderPlain === 'function') frag = renderPlain(plain);
+    else {
+      frag = document.createDocumentFragment();
+      frag.appendChild(document.createTextNode(plain));
+    }
+    // 走到純文字 = 佔位符沒有一個對得上（或根本沒有 raw）：段內的載體型 slot（DOCX 註腳參照 / 圖 /
+    // 分頁符、EPUB 行內圖 / id 錨點）不補回就會從輸出檔消失。位置已隨佔位符遺失，補在譯文尾端；
+    // 純格式殼不補（文字仍在譯文裡）。與網頁端注入同一支（content-serialize.js）
+    if (Array.isArray(b?.slots) && b.slots.length > 0 && typeof SK?.appendUnusedCarrierSlots === 'function') {
+      SK.appendUnusedCarrierSlots(frag, b.slots, null, true);
+    }
     return { frag, source: 'plain' };
   }
   return null;

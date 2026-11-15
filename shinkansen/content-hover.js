@@ -26,7 +26,7 @@
 //   - closed shadow root 內的段落抓不到（web spec 限制，與整頁翻譯相同）
 (function (SK) {
   'use strict';
-  if (!SK) return;
+  if (!SK || SK.disabled) return;  // iframe gate（見 content-ns.js）：被擋的 frame 不掛 listener
   if (SK.hoverTranslate) return; // 防重複注入
   const STATE = SK.STATE;
 
@@ -322,6 +322,9 @@
       try {
         const unit = findUnitAt(lastX, lastY);
         if (!unit) return;
+        // 注入層以單元自帶的模式為準：請求在途時全域 translatedMode 若被背景簡繁轉換 run
+        // 改寫回整頁設定，這段仍照懸停設定注入
+        unit.injectMode = displayMode;
         await translateUnit(unit);
       } finally {
         if (!STATE.translating && STATE.translated === wasTranslated && STATE.translatedMode === displayMode) {

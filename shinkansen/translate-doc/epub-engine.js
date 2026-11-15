@@ -22,6 +22,7 @@
 //     譯文反序列化出的 frag 再 importNode 回 XHTML document（epub-writer.js）。
 
 import { getPricingForModel } from '../lib/model-pricing.js';
+import { serviceTierMultiplier } from '../lib/billing.js';
 
 // 「有可翻文字」判斷的單一資料源（epub / docx / txt / md / subtitle 各引擎共用）。
 // 2026-09-11 code review P1-3：原本各引擎各自手寫「拉丁 / Latin-1 / 西里爾 / CJK / 假名 / 諺文」區段三份，
@@ -218,7 +219,9 @@ export function collectChapterBlocks(xhtmlDoc, chapterIndex, SK) {
     // 純數字 / 純標點（頁碼、分隔符）不送翻
     if (!HAS_LETTER_RE.test(plainText)) continue;
 
-    const { text: serializedText, slots } = SK.serializeWithPlaceholders(htmlClone);
+    // imgAsSlot：寫回是整段清掉重建（epub-writer replaceChildren），段內的圖 / 影音 / SVG 必須進
+    // atomic slot 才會留在譯本裡（原本不進 slot，譯過的段落一律掉圖）
+    const { text: serializedText, slots } = SK.serializeWithPlaceholders(htmlClone, { imgAsSlot: true });
     if (!serializedText || !serializedText.trim()) continue;
 
     blocks.push({
@@ -259,7 +262,7 @@ export function collectChapterBlocks(xhtmlDoc, chapterIndex, SK) {
       stripRubyAnnotations(wrapper);
       const plainText = normalizeText(wrapper.textContent);
       if (!plainText || !HAS_LETTER_RE.test(plainText)) continue;
-      const { text: serializedText, slots } = SK.serializeWithPlaceholders(wrapper);
+      const { text: serializedText, slots } = SK.serializeWithPlaceholders(wrapper, { imgAsSlot: true });
       if (!serializedText || !serializedText.trim()) continue;
       m++;
       blocks.push({
@@ -676,7 +679,9 @@ export function estimateChapterCostUSD(charCount, model, settings, cjkRatio = 0)
   const batches = Math.max(1, Math.ceil(charCount / 4000));
   const inTok = latinChars / 4 + cjkChars / 1.5 + batches * 600;
   const outTok = latinChars * 0.5 + cjkChars * 1.2;
-  return (inTok * pricing.inputPerMTok + outTok * pricing.outputPerMTok) / 1e6;
+  // 估算同樣依 service tier 倍率（Flex 半價 / Priority 1.8 倍），與翻完的實際記帳一致
+  const tier = serviceTierMultiplier(settings?.geminiConfig?.serviceTier);
+  return (inTok * pricing.inputPerMTok + outTok * pricing.outputPerMTok) / 1e6 * tier;
 }
 
 // 一組 block 的 CJK 字元佔比（估價係數用）：漢字 / 假名 / 諺文 / 全形標點

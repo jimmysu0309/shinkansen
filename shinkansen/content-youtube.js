@@ -1545,6 +1545,12 @@
         || null;
   }
 
+  // 播放器正在播廣告：YouTube 在播放器根元素掛 ad-showing（廣告結束即移除）
+  function _isAdPlaying() {
+    const root = _getPlayerRoot();
+    return !!(root && root.classList && root.classList.contains('ad-showing'));
+  }
+
   function _ensureOverlay() {
     const root = _getPlayerRoot();
     if (!root) return null;
@@ -2209,6 +2215,12 @@
       return;
     }
     if (!YT.videoEl) return;
+    // 廣告播放中：廣告與正片共用同一個 <video>，currentTime 是廣告的時間——照它查 cue 會把正片
+    // 開頭的譯文疊在廣告畫面上。廣告期間清空，廣告結束後下一次 timeupdate 自然恢復
+    if (_isAdPlaying()) {
+      _setOverlayContent('');
+      return;
+    }
     // v2.3.0:播畢狀態為準——'ended' 事件清空後,若仍有晚到的 timeupdate(YouTube
     // endscreen 等會再 fire),不擋住會被 _findActiveCue 重新寫回(最後一句 endMs
     // 經閱讀補償常超過影片長度,currentTime=duration 仍命中)。與 onVideoEnded
@@ -3199,15 +3211,17 @@
     return segs.slice(0, 30).map(s => s.text || '').join('').slice(0, 500);
   }
   function _shouldSkipBecauseAlreadyInTarget() {
-    const captionLang = SK.YT.captionLang;
+    return _isCaptionAlreadyInTarget(SK.YT.captionLang, _sampleCaptionText(), SK.STATE?.targetLanguage || 'zh-TW');
+  }
+  // 「字幕已是目標語言」的判斷本體（YouTube 與 Drive 共用，SK.ASR.isCaptionAlreadyInTarget）：
+  // captionLang 命中 skip 集合；或是模糊的 `zh`，再由字幕內容補判
+  function _isCaptionAlreadyInTarget(captionLang, sample, target) {
     if (!captionLang) return false;
-    const target = SK.STATE?.targetLanguage || 'zh-TW';
     const skipSet = SKIP_LANGS_BY_TARGET[target];
     if (skipSet && skipSet.has(captionLang)) return true;
     // 模糊 lang fallback:用內容偵測補判
     const ambig = _AMBIGUOUS_LANGS_BY_TARGET[target];
     if (ambig && ambig.has(captionLang)) {
-      const sample = _sampleCaptionText();
       if (sample) {
         // v2.0.72: target=zh-TW 對模糊 `zh` 軌,內容偵測到繁中「或簡中」都 skip
         // (跟上面 skip set 的簡中系決策一致;不動 isAlreadyInTarget——那是整頁翻譯共用,
@@ -3221,6 +3235,18 @@
       }
     }
     return false;
+  }
+  // 字幕語言解析：timedtext 網址的 tlang / lang 參數優先；沒有就由字幕文字的文字系統猜
+  //（只認文字系統本身能定案的：假名 → ja、諺文 → ko、漢字為主 → zh；拉丁字母分不出語言 → ''）
+  function _resolveCaptionLang(url, sample) {
+    try {
+      if (url) {
+        const u = new URL(url, 'https://www.youtube.com');
+        const fromUrl = u.searchParams.get('tlang') || u.searchParams.get('lang');
+        if (fromUrl) return fromUrl;
+      }
+    } catch (_) { /* 非網址：往下由文字猜 */ }
+    return _guessLangFromTitle(sample) || '';
   }
   // P1 deprecation alias:既有 spec(youtube-skip-already-zh-hant.spec.js)reference 此舊名
   function _shouldSkipBecauseAlreadyTraditionalChinese() {
@@ -3811,6 +3837,8 @@
     if (!YT.active || YT.rawSegments.length === 0) return;
     // CC 關閉時暫停送 API(_observeCcButton 在 CC 重開時會重置 translatedUpToMs + 立刻續翻)
     if (YT.ccPaused) return;
+    // 廣告的 currentTime 與正片時間軸無關，不拿來決定要翻哪個視窗
+    if (_isAdPlaying()) return;
 
     const video = YT.videoEl;
     if (!video) return;
@@ -4798,6 +4826,71 @@
     if (sc != null) _applyYtCaptionScale(sc);
   }).catch(() => { /* 預設 100 */ });
 
+  // ─── 整支字幕的批次派工（X / Drive 共用，2026-11-15 code review Y-3）─────
+  // 兩邊原本各寫一份「切批 → N 個 worker 依序取批」迴圈，而且都沒有逐批狀態：批次失敗
+  // 只寫 log，整輪結束後只要有任何一批成功就當成「已完成」，缺的批次到重新整理前補不
+  // 回來。這裡把逐批狀態收成單一實作：
+  //   state[i] = { status: 'pending' | 'inflight' | 'done' | 'failed', attempts, lastFailAt }
+  // runTranscript 只負責派工與記狀態，不知道 engine / 訊息型別 / 譯文放哪——那些在
+  // 呼叫端的 runBatch(idx) 內，回傳 true 表示該批譯文已落地、false 表示失敗可重試。
+  // 失敗批次不在同一輪自動重打（背景端對暫時性錯誤已有重試；沒設 key 這類錯誤重打只
+  // 是多打一次）：留在 'failed'，由呼叫端決定何時用 reviveFailedBatches 放回 'pending'。
+  // pickNext 讓呼叫端決定下一批（X 依播放位置挑；預設取第一個 pending），回 -1 表示
+  // 目前沒有要派的批次，該 worker 結束。
+  function _createBatchState(n) {
+    return Array.from({ length: n }, () => ({ status: 'pending', attempts: 0, lastFailAt: 0 }));
+  }
+  // 把符合條件的 failed 批次放回 pending。opts.maxAttempts：已嘗試達此次數的不再放回；
+  // opts.backoffMs(attempts) → 距上次失敗至少要過多久；opts.resetAttempts：歸零重算
+  // （使用者改了設定 / 明確重新觸發時用）。回傳放回的批數
+  function _reviveFailedBatches(state, opts) {
+    const o = opts || {};
+    const now = Date.now();
+    let revived = 0;
+    for (const b of state || []) {
+      if (b.status !== 'failed') continue;
+      if (o.resetAttempts) b.attempts = 0;
+      if (o.maxAttempts != null && b.attempts >= o.maxAttempts) continue;
+      if (typeof o.backoffMs === 'function' && now - b.lastFailAt < o.backoffMs(b.attempts)) continue;
+      b.status = 'pending';
+      revived++;
+    }
+    return revived;
+  }
+  function _summarizeBatchState(state) {
+    const out = { done: 0, failed: 0, pending: 0, inflight: 0 };
+    for (const b of state || []) out[b.status] = (out[b.status] || 0) + 1;
+    return out;
+  }
+  async function _runTranscript(opts) {
+    const { state, runBatch } = opts;
+    const maxConcurrent = Math.max(1, opts.maxConcurrent || 1);
+    const shouldStop = typeof opts.shouldStop === 'function' ? opts.shouldStop : () => false;
+    const pickNext = typeof opts.pickNext === 'function'
+      ? opts.pickNext
+      : () => state.findIndex(b => b.status === 'pending');
+    const worker = async () => {
+      while (true) {
+        if (shouldStop()) return;
+        const idx = pickNext();
+        if (!(idx >= 0) || !state[idx] || state[idx].status !== 'pending') return;
+        const b = state[idx];
+        b.status = 'inflight';
+        b.attempts++;
+        let ok = false;
+        try { ok = (await runBatch(idx)) === true; } catch (_) { ok = false; }
+        if (ok) {
+          b.status = 'done';
+        } else {
+          b.status = 'failed';
+          b.lastFailAt = Date.now();
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: maxConcurrent }, worker));
+    return _summarizeBatchState(state);
+  }
+
   // ─── 對外 export:給 content-drive.js(Drive ASR commit 3+)共用 ─────
   // parseJson3:json3 → raw segments [{text, normText, startMs, groupId}]
   // mergeAsr:啟發式合句(kle/Ile/Lle 三段)→ [{startMs, endMs, text, sourceSegs}]
@@ -4823,6 +4916,14 @@
     joinSegTexts,
     // 2026-10-19：X 影片字幕（content-x.js）共用「字幕已是目標語言就不翻」集合
     skipLangsByTarget: SKIP_LANGS_BY_TARGET,
+    // 2026-11-15：Drive 字幕共用的語言解析與「已是目標語言」判斷
+    resolveCaptionLang: _resolveCaptionLang,
+    isCaptionAlreadyInTarget: _isCaptionAlreadyInTarget,
+    // 2026-11-15：X / Drive 共用的整支字幕批次派工與逐批狀態（見 _runTranscript 註解）
+    createBatchState: _createBatchState,
+    reviveFailedBatches: _reviveFailedBatches,
+    summarizeBatchState: _summarizeBatchState,
+    runTranscript: _runTranscript,
   };
 
 })(window.__SK);

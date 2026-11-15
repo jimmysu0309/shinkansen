@@ -26,7 +26,7 @@
 //   觸控裝置開箱即有手勢入口；易誤觸發的使用者可在 Options 關閉
 (function (SK) {
   'use strict';
-  if (!SK) return;
+  if (!SK || SK.disabled) return;  // iframe gate（見 content-ns.js）：被擋的 frame 不掛 listener
 
   const LONGPRESS_MS = 600;      // 四指壓住達此毫秒數 = 長按 → slot 1；之前抬起 = 快點 → slot 2
   const MOVE_TOLERANCE_PX = 30;  // 任一指移動超過此距離視為 swipe / pinch，取消
