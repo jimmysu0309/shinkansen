@@ -561,7 +561,7 @@
     'options.forbidden.placeholderNote': '（可選）',
 
     // ── options 用量紀錄分頁 ─────────────────────────────
-    'options.usage.intro.html': '以下為 Shinkansen 根據模型計價設定估算的用量，僅供參考。實際帳單金額請至 <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a> 查詢',
+    'options.usage.intro.html': '以下為 Shinkansen 根據模型計價設定估算的用量，僅供參考。紀錄只包含這台裝置；同一把 API Key 若用在多台裝置，這裡的金額會低於實際帳單。實際帳單金額請至 <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a> 查詢',
     'options.usage.from': '從',
     'options.usage.to': '到',
     'options.usage.toNow': '現在時間',
@@ -1638,7 +1638,7 @@
     'options.forbidden.placeholderNote': '（可选）',
 
     // ── options 用量记录分页 ─────────────────────────────
-    'options.usage.intro.html': '以下为 Shinkansen 根据模型计价设置估算的用量，仅供参考。实际账单金额请至 <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a> 查询',
+    'options.usage.intro.html': '以下为 Shinkansen 根据模型计价设置估算的用量，仅供参考。记录只包含这台设备；同一个 API Key 若用在多台设备，这里的金额会低于实际账单。实际账单金额请至 <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a> 查询',
     'options.usage.from': '从',
     'options.usage.to': '到',
     'options.usage.toNow': '现在时间',
@@ -2713,7 +2713,7 @@
     'options.forbidden.placeholderNote': '(Optional)',
 
     // ── options usage tab ─────────────────────────────────
-    'options.usage.intro.html': 'Below is Shinkansen\'s estimated usage based on model pricing settings, for reference only. For actual billing, check <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
+    'options.usage.intro.html': 'Below is Shinkansen\'s estimated usage based on model pricing settings, for reference only. Records cover this device only; if the same API key is used on several devices, the amount here will be lower than your actual bill. For actual billing, check <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
     'options.usage.from': 'From',
     'options.usage.to': 'To',
     'options.usage.toNow': 'Now',
@@ -3788,7 +3788,7 @@
     'options.forbidden.placeholderNote': '（任意）',
 
     // ── options 使用量履歴タブ ─────────────────────────────
-    'options.usage.intro.html': '以下は Shinkansen がモデル料金設定に基づいて推定した使用量で、参考値です。実際の請求金額は <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a> でご確認ください',
+    'options.usage.intro.html': '以下は Shinkansen がモデル料金設定に基づいて推定した使用量で、参考値です。記録はこのデバイスの分のみで、同じ API Key を複数のデバイスで使っている場合、ここの金額は実際の請求額より少なくなります。実際の請求金額は <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a> でご確認ください',
     'options.usage.from': 'から',
     'options.usage.to': 'まで',
     'options.usage.toNow': '現在時刻',
@@ -4863,7 +4863,7 @@
     'options.forbidden.placeholderNote': '(선택)',
 
     // ── options 사용 기록 탭 ─────────────────────────────
-    'options.usage.intro.html': '아래는 Shinkansen이 모델 가격 설정에 따라 추정한 사용량으로 참고용입니다. 실제 청구 금액은 <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>에서 확인하세요',
+    'options.usage.intro.html': '아래는 Shinkansen이 모델 가격 설정에 따라 추정한 사용량으로 참고용입니다. 기록에는 이 기기의 사용량만 포함되며, 같은 API Key를 여러 기기에서 사용하면 여기에 표시되는 금액이 실제 청구액보다 적습니다. 실제 청구 금액은 <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>에서 확인하세요',
     'options.usage.from': '시작',
     'options.usage.to': '종료',
     'options.usage.toNow': '현재 시각',
@@ -5937,7 +5937,7 @@
     'options.forbidden.placeholderNote': '(opcional)',
 
     // ── options pestaña historial de uso ─────────────────────────────
-    'options.usage.intro.html': 'A continuación se muestra el uso estimado por Shinkansen según los precios de los modelos; es solo orientativo. El importe real de facturación está en <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
+    'options.usage.intro.html': 'A continuación se muestra el uso estimado por Shinkansen según los precios de los modelos; es solo orientativo. El registro solo incluye este dispositivo; si usas la misma API Key en varios dispositivos, el importe mostrado aquí será inferior a la factura real. El importe real de facturación está en <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
     'options.usage.from': 'Desde',
     'options.usage.to': 'Hasta',
     'options.usage.toNow': 'Ahora',
@@ -7011,7 +7011,7 @@
     'options.forbidden.placeholderNote': '(facultatif)',
 
     // ── options onglet historique d\'utilisation ─────────────────────────────
-    'options.usage.intro.html': 'Ci-dessous l\'utilisation estimée par Shinkansen selon les paramètres de tarification, à titre indicatif. Le montant facturé réel se trouve sur <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
+    'options.usage.intro.html': 'Ci-dessous l\'utilisation estimée par Shinkansen selon les paramètres de tarification, à titre indicatif. L\'historique ne couvre que cet appareil ; si la même API Key sert sur plusieurs appareils, le montant affiché ici sera inférieur à la facture réelle. Le montant facturé réel se trouve sur <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
     'options.usage.from': 'De',
     'options.usage.to': 'À',
     'options.usage.toNow': 'Maintenant',
@@ -8085,7 +8085,7 @@
     'options.forbidden.placeholderNote': '(optional)',
 
     // ── options Nutzungsverlaufs-Reiter ─────────────────────────────
-    'options.usage.intro.html': 'Nachfolgend die von Shinkansen anhand der Modellpreise geschätzte Nutzung, nur als Referenz. Den tatsächlichen Rechnungsbetrag siehe <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
+    'options.usage.intro.html': 'Nachfolgend die von Shinkansen anhand der Modellpreise geschätzte Nutzung, nur als Referenz. Erfasst wird nur dieses Gerät; wird derselbe API Key auf mehreren Geräten verwendet, liegt der hier angezeigte Betrag unter der tatsächlichen Rechnung. Den tatsächlichen Rechnungsbetrag siehe <a href="https://aistudio.google.com/spend" target="_blank" rel="noopener">Gemini API Spend</a>',
     'options.usage.from': 'Von',
     'options.usage.to': 'Bis',
     'options.usage.toNow': 'Jetzt',

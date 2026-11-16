@@ -447,28 +447,12 @@ async function load() {
   }
   if (I18N) {
     const dictLang = I18N.getUiLanguage($('uiLanguage')?.value || s.uiLanguage || 'auto');
-    I18N.applyI18n(document, dictLang);
-    refreshModelPriceLabels();
-    { const _vEl = $('options-version');
-      if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
-    // refreshSlotDropdownLabels 在 load() 較早處(line ~273)已跑過一次,但當時
-    // $('uiLanguage').value 還沒從 storage 同步進去,_t() 會用 HTML 預設 'auto'
-    // → 跑到 en dict。現在 picker value 已 sync,重做一次拿到正確 dict。
-    refreshSlotDropdownLabels();
-    // v1.8.61:幣值 section 只在繁中 UI 顯示
-    _updateCurrencySectionVisibility();
-    // v1.8.61:Toast opacity label 動態 i18n 字串
-    _renderToastOpacityLabel($('toastOpacity')?.value || 70);
-    // 懸浮按鈕 opacity label 動態 i18n 字串
-    _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
-    // v1.8.61:字幕 prompt hint 重 render — load() line 293 已呼叫過一次,但當時
-    // picker.value 還沒從 storage sync(走 navigator.language 推 auto),Jimmy 機器是
-    // 繁中環境就拿到繁中,即使 stored uiLanguage='en' 也無效。picker.value sync 後重 render 一次。
-    updateYtPromptCostHint();
-    // 網域術語表清單的「（路徑範圍）」後綴是動態 _t()，picker value sync 後重組
-    refreshDomainKeyLabels();
-    // Temperature 註記同理：picker value sync 後才拿得到正確語言；此時術語表 / 字幕模型下拉也已載入
-    refreshTemperatureNotes();
+    // 動態 _t() 文字（下拉標籤、快速鍵按鈕、禁用詞欄位提示、匯率、透明度標籤…）在 load()
+    // 前段各自 render 過一次，但當時 picker value 還沒從 storage 同步進來，_t() 走的是
+    // 瀏覽器語言而不是使用者選的介面語言。picker value 同步後，與「切換介面語言」共用
+    // 同一支 refreshUiLanguageDependents 整批重做——清單只維護一份，新增動態字串只改那裡
+    _lastAppliedUiDictLang = dictLang;
+    refreshUiLanguageDependents(dictLang);
     // 只訂閱一次(load() 多次呼叫,見 _uiLangChangeSubscribed 宣告處註解)
     if (!_uiLangChangeSubscribed) {
     _uiLangChangeSubscribed = true;
@@ -1476,6 +1460,12 @@ let _lastAppliedUiDictLang = null;
 function applyUiLanguageRefresh(dictLang) {
   if (dictLang === _lastAppliedUiDictLang) return;
   _lastAppliedUiDictLang = dictLang;
+  refreshUiLanguageDependents(dictLang);
+}
+
+// 介面語言相關的整批重繪：load()（picker value 同步後）與切換介面語言共用的單一資料源。
+// 新增任何用 _t() 動態組出來的字串，renderer 加在這裡，兩條路徑一起生效
+function refreshUiLanguageDependents(dictLang) {
   const I18N = window.__SK?.i18n;
   if (!I18N) return;
   I18N.applyI18n(document, dictLang);
@@ -1500,6 +1490,8 @@ function applyUiLanguageRefresh(dictLang) {
   refreshDomainKeyLabels();
   // Temperature 註記是動態 _t() 文字，跟上新語言
   refreshTemperatureNotes();
+  // 禁用詞表格三欄的 placeholder 是 render 時用 _t() 寫死進 input 的
+  refreshForbiddenPlaceholders();
 }
 
 // P2 (v1.8.60):#uiLanguage picker change handler — 立刻寫 storage(UI 跟著切),
@@ -2362,6 +2354,20 @@ function renderForbiddenTermsTable() {
       `<td class="glossary-col-action"><button class="glossary-delete-row" data-idx="${i}" title="${delTitle}">×</button></td>` +
       `</tr>`;
   }).join('');
+}
+
+// 只換既有列的 placeholder，不重建表格（重建會丟掉還沒存檔的輸入）
+function refreshForbiddenPlaceholders() {
+  const tbody = $('forbidden-terms-tbody');
+  if (!tbody) return;
+  const ph = {
+    '.ft-forbidden': _t('options.forbidden.placeholderForbidden'),
+    '.ft-replacement': _t('options.forbidden.placeholderReplacement'),
+    '.ft-note': _t('options.forbidden.placeholderNote'),
+  };
+  for (const [sel, text] of Object.entries(ph)) {
+    tbody.querySelectorAll(sel).forEach((el) => { el.placeholder = text; });
+  }
 }
 
 function readForbiddenTableEntries() {

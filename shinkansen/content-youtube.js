@@ -305,6 +305,94 @@
 
   // ─── 工具 ──────────────────────────────────────────────────
 
+  // ─── 狀態歸零的單一資料源 ─────────────────────────────────
+  // SK.YT 每個欄位在哪些情境歸零，全部登記在這張表；歸零一律走 resetYtState(scope)。
+  // 新增欄位時在這裡加一列決定它的歸零範圍——不要在各情境的函式裡另外手寫「YT.<欄位> = 初值」
+  // （歷史上五處各自手列，漏改其中一處造成換片 / 停止後殘留舊狀態的 bug 反覆發生）。
+  // test/regression/youtube-state-reset-scopes.spec.js 鎖：本檔任何被賦值的 YT 欄位都必須
+  // 登記在表內，且各情境歸零結果與 golden 相同。
+  //
+  // 情境（scope）：
+  //   sourceSwitch 字幕來源換了（使用者切 CC 軌 / chooser 切回原始軌）
+  //   cacheClear   使用者清翻譯快取（session 延續，in-flight 視窗照跑）
+  //   stop         停止字幕翻譯
+  //   spaNav       換影片 / 離開 watch 頁（先前若 active 會先走一次 stop）
+  //   activate     啟動字幕翻譯
+  //
+  // on：會歸零的情境（空白分隔）；init：歸零後的值（每次呼叫產生新物件）。
+  // manual：不走表的欄位，寫明由誰管——需要先做副作用才能清的 handle（observer 要
+  //   disconnect、timer 要 clearTimeout）、只增不減的計數、依當下環境重算的值
+  const YT_RESET_TABLE = {
+    // 譯文與視窗簿記（跟著字幕來源走）
+    captionMap:               { on: 'sourceSwitch cacheClear stop spaNav',          init: () => new Map() },
+    translatedWindows:        { on: 'sourceSwitch cacheClear stop spaNav activate', init: () => new Set() },
+    displayCues:              { on: 'sourceSwitch cacheClear stop spaNav activate', init: () => [] },
+    translatedUpToMs:         { on: 'sourceSwitch cacheClear stop spaNav',          init: () => 0 },
+    captionMapCoverageUpToMs: { on: 'sourceSwitch cacheClear activate',             init: () => 0 },
+    // captionMap 清掉時取用紀錄必須一起清，否則重翻視窗把所有片段當「已取走」→ 收 0 條
+    asrSegConsumed:           { on: 'sourceSwitch cacheClear stop',                 init: () => new Set() },
+    // 進行中的工作。cacheClear 刻意不清：讓當前 session 延續，in-flight 完成後由世代比對擋寫回
+    translatingWindows:       { on: 'sourceSwitch stop spaNav activate',            init: () => new Set() },
+    pendingQueue:             { on: 'sourceSwitch stop spaNav',                     init: () => new Map() },
+    flushing:                 { on: 'stop',                                         init: () => false },
+    // 字幕來源身份（XHR listener 收到新字幕時寫入）
+    rawSegments:              { on: 'stop spaNav',                                  init: () => [] },
+    isAsr:                    { on: 'stop spaNav',                                  init: () => false },
+    captionLang:              { on: 'stop spaNav',                                  init: () => null },
+    captionSourceId:          { on: 'stop spaNav',                                  init: () => null },
+    // 設定快取：歸 null 讓下次 getYtConfig 重讀
+    config:                   { on: 'spaNav activate',                              init: () => null },
+    // CC 暫停狀態：activate 後 attachVideoListener → _observeCcButton 依實際狀態重設
+    ccPaused:                 { on: 'stop activate',                                init: () => false },
+    // 每次啟動重新計的 session 用量與診斷欄位
+    sessionUsage:             { on: 'activate', init: () => ({ inputTokens: 0, outputTokens: 0, cachedTokens: 0, billedInputTokens: 0, billedCostUSD: 0, segments: 0, cacheHits: 0 }) },
+    sessionStartTime:         { on: 'activate', init: () => Date.now() },
+    lastApiMs:                { on: 'activate', init: () => 0 },
+    batchApiMs:               { on: 'activate', init: () => [] },
+    adaptiveLookaheadMs:      { on: 'activate', init: () => 0 },
+    staleSkipCount:           { on: 'activate', init: () => 0 },
+    onTheFlyTotal:            { on: 'activate', init: () => 0 },
+    firstBatchSize:           { on: 'activate', init: () => 8 },
+    lastLeadMs:               { on: 'activate', init: () => 0 },
+    _autoCcToggled:           { on: 'activate', init: () => false },
+    _errorNotified:           { on: 'activate', init: () => false },
+    _firstCacheHitLogged:     { on: 'cacheClear activate', init: () => false },
+
+    // ── 不走表的欄位 ──
+    active:            { manual: 'translateYouTubeSubtitles 設 true、stopYouTubeTranslation 設 false' },
+    videoId:           { manual: '啟動與換影片時設為當前網址的 videoId（不是固定初值）' },
+    captionSourceGen:  { manual: '世代計數只增不歸零；哪些情境 +1 見 YT_RESET_BUMPS_GEN' },
+    observer:          { manual: 'handle：stopYouTubeTranslation disconnect 後清' },
+    batchTimer:        { manual: 'handle：stopYouTubeTranslation clearTimeout 後清' },
+    videoEl:           { manual: 'handle：stopYouTubeTranslation 解除事件監聽後清' },
+    _ccButtonObserver: { manual: 'handle：stopYouTubeTranslation disconnect 後清' },
+    _mwebCcRetryTimer: { manual: 'handle：_clearMwebCcRetry（stop / activate 呼叫）' },
+    _mwebCcRetries:    { manual: '隨 _clearMwebCcRetry 歸零' },
+    _popupDeferTimer:  { manual: 'handle：_clearPopupDefer（stop / activate 呼叫）' },
+    _popupDeferSince:  { manual: '隨 _clearPopupDefer 歸零' },
+    _skipLoggedForLang:{ manual: 'XHR listener 每次收到字幕時重設' },
+    _activateSeq:      { manual: '啟動序號只增不歸零（啟動流程的過期判斷）' },
+    _windowStartSeq:   { manual: '視窗啟動序號只增不歸零' },
+    _overlayProf:      { manual: 'overlay 效能量測（Debug Bridge PROFILE_* 開關控制）' },
+  };
+  // 這些情境會讓「之前送出、還沒回來」的翻譯批次失效：世代 +1，所有 async 寫回點比對世代、
+  // 失配即丟棄。spaNav 不在內——先前 active 時已由 stop +1；非 active 時沒有 in-flight 批次
+  const YT_RESET_BUMPS_GEN = new Set(['sourceSwitch', 'cacheClear', 'stop']);
+  const YT_RESET_SCOPES = new Set(['sourceSwitch', 'cacheClear', 'stop', 'spaNav', 'activate']);
+  for (const def of Object.values(YT_RESET_TABLE)) {
+    if (def.on) def.on = new Set(def.on.split(/\s+/).filter(Boolean));
+  }
+
+  function resetYtState(scope) {
+    if (!YT_RESET_SCOPES.has(scope)) throw new Error(`resetYtState: unknown scope ${scope}`);
+    const YT = SK.YT;
+    if (YT_RESET_BUMPS_GEN.has(scope)) YT.captionSourceGen = (YT.captionSourceGen || 0) + 1;
+    for (const [field, def] of Object.entries(YT_RESET_TABLE)) {
+      if (def.on && def.on.has(scope)) YT[field] = def.init();
+    }
+  }
+  SK._ytResetTable = YT_RESET_TABLE;  // 測試 seam
+
   SK.isYouTubePage = function isYouTubePage() {
     // m.youtube.com(行動版)v1.10.25 起支援:mweb 用同一套 html5 player 核心,
     // /api/timedtext XHR 格式同桌面(fmt=json3),#movie_player API 齊全(已 probe 實證)。
@@ -495,15 +583,7 @@
   // 呼叫點：XHR listener 偵測到來源身份變更 / chooser 'switch' 主動切軌。
   function _resetCaptionSourceBookkeeping(reason, extra) {
     const YT = SK.YT;
-    YT.captionSourceGen = (YT.captionSourceGen || 0) + 1;
-    YT.translatedWindows  = new Set();
-    YT.translatingWindows = new Set();
-    YT.captionMap         = new Map();
-    YT.pendingQueue       = new Map();
-    YT.displayCues        = [];
-    YT.translatedUpToMs   = 0;
-    YT.captionMapCoverageUpToMs = 0;
-    YT.asrSegConsumed     = new Set();  // v2.0.54: 換軌後片段時間軸全新,取用紀錄一併歸零
+    resetYtState('sourceSwitch');  // 歸零欄位與世代 +1 見 YT_RESET_TABLE
     SK.sendLog('info', 'youtube', `caption source bookkeeping reset (${reason})`, {
       gen: YT.captionSourceGen, ...(extra || {}),
     });
@@ -4190,17 +4270,10 @@
     // 來自已清掉的快取命中），完成後不得回頭標 translatedWindows / 抬高 coverage 高水位，
     // 否則清快取後那個視窗被當「已翻完」跳過，永遠不重翻（spec 內實測 race：reset 後
     // coverage 又被 in-flight 視窗寫回 30000)。與 _resetCaptionSourceBookkeeping 同機制。
-    YT.captionSourceGen          = (YT.captionSourceGen || 0) + 1;
-    YT.captionMap                = new Map();
-    YT.translatedWindows         = new Set();
-    YT.displayCues               = [];
-    YT.translatedUpToMs          = 0;
-    YT.captionMapCoverageUpToMs  = 0;
-    // v2.0.54:不清會讓清快取後的重翻視窗把所有片段當「已取走」→ 收 0 條、字幕永久
-    // 空白(cage 實測踩到:CLEAR_CACHE 後 translatedWindows=[120000,150000] 但
-    // displayCues=0)。asrSegConsumed 必須跟 captionMap / translatedWindows 同生命週期
-    YT.asrSegConsumed            = new Set();
-    YT._firstCacheHitLogged      = false;
+    // v2.0.54:asrSegConsumed 不清會讓清快取後的重翻視窗把所有片段當「已取走」→ 收 0 條、
+    // 字幕永久空白(cage 實測踩到:CLEAR_CACHE 後 translatedWindows=[120000,150000] 但
+    // displayCues=0)——它必須跟 captionMap / translatedWindows 同生命週期（表內同列情境）
+    resetYtState('cacheClear');
     hideCaptionStatus();
     // ASR overlay 內可能殘留中文 cue 文字(displayCues 已清,但渲染還在)。
     // v1.9.22:走 _setOverlayContent('') 而非直接砍 .window.textContent。後者會把
@@ -4475,20 +4548,10 @@
     // 只靠 active 檢查擋不住舊影片 in-flight 批次寫進新 session——所有 async
     // 寫回點(_runAsrSubBatch / heuristic _runBatch / _injectBatchResult /
     // translateWindowFrom 收尾)都比對此世代，失配即丟棄
-    YT.captionSourceGen   = (YT.captionSourceGen || 0) + 1;
-    YT.translatingWindows = new Set();  // v1.2.54
-    YT.translatedWindows  = new Set();  // v1.3.5: 補齊（原僅在 translateYouTubeSubtitles 重置）
-    YT.translatedUpToMs   = 0;
-    YT.rawSegments        = [];         // v1.3.5: 補齊（原僅在 yt-navigate-finish 重置）
-    YT.captionMap         = new Map();
-    YT.pendingQueue       = new Map();
-    YT.flushing           = false;       // v1.8.20: 確保下個 session 重啟後 flushOnTheFly 不被舊 flag 卡住
-    YT.isAsr              = false;
-    YT.captionLang        = null;       // v1.10.46: 補漏——殘留會讓下支影片 activation 早期用舊 lang 跑 already-in-target 判斷
-    YT.captionSourceId    = null;       // v1.10.46: 來源身份隨 session 結束失效
-    YT.displayCues        = [];         // G 路徑:清 overlay 顯示單位
-    YT.asrSegConsumed     = new Set();  // v2.0.54: captionMap 已清,取用紀錄留著會讓重啟後片段永遠不再送翻
-    YT.ccPaused           = false;
+    // 歸零欄位見 YT_RESET_TABLE 的 stop 欄。幾個不可漏的理由：flushing 殘留會讓下個
+    // session 的 flushOnTheFly 卡住；captionLang 殘留會讓下支影片啟動早期用舊語言判斷
+    // 「已是目標語言」；asrSegConsumed 殘留會讓重啟後片段永遠不再送翻
+    resetYtState('stop');
     if (YT._ccButtonObserver) {
       YT._ccButtonObserver.disconnect();
       YT._ccButtonObserver = null;
@@ -4562,28 +4625,10 @@
     // 不擋的話這一輪會接著啟動字幕 observer、改播放器的雙語顯示狀態，把已經停掉的功能半開回來
     const _myActivateSeq = (YT._activateSeq = (YT._activateSeq || 0) + 1);
     const _activationStale = () => !YT.active || YT._activateSeq !== _myActivateSeq;
-    YT.config  = null; // 強制重新讀取設定
-    // v1.2.39: 重置用量累積器
-    YT.sessionUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0, billedInputTokens: 0, billedCostUSD: 0, segments: 0, cacheHits: 0 };
-    YT.sessionStartTime = Date.now();
-    // v1.2.40: 重置 debug 診斷欄位
-    YT.lastApiMs           = 0;
-    YT.batchApiMs          = [];   // v1.2.43
-    YT.adaptiveLookaheadMs = 0;    // v1.2.44
-    YT.staleSkipCount            = 0;    // v1.2.45
-    YT.captionMapCoverageUpToMs  = 0;    // v1.2.46
-    YT.translatedWindows         = new Set(); // v1.2.48
-    YT.translatingWindows        = new Set(); // v1.2.54
-    YT.onTheFlyTotal             = 0;
-    YT.firstBatchSize            = 8;         // v1.2.50
-    YT.lastLeadMs                = 0;         // v1.2.50
-    YT._firstCacheHitLogged      = false;     // v1.2.51
-    YT._autoCcToggled            = false;     // v1.6.20 A 路徑:每次啟動翻譯重置 auto-CC 旗標
+    // 設定快取、session 用量與診斷欄位、視窗簿記、overlay cue 歸零（見 YT_RESET_TABLE 的 activate 欄）
+    resetYtState('activate');
     _clearMwebCcRetry();                      // mweb auto-CC 重試計數 / 排程歸零(新影片重新計)
     _clearPopupDefer();                       // issue #68：popup 延後重載歸零
-    YT._errorNotified            = false;
-    YT.ccPaused                  = false;     // attachVideoListener → _observeCcButton 會依 CC 實際狀態重設
-    YT.displayCues               = [];        // G 路徑:啟動時清空 overlay cue,等本影片字幕回來
 
     // 提前掛 video 監聽器，不等字幕資料回來（使用者可能在等待期間拖進度條）
     attachVideoListener();
@@ -4820,19 +4865,11 @@
     if (YT.active) stopYouTubeTranslation(); // stopYouTubeTranslation 內已呼叫 hideCaptionStatus + _debugRemove
     hideCaptionStatus(); // v1.2.55: 確保 SPA 導航後殘留的提示也清掉
     _debugRemove(); // 確保即使非 active 狀態也清掉面板（內含 _debugMissedKeys.clear()）
-    YT.rawSegments        = [];
-    YT.captionMap         = new Map();
-    YT.pendingQueue       = new Map();      // v1.3.5: 確保清理 on-the-fly 佇列
-    YT.translatedUpToMs   = 0;
-    YT.translatedWindows  = new Set();      // v1.3.5: 明確重置（原在 translateYouTubeSubtitles 重置）
-    YT.translatingWindows = new Set();      // v1.3.5: 防止 SPA nav 期間的殘留視窗阻塞
-    YT.isAsr              = false;
-    YT.captionLang        = null;           // v1.10.46: 補漏——新影片 activation 早期不可用前一支影片的 lang
-    YT.captionSourceId    = null;           // v1.10.46: 來源身份跨影片失效
-    YT.displayCues        = [];             // G 路徑:SPA nav 清 overlay 顯示單位
+    // 字幕來源、譯文與視窗簿記、設定快取歸零（見 YT_RESET_TABLE 的 spaNav 欄）——非 active
+    // 時 XHR listener 也會寫入字幕來源欄位，所以不能只靠上面的 stop
+    resetYtState('spaNav');
     _setAsrHidingMode(false);
     _removeOverlay();
-    YT.config             = null;
     YT.videoId            = getVideoIdFromUrl();
     SK.sendLog('info', 'youtube', 'SPA navigation reset', { wasActive, newVideoId: YT.videoId });
 

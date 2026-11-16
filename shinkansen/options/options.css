@@ -933,12 +933,13 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
   border-radius: 4px;
   font-size: 13px;
 }
-/* 自訂快速鍵 recorder（preset card header 右上角）。固定總寬讓三張 card 對齊。 */
+/* 自訂快速鍵 recorder（preset card header 右上角）。固定總寬讓三張 card 對齊。
+   156px = 八語中最長的「⌥S（デフォルト）」不被截斷所需寬度（138px 時英 / 日 / 西 / 德會出現「…」） */
 .shortcut-controls {
   display: flex;
   gap: 6px;
-  flex: 0 0 138px;
-  width: 138px;
+  flex: 0 0 156px;
+  width: 156px;
 }
 .shortcut-recorder {
   flex: 1 1 auto;

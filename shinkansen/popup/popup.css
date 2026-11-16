@@ -236,9 +236,13 @@ button.link {
   border-radius: 6px;
   overflow: hidden;
 }
+/* 兩顆依文字長短分配寬度（flex-basis auto），不平分：平分時西文「Bilingüe」、
+   德文「Zweisprachig」這類不可斷的單字會超出 70px 被外框裁掉。總寬仍由
+   .display-mode-toggle 固定，與下方 select 對齊 */
 .mode-btn {
-  flex: 1;
-  padding: 4px 10px;
+  flex: 1 1 auto;
+  min-width: min-content; /* 不可斷的單字不被壓到比自己窄；較長的那顆改折行讓位 */
+  padding: 4px 4px; /* 6px 時德文兩顆的最小寬度合計 142.7px，超出外框內寬 138px */
   font-size: 12px;
   background: #fff;
   color: #1d1d1f;

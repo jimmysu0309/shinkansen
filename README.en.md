@@ -276,7 +276,7 @@ Shinkansen has two layers of caching, each saving you money at a different stage
 
 If every paragraph hits the local cache (e.g., re-translating a page you just translated), the toast shows "All cache hits · nothing billed this run".
 
-Every translation's token usage, cost, and cache hit rate is logged and viewable in the "Usage history" tab in settings.
+Every translation's token usage, cost, and cache hit rate is logged and viewable in the "Usage history" tab in settings. Records are stored locally and cover that device only; if the same API key is used on several devices, the amount shown on any one of them will be lower than your actual bill — check Gemini API Spend for the total.
 
 ## Custom glossary
 
@@ -354,7 +354,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.6.11 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.6.12 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 
