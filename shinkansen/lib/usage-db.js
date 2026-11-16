@@ -46,6 +46,18 @@ function getDB() {
   return _dbPromise;
 }
 
+// 寫入交易以「交易完成」為準。request 的 onsuccess 只代表這一步排進交易，交易之後仍可能
+// abort（儲存空間不足、連線被關）——原本在 onsuccess 就回報成功，呼叫端以為寫進去了，
+// 實際整筆被回滾（用量紀錄無聲消失）。回傳的函式取代 executor 內的 resolve：只記下結果，
+// 等 tx.oncomplete 才真的 resolve；tx.onabort / onerror → reject
+function settleOnTxComplete(tx, resolve, reject) {
+  let result;
+  tx.oncomplete = () => resolve(result);
+  tx.onabort = () => reject(tx.error || new Error('usage-db transaction aborted'));
+  tx.onerror = () => reject(tx.error || new Error('usage-db transaction error'));
+  return (v) => { result = v; };
+}
+
 /**
  * 寫入一筆翻譯用量紀錄。
  * @param {Object} record
@@ -68,6 +80,7 @@ export async function logTranslation(record) {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
+    resolve = settleOnTxComplete(tx, resolve, reject);
     const store = tx.objectStore(STORE_NAME);
     const req = store.add(record);
     req.onsuccess = () => resolve(req.result);
@@ -99,6 +112,7 @@ export async function upsertYouTubeUsage(record, mergeWindowMs = 3600000) {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
+    resolve = settleOnTxComplete(tx, resolve, reject);
     const store = tx.objectStore(STORE_NAME);
     const index = store.index('timestamp');
     // 用 timestamp 索引反向掃視窗內的紀錄，找首個 videoId+model 相符者。
@@ -167,6 +181,7 @@ export async function upsertGoogleUsage(record, mergeWindowMs = 180000) {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
+    resolve = settleOnTxComplete(tx, resolve, reject);
     const store = tx.objectStore(STORE_NAME);
     const index = store.index('timestamp');
     const range = IDBKeyRange.lowerBound(now - mergeWindowMs);
@@ -228,6 +243,7 @@ export async function upsertPageUsage(record, mergeWindowMs = 180000) {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
+    resolve = settleOnTxComplete(tx, resolve, reject);
     const store = tx.objectStore(STORE_NAME);
     const index = store.index('timestamp');
     const range = IDBKeyRange.lowerBound(now - mergeWindowMs);
@@ -426,6 +442,7 @@ export async function clearBefore(beforeTimestamp) {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
+    resolve = settleOnTxComplete(tx, resolve, reject);
     const store = tx.objectStore(STORE_NAME);
     const index = store.index('timestamp');
     const range = IDBKeyRange.upperBound(beforeTimestamp);
@@ -453,6 +470,7 @@ export async function clearAll() {
   const db = await getDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
+    resolve = settleOnTxComplete(tx, resolve, reject);
     const store = tx.objectStore(STORE_NAME);
     const req = store.clear();
     req.onsuccess = () => resolve();

@@ -242,12 +242,13 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
     // 沒對應到譯文的 link(原 PDF link 在 non-translatable 區 / translation 失敗)
     // fallback 用原 PDF rect 保留 click hit
     let translatedLinkRects = drawTranslatedOverlay(newPage, layoutPage, cjkFontRegular, cjkFontBold, meta.items, meta.blockColors || {});
+    let coveredBoxes = translatedLinkRects.coveredBoxes || [];
     if (rotated) {
       newPage.pushOperators(popGraphicsState());
       translatedLinkRects = translatedLinkRects.map((l) => ({ url: l.url, rect: transformRect(overlayMatrix, l.rect) }));
+      coveredBoxes = coveredBoxes.map((r) => transformRect(overlayMatrix, r));
     }
-    const coveredUrls = new Set(translatedLinkRects.map((l) => l.url));
-    const fallbackLinks = meta.links.filter((l) => !coveredUrls.has(l.url));
+    const fallbackLinks = selectFallbackLinks(meta.links, translatedLinkRects, coveredBoxes);
     addLinkAnnotations(newDoc, newPage, [...translatedLinkRects, ...fallbackLinks]);
   }
 
@@ -257,6 +258,25 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
   const filename = `${baseName}-shinkansen.pdf`;
   // fontFallback：需要遠端字型（zh-CN / ja / ko）但抓不到、退回內建 TC——呼叫端提示使用者
   return { bytes: pdfBytes, filename, byteLength: pdfBytes.byteLength, fontSource: fontSel.source, fontFallback: fontSel.fallback };
+}
+
+// 原 PDF 的連結標註哪些要原樣保留。譯文裡畫出來的連結用譯文位置的新矩形取代原矩形——但
+// 「取代」只限於原矩形落在已蓋上譯文的 block 範圍內、且該網址確實在譯文裡畫出來的那些。
+// 原本只比網址：同一頁有兩個連到同一網址的連結（例如內文一個、頁尾 / 圖說一個），其中一個
+// 所在的 block 有譯文，另一個（沒譯文的區域）就整個不見。
+//   originalLinks：[{ url, rect }]（PDF 座標）；translatedLinkRects：譯文連結的新矩形；
+//   coveredBoxes：已蓋上譯文的 block 外框（PDF 座標）
+export function selectFallbackLinks(originalLinks, translatedLinkRects, coveredBoxes) {
+  const coveredUrls = new Set((translatedLinkRects || []).map((l) => l.url));
+  const boxes = coveredBoxes || [];
+  return (originalLinks || []).filter((l) => {
+    if (!coveredUrls.has(l.url)) return true;
+    if (!Array.isArray(l.rect) || l.rect.length !== 4) return true;
+    const cx = (l.rect[0] + l.rect[2]) / 2;
+    const cy = (l.rect[1] + l.rect[3]) / 2;
+    const inside = boxes.some((b) => cx >= Math.min(b[0], b[2]) && cx <= Math.max(b[0], b[2]) && cy >= Math.min(b[1], b[3]) && cy <= Math.max(b[1], b[3]));
+    return !inside;
+  });
 }
 
 // 每頁 overlay 用的 metadata 決議（§3.9-4）：抽取成功用抽取結果；抽取失敗（整份或
@@ -592,7 +612,10 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
         let pieceWidth;
         try { pieceWidth = pieceFont.widthOfTextAtSize(piece.text, fontSize); }
         catch { pieceWidth = piece.text.length * fontSize * 0.5; }
-        if (piece.linkUrl) {
+        // 塞不下而隱形的行（只為文字層完整，畫在最後一行可見行的位置）不畫底線、不收連結矩形：
+        // 底線不受文字隱形模式影響會真的畫出來，連結矩形也會疊在最後一行可見行上（點到的是別段文字的連結）。
+        // 該連結若整個落在隱形行，譯文沒有它的矩形 → selectFallbackLinks 保留原 PDF 的連結矩形
+        if (piece.linkUrl && !invisible) {
           // underline:baseline 下方
           const underlineY = cy - fontSize * UNDERLINE_OFFSET_RATIO;
           try {
@@ -616,6 +639,8 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
     }
     if (invisible) page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill));
   }
+  // 已蓋上譯文的 block 外框（PDF 座標，y 向上）：selectFallbackLinks 判斷原連結是否已被譯文取代用
+  translatedLinkRects.coveredBoxes = prepared.map(({ block }) => [block.bbox[0], pageH - block.bbox[3], block.bbox[2], pageH - block.bbox[1]]);
   if (clippedBlocks > 0) console.info(`[Shinkansen] 譯文塞不下截斷 ${clippedBlocks} 塊（末行「…」+ 隱形文字補齊文字層）`);
   if (droppedPieces > 0) console.warn(`[Shinkansen] drawText 失敗跳過 ${droppedPieces} 個 piece（mask 已蓋、該段文字缺席）`);
   return translatedLinkRects;
@@ -822,7 +847,21 @@ function getMaxBottomY(currentBlock, layoutPage) {
     if (bx0 >= cx1 || bx1 <= cx0) continue; // 沒水平重疊
     if (by0 < minBlockerY0) minBlockerY0 = by0;
   }
+  // 圖片也是阻擋物(解析階段抽出的點陣圖外框):原本只認得文字 block,下方是圖時會擴進圖裡
+  for (const r of imageBlockersFor(currentBlock, layoutPage)) {
+    if (r[1] < cy1 - 0.5) continue; // 圖的上緣不在下方(含與本 block 重疊的圖:文字本來就疊在上面)
+    if (r[0] >= cx1 || r[2] <= cx0) continue;
+    if (r[1] < minBlockerY0) minBlockerY0 = r[1];
+  }
   return Math.max(cy1, minBlockerY0 - 2);
+}
+
+// 哪些圖片對這個 block 算擴框阻擋物：只有多行段落才擋。圖片阻擋要解的是「段落旁邊 / 下方有圖，
+// 譯文擴進圖裡」；示意圖周圍的單行小標籤（座標軸、圖內文字）本來就貼著圖，一擋就無處可擴、
+// 譯文被截斷（語料實測：論文示意圖頁截斷數大增），這類維持原行為
+function imageBlockersFor(block, layoutPage) {
+  if (!((block.lineCount || 1) >= 2)) return [];
+  return layoutPage.imageRects || [];
 }
 
 // 往右擴框的阻擋邊界。對當前 block,找頁面所有「在當前 block
@@ -843,6 +882,12 @@ function getMaxRightX(currentBlock, layoutPage) {
     if (bx0 <= cx1) continue; // 不在右側
     if (by0 >= cy1 || by1 <= cy0) continue; // 沒垂直重疊
     if (bx0 < minBlockerX0) minBlockerX0 = bx0;
+  }
+  // 圖片也是阻擋物:右側同高度有圖時只擴到圖的左緣
+  for (const r of imageBlockersFor(currentBlock, layoutPage)) {
+    if (r[0] < cx1 - 0.5) continue; // 圖的左緣不在右側
+    if (r[1] >= cy1 || r[3] <= cy0) continue;
+    if (r[0] < minBlockerX0) minBlockerX0 = r[0];
   }
   return Math.max(cx1, Math.min(minBlockerX0 - 5, contentRight));
 }
@@ -1192,7 +1237,7 @@ export function wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, m
 
   function fontFor(c) { return c.isBold ? fontBold : fontRegular; }
   function widthOf(c) {
-    try { return fontFor(c).widthOfTextAtSize(c.text, fontSize); }
+    try { return unitWidthOf(fontFor(c), c.text) * fontSize; }
     catch { return c.text.length * fontSize * 0.5; }
   }
 
@@ -1239,6 +1284,23 @@ export function wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, m
   const out = applyCJKPunctuationRulesPieces(lines);
   if (atomicSplit) out.atomicSplit = true;
   return out;
+}
+
+// 字寬快取（code review 2026-11-15 E-16）：fit-to-box 對同一個 block 用不同字級反覆換行（最多約 40 輪），
+// 每輪每個 chunk 都走一次字型 shaping 量寬度——CPU profile 顯示產生譯文 PDF 的時間過半花在這裡。
+// 寬度與字級成正比，所以每個字型只記「字級 1 的寬度」，換字級不必重量。chunk 是單一 CJK 字或
+// 一個英數詞，重複率很高。以字型物件為 key（文件產完字型物件釋放，快取跟著回收）
+const _unitWidthCache = new WeakMap();
+function unitWidthOf(font, text) {
+  let m = _unitWidthCache.get(font);
+  if (!m) { m = new Map(); _unitWidthCache.set(font, m); }
+  let w = m.get(text);
+  if (w === undefined) {
+    w = font.widthOfTextAtSize(text, 1);
+    if (m.size > 50000) m.clear();
+    m.set(text, w);
+  }
+  return w;
 }
 
 // 把 chunks 陣列合併成 pieces:連續同 (isBold, isItalic, linkUrl) 合一段

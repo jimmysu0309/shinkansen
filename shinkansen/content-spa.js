@@ -711,6 +711,8 @@
     stopPrescanObserver();
     spaObserverRescanCount = 0;
     spaObserverSeenTexts.clear();
+    // 待補收的 scoped rescan 節點一併丟掉：observer 停了不會再消費，留著只是抓住已離開頁面的節點
+    _scopedRescanRoots.clear();
   }
   SK.stopSpaObserver = stopSpaObserver;
 

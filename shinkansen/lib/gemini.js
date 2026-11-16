@@ -902,6 +902,37 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
     }
   }
 
+  // 處理一個 SSE event（迴圈內逐個呼叫；串流結束時殘留在 buffer 的最後一個 event 也走這裡）
+  const processEvent = (eventBlock) => {
+    if (!eventBlock.startsWith('data: ')) return;
+    const dataStr = eventBlock.slice(6);
+
+    let json;
+    try {
+      json = JSON.parse(dataStr);
+    } catch (_) {
+      return;  // 以空行切出的 event 才會走到這裡，非 JSON 代表該 event 本身異常（註解 / 心跳等），跳過
+    }
+
+    const candidate = json?.candidates?.[0];
+    const partText = candidateText(candidate);
+    const fr = candidate?.finishReason;
+    if (fr) finishReason = fr;
+    if (json?.promptFeedback?.blockReason) blockReason = json.promptFeedback.blockReason;
+
+    if (partText) {
+      allText += partText;
+      tryEmitSegments();
+    }
+
+    // 每個 SSE event 都帶 usageMetadata,取最後一個就是整批最終 usage。
+    // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
+    const meta = json?.usageMetadata;
+    if (meta) {
+      lastUsage = markTierDowngrade(parseGeminiUsage(meta), serviceTier, meta, resp);
+    }
+  };
+
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -920,35 +951,16 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
         if (!m) break;
         const eventBlock = buffer.slice(0, m.index);
         buffer = buffer.slice(m.index + m[0].length);
-        if (!eventBlock.startsWith('data: ')) continue;
-        const dataStr = eventBlock.slice(6);
-
-        let json;
-        try {
-          json = JSON.parse(dataStr);
-        } catch (_) {
-          continue;  // 以空行切出的 event 才會走到這裡，非 JSON 代表該 event 本身異常（註解 / 心跳等），跳過
-        }
-
-        const candidate = json?.candidates?.[0];
-        const partText = candidateText(candidate);
-        const fr = candidate?.finishReason;
-        if (fr) finishReason = fr;
-        if (json?.promptFeedback?.blockReason) blockReason = json.promptFeedback.blockReason;
-
-        if (partText) {
-          allText += partText;
-          tryEmitSegments();
-        }
-
-        // 每個 SSE event 都帶 usageMetadata,取最後一個就是整批最終 usage。
-        // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
-        const meta = json?.usageMetadata;
-        if (meta) {
-          lastUsage = markTierDowngrade(parseGeminiUsage(meta), serviceTier, meta, resp);
-        }
+        processEvent(eventBlock);
       }
     }
+    // 串流結束：沖出解碼器裡還沒吐完的位元組，並處理最後一個沒有以空行結尾的 event。
+    // 原本只在看到空行時才處理 event——伺服器 / 中間代理最後一筆沒補空行時，那一筆的譯文尾段與
+    // 最終用量（usageMetadata）會整個掉（code review 2026-09-11 §3.5-5）
+    buffer += decoder.decode();
+    const tail = buffer.replace(/[\r\n]+$/, '');
+    buffer = '';
+    if (tail) processEvent(tail);
   } catch (err) {
     // 中途失敗 / 使用者取消時，SSE 已解析出的 usage(每個 event 都帶 usageMetadata)
     // 是已付費 token——掛在 err.usage 讓呼叫端記帳(對齊 translateBatch 的

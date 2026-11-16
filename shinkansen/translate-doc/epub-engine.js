@@ -37,7 +37,23 @@ export const HAS_LETTER_RE = /\p{L}/u;
 export const EPUB_LIMITS = {
   hardMaxBytes: 100 * 1024 * 1024,   // 100 MB
   softWarnChars: 500_000,            // 50 萬可翻譯字元（動工時實測校準的暫定量級）
+  // 解壓後總大小上限。hardMaxBytes 只管壓縮檔本身；高壓縮比的檔（幾 MB 解開成幾 GB）會在同步解壓時
+  // 把分頁記憶體吃光。正常書籍 / 文件解開後遠低於此
+  maxUnzippedBytes: 1024 * 1024 * 1024, // 1 GB
 };
+
+// 帶解壓後大小上限的 unzip（EPUB / Word 共用）。大小取自 zip 目錄記載的原始大小，在真正解壓前就擋下；
+// 超過上限丟 Error（呼叫端一律包成各自的 'bad-zip'）
+export function unzipWithLimit(bytes, maxBytes = EPUB_LIMITS.maxUnzippedBytes) {
+  let total = 0;
+  return window.fflate.unzipSync(bytes, {
+    filter: (f) => {
+      total += f.originalSize || 0;
+      if (total > maxBytes) throw new Error('uncompressed size exceeds limit');
+      return true;
+    },
+  });
+}
 
 export class EpubParseError extends Error {
   constructor(code, message) {
@@ -434,7 +450,7 @@ export async function parseEpub(file, onProgress = () => {}, opts = {}) {
   throwIfAborted();
   let entries;
   try {
-    entries = window.fflate.unzipSync(new Uint8Array(buf));
+    entries = unzipWithLimit(new Uint8Array(buf));
   } catch (err) {
     throw new EpubParseError('bad-zip', err && err.message);
   }

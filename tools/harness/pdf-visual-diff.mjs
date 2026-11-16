@@ -31,6 +31,9 @@ const PDF_DIR = path.join(ROOT, 'docs/excluded/test pdf');
 const argv = process.argv.slice(2);
 const onlyIdx = argv.indexOf('--only');
 const ONLY = onlyIdx >= 0 ? argv[onlyIdx + 1].toLowerCase() : null;
+// --only-file <路徑>：只比清單內的檔（每行一個「bucket/檔名」，對照實驗時只看前後有變化的檔）
+const onlyFileIdx = argv.indexOf('--only-file');
+const ONLY_SET = onlyFileIdx >= 0 ? new Set(fs.readFileSync(argv[onlyFileIdx + 1], 'utf-8').split('\n').map((l) => l.trim()).filter(Boolean)) : null;
 const ALL_SHEETS = argv.includes('--all-sheets');
 const dpiIdx = argv.indexOf('--dpi');
 const DPI = dpiIdx >= 0 ? Number(argv[dpiIdx + 1]) : 100;
@@ -42,7 +45,10 @@ const UNCHANGED_RATIO = 0.003;     // bbox 內差異像素 / bbox 面積 < 0.3% 
 
 // 找最近一次輸出
 const outDirs = fs.readdirSync(PDF_DIR).filter((d) => /test pdf output$/.test(d)).sort().reverse();
-const OUT_ROOT = outDirs.map((d) => path.join(PDF_DIR, d)).find((d) => fs.existsSync(path.join(d, 'corpus')));
+// SK_OUT_ROOT：指定要比對的輸出目錄（對照實驗用，與 pdf-corpus-verify 同一個環境變數）
+const OUT_ROOT = process.env.SK_OUT_ROOT
+  ? path.resolve(process.env.SK_OUT_ROOT)
+  : outDirs.map((d) => path.join(PDF_DIR, d)).find((d) => fs.existsSync(path.join(d, 'corpus')));
 if (!OUT_ROOT) { console.error('找不到 pdf-corpus-verify 輸出'); process.exit(1); }
 const CORPUS_OUT = path.join(OUT_ROOT, 'corpus');
 
@@ -57,6 +63,7 @@ function listCases() {
       const r = JSON.parse(fs.readFileSync(path.join(cd, 'result.json'), 'utf-8'));
       if (!fs.existsSync(path.join(cd, 'translated.pdf')) || !fs.existsSync(path.join(cd, 'layout.json'))) continue;
       if (ONLY && !(r.bucket.toLowerCase() === ONLY || r.name.toLowerCase().includes(ONLY))) continue;
+      if (ONLY_SET && !ONLY_SET.has(`${r.bucket}/${r.name}`)) continue;
       out.push({ dir: cd, r });
     }
   }

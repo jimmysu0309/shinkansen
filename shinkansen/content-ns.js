@@ -298,6 +298,14 @@ if (window.__shinkansen_loaded) {
   // 改為所有 cue 統一提前 1s：_findActiveCue 以 currentTime + 此值查表，iOS 原生字幕軌
   // 的 VTTCue 時間軸整體前移同值，兩條顯示路徑一致。
   SK.ASR_CUE_LEAD_MS = 1000;
+
+  // 原生字幕軌（VTTCue）的文字會被瀏覽器當成 WebVTT cue 文字解析：`<` 起頭的片段被當成標籤、
+  // `&` 起頭的被當成字元參照。字幕原文 / 譯文是純文字，直接塞進去時「a < b」的 `<` 之後整段不顯示
+  // （實測 Chromium：`x <y z` 只顯示「x 」）。建立 cue 前一律先跳脫；YouTube iOS 全螢幕軌與
+  // X 影片字幕軌共用這一份
+  SK.escapeCueText = function escapeCueText(text) {
+    return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     const markInteraction = () => { SK._lastInteractionT = Date.now(); };
     // capture phase + passive: 確保最早 fire,不阻塞網頁 listener。
@@ -1554,6 +1562,7 @@ if (window.__shinkansen_loaded) {
     });
     try { if (SK.YT?.active) SK.stopYouTubeTranslation?.(); } catch (_) {}
     try { SK.stopXSubtitles?.(); } catch (_) {}
+    try { SK.stopDriveSubtitles?.(); } catch (_) {}
   }
   window.addEventListener(_INSTANCE_PING, (e) => {
     const d = e.detail;

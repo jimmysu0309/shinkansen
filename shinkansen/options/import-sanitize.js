@@ -81,6 +81,35 @@ export function sanitizeImport(raw, _t, SC = globalThis.__SKShortcuts) {
     clean[key] = v;
   }
 
+  // 通用規則只驗型別的三個欄位，補內容檢查。消費端各自有防呆（讀到怪值會退回預設），這裡擋的是
+  // 「匯入檔塞任意內容進同步儲存空間」：同步空間單項 8KB、總量 100KB，被佔滿後所有設定都存不進去
+  if ('dualAccentColor' in clean && !/^(auto|[a-z][a-z-]{0,23}|#[0-9a-fA-F]{6})$/.test(clean.dualAccentColor.trim())) {
+    warnings.push(_t('options.import.warningSkipOneOf', { key: 'dualAccentColor', value: String(clean.dualAccentColor).slice(0, 40) }));
+    delete clean.dualAccentColor;
+  }
+  if ('floatingIconPos' in clean) {
+    const fp = clean.floatingIconPos;
+    const okPos = fp && !Array.isArray(fp) && (fp.edge === 'left' || fp.edge === 'right')
+      && typeof fp.offsetY === 'number' && Number.isFinite(fp.offsetY) && fp.offsetY >= 0 && fp.offsetY <= 1;
+    if (okPos) clean.floatingIconPos = { edge: fp.edge, offsetY: fp.offsetY };
+    else { warnings.push(_t('options.import.warningSkipType', { key: 'floatingIconPos' })); delete clean.floatingIconPos; }
+  }
+  if ('modelPricingOverrides' in clean) {
+    const src = clean.modelPricingOverrides;
+    const out = {};
+    if (src && !Array.isArray(src)) {
+      for (const [model, ov] of Object.entries(src).slice(0, 200)) {
+        if (typeof model !== 'string' || !model || model.length > 120 || !ov || typeof ov !== 'object' || Array.isArray(ov)) continue;
+        const entry = {};
+        for (const f of ['inputPerMTok', 'outputPerMTok', 'cachedDiscount']) {
+          if (typeof ov[f] === 'number' && Number.isFinite(ov[f]) && ov[f] >= 0) entry[f] = ov[f];
+        }
+        if (Object.keys(entry).length > 0) out[model] = entry;
+      }
+    }
+    clean.modelPricingOverrides = out;
+  }
+
   // geminiConfig 子物件
   if (raw.geminiConfig && typeof raw.geminiConfig === 'object') {
     const gc = raw.geminiConfig;

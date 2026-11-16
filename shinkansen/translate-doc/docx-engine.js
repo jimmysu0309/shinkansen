@@ -23,7 +23,7 @@
 // tokenizeParagraph / mergeRunItems / composeTranslatedParagraph / spliceEdits 等）
 // 直接 import 可測，parseDocxFile / buildTranslatedDocx 才需要瀏覽器環境。
 
-import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS, HAS_LETTER_RE } from './epub-engine.js';
+import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS, HAS_LETTER_RE, unzipWithLimit } from './epub-engine.js';
 import { resolveBlockFragment } from './block-output.js';
 
 export class DocxParseError extends Error {
@@ -611,7 +611,7 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
   if (isOleContainer(bytes)) throw new DocxParseError('encrypted');
   let entries;
   try {
-    entries = window.fflate.unzipSync(bytes);
+    entries = unzipWithLimit(bytes);
   } catch (err) {
     throw new DocxParseError('bad-zip', err && err.message);
   }

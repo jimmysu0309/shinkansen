@@ -5,7 +5,7 @@
 // block 切分 / type 分類）在 W2 才會加進來。
 
 import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
-import { pageMayHaveColoredBackground } from './pdf-oplist.js';
+import { pageMayHaveColoredBackground, extractImageRects } from './pdf-oplist.js';
 
 // MV3 不能跨 origin 載 worker，必須 vendor 進 extension 並用 chrome.runtime.getURL 指過去
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/vendor/pdfjs/pdf.worker.min.mjs');
@@ -251,10 +251,12 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
       }
     }
     // 用 commonObjs 反查字型物件補完(family 沒 keyword 但 font.italic/.bold)
+    let imageRects = [];            // 點陣圖外框（版面分析判「段落旁有圖」、渲染端擴框阻擋）
     let mayHaveColoredBackground;   // 批次 7 §6.4：下方 opList 已載入，順便算給 renderer 用
     try {
       const opList = await page.getOperatorList(); // 觸發 worker font load
       mayHaveColoredBackground = pageMayHaveColoredBackground(opList);
+      imageRects = extractImageRects(opList, viewport.transform, viewport.width, viewport.height);
       for (const fn of Object.keys(styleIsItalic)) {
         if (styleIsItalic[fn] && styleIsBold[fn]) continue;
         try {
@@ -403,6 +405,7 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
       // 再 getOperatorList 一次；解析階段已經為了字型載入拿過同一份 opList，在這裡算好
       // 帶過去，renderer 只在旗標缺席（舊 doc / 這段 throw）時才自己再拿一次
       mayHaveColoredBackground,
+      imageRects,
     });
     page.cleanup();
   }
@@ -431,6 +434,7 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
     warnings.push({
       code: 'rotated-text-dropped',
       message: `此 PDF 含 ${droppedRotatedTotal} 段旋轉或直排文字，該部分維持原文不翻譯`,
+      count: droppedRotatedTotal,   // 介面依 code + count 查字典顯示；message 只供 log
     });
   }
 

@@ -187,6 +187,8 @@ function analyzePage(rawPage) {
   };
   // 批次 7 §6.4：解析階段算好的「可能有彩色底」旗標透傳給 renderer（缺席時 renderer 自己算）
   if (typeof rawPage.mayHaveColoredBackground === 'boolean') out.mayHaveColoredBackground = rawPage.mayHaveColoredBackground;
+  // 點陣圖外框透傳:繞圖文字分塊(6.7)與 renderer 擴框阻擋共用
+  if (Array.isArray(rawPage.imageRects)) out.imageRects = rawPage.imageRects;
   const runs = (rawPage.textRuns || []).slice();
   if (runs.length === 0) return out;
 
@@ -302,6 +304,7 @@ function analyzePage(rawPage) {
     bodyFontSize,
     pageWidth: rawPage.viewport.width,
     pageHeight: rawPage.viewport.height,
+    imageRects: out.imageRects || [],
   };
   for (const b of blocks) {
     b.type = classifyBlockType(b, ctx);
@@ -347,7 +350,12 @@ function analyzePage(rawPage) {
   //      row 序號 cell 插在行序列中間」拆散(sameRow / leftShift 在序號兩側觸發,
   //      描述行永不相鄰)。以幾何配對(不靠序列相鄰)把被插斷的續行接回同一個
   //      翻譯單位,避免句子在行界斷開送翻
-  const merged = mergeWrapFragments(rowSplit, medianLineHeight);
+  const wrapMerged = mergeWrapFragments(rowSplit, medianLineHeight);
+
+  // 6.7) 繞圖文字分塊（見 splitFloatWrappedBlock 註解）。放在所有合併步驟之後，切開的結果不會再被接回去
+  const merged = [];
+  const obstacles = imageObstaclesWithCaptions(ctx.imageRects, wrapMerged, medianLineHeight);
+  for (const b of wrapMerged) merged.push(...splitFloatWrappedBlock(b, medianLineHeight, ctx, obstacles));
 
   // 拆解後重排 reading order + 重編 blockId(維持「同欄由上往下」連續編號)
   merged.sort((a, b) => {
@@ -372,6 +380,65 @@ function analyzePage(rawPage) {
   }
   out.bodyFontSize = bodyFontSize;
   return out;
+}
+
+// 繞圖障礙物 = 圖片外框 + 緊接在圖片正下方、寬度不超出圖片的文字 block(圖說)。段落繞過的
+// 是「圖 + 圖說」整個浮動框,只算圖片本身的話,圖說旁邊那幾行仍會被當成圖下方的寬行。
+// 圖說可能被切成上下幾塊,往下連續接
+function imageObstaclesWithCaptions(imageRects, blocks, medianLineHeight) {
+  const mlh = medianLineHeight || 12;
+  return imageRects.map((img) => {
+    const r = img.slice();
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const b of blocks) {
+        const [x0, y0, x1, y1] = b.bbox;
+        if (x0 < r[0] - mlh || x1 > r[2] + mlh) continue;
+        if (y0 < r[3] - mlh || y0 > r[3] + 3 * mlh || y1 <= r[3]) continue;
+        r[3] = y1;
+        grew = true;
+      }
+    }
+    return r;
+  });
+}
+
+// 繞圖文字分塊:段落繞過浮動圖片時,圖旁的幾行窄、圖片上方 / 下方的行寬。block 外框是所有
+// 行的聯集矩形,窄行與寬行留在同一塊,矩形就會蓋住圖片的位置——譯文照矩形寬度排版會直接
+// 壓在圖上。障礙物見 imageObstaclesWithCaptions。block 的矩形與某個障礙物重疊、但沒有任何一行真的壓在它上面(壓在上面 = 文字
+// 本來就疊在圖上 / 行內夾著的上標碎塊,不是繞圖)→ 沿障礙物的上緣 / 下緣把行分成
+// 「上方 / 旁邊 / 下方」各自成塊,旁邊那一塊的外框就停在障礙物旁邊。
+// 純靠行寬變化猜繞圖會把「剛好比較短的兩行」誤切,所以一定要有圖片外框當依據
+function splitFloatWrappedBlock(block, medianLineHeight, ctx, obstacles) {
+  const lines = block._lines;
+  const images = obstacles;
+  if (!Array.isArray(images) || images.length === 0) return [block];
+  if (block._isCellBlock || !Array.isArray(lines) || lines.length < 2) return [block];
+  if (block.type !== 'paragraph' && block.type !== 'list-item') return [block];
+  const mlh = medianLineHeight || 12;
+  const overlaps = (a, b) => Math.min(a[2], b[2]) - Math.max(a[0], b[0]) >= mlh
+    && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) >= mlh * 0.5;
+  for (const img of images) {
+    if (!overlaps(block.bbox, img)) continue;
+    if (lines.some((l) => overlaps(l.bbox, img))) continue;
+    const above = [], beside = [], below = [];
+    for (const l of lines) {
+      const cy = (l.bbox[1] + l.bbox[3]) / 2;
+      (cy < img[1] ? above : cy > img[3] ? below : beside).push(l);
+    }
+    const parts = [above, beside, below].filter((p) => p.length > 0);
+    if (parts.length < 2) continue;
+    const out = [];
+    for (const part of parts) {
+      part.sort((a, b) => a.bbox[1] - b.bbox[1]);
+      const nb = buildBlockFromLines(part, block.column);
+      nb.type = classifyBlockType(nb, ctx);
+      // 同一塊可能還繞過另一張圖
+      out.push(...splitFloatWrappedBlock(nb, medianLineHeight, ctx, obstacles));
+    }
+    return out;
+  }
+  return [block];
 }
 
 // ---------- Body fontSize estimate(供 type 分類比較) ----------
@@ -477,17 +544,26 @@ function groupIntoLines(runs, medianLineHeight) {
   const sorted = runs.slice().sort((a, b) => a.bbox[1] - b.bbox[1]);
   const sameLineMaxXGap = medianLineHeight * SAME_LINE_MAX_X_GAP_FACTOR;
 
-  const lines = [];
-  let i = 0;
-  while (i < sorted.length) {
-    // 階段 1:以本 row 第一條(top 最小)run 的 top 為 refTop,收同 row 的 runs
+  // 階段 1:以 row 第一條(top 最小)run 的 top 為 refTop,收同 row 的 runs
+  const rows = [];
+  for (let i = 0; i < sorted.length;) {
     const refTop = sorted[i].bbox[1];
     let j = i;
     while (j + 1 < sorted.length && Math.abs(sorted[j + 1].bbox[1] - refTop) <= SAME_LINE_Y_TOLERANCE) {
       j++;
     }
+    rows.push({ refTop, runs: sorted.slice(i, j + 1) });
+    i = j + 1;
+  }
+  // 階段 1.5:同基線歸位（見 regroupRunsByBaseline 註解）
+  regroupRunsByBaseline(rows, sorted, sameLineMaxXGap);
+
+  const lines = [];
+  for (const rowInfo of rows) {
+    if (rowInfo.runs.length === 0) continue;
+    const refTop = rowInfo.refTop;
     // 階段 2:row 內按 left 升序,x gap 過大處切開(雙欄 / 左右分置)
-    const row = sorted.slice(i, j + 1).sort((a, b) => a.bbox[0] - b.bbox[0]);
+    const row = rowInfo.runs.slice().sort((a, b) => a.bbox[0] - b.bbox[0]);
     // sup/sub 洞豁免(review H4,與 splitLinesAtCellGaps 同名豁免同構):gap 被
     // 「別的 row 的上標/下標 run」填補後殘餘空白仍 ≤ 門檻,代表這段空白是行內
     // sup/sub 挪出來的洞(「dimension d⟨model⟩ = 512」的 model 佔位),不是跨欄
@@ -508,9 +584,87 @@ function groupIntoLines(runs, medianLineHeight) {
       }
     }
     lines.push(finalizeLine(currentLine));
-    i = j + 1;
   }
   return lines;
+}
+
+// 階段 1.5:同基線歸位。階段 1 只比 run 頂邊（= 基線 − 字級），兩種情況會把同一視覺行的
+// run 分到不同 row：
+//   (a) 同一條基線上混用字級（假 small caps 標題的大小字母、行內放大的詞）——頂邊差 = 字級差
+//   (b) refTop 連鎖：row 由頂邊較高的上標起頭時，同字級但頂邊差零點幾 pt 的 run（連結字型的
+//       度量略有不同）剛好落在 2pt 容忍之外，整句被切成「連結文字」「其餘文字」兩排碎塊
+// 歸位規則：run 與另一個 row 裡的某個 run「基線相同（差 ≤ 0.5pt）且水平緊鄰（間隔絕對值 ≤
+// 較小字級的一半；兩者字級相同時改用一般同行間距）」，而且對方 row 的字數比自己 row 剩下的多 → 搬過去。只搬「緊鄰」的 run：
+// 內文旁邊隔著欄距、恰好同基線的小字圖說不會被接進內文行。上標 / 下標的基線不同，不受影響
+const BASELINE_MATCH_TOLERANCE = 0.5;
+const BASELINE_ADJACENT_GAP_FACTOR = 0.5;
+function regroupRunsByBaseline(rows, runs, sameLineMaxXGap) {
+  if (rows.length < 2) return;
+  const rowOf = new Map();
+  for (const row of rows) {
+    row.weight = 0;
+    for (const r of row.runs) { rowOf.set(r, row); row.weight += (r.text || '').length; }
+  }
+  const byBaseline = new Map();
+  for (const r of runs) {
+    const key = Math.round(r.bbox[3]);
+    let arr = byBaseline.get(key);
+    if (!arr) { arr = []; byBaseline.set(key, arr); }
+    arr.push(r);
+  }
+  // 搬動會改變 row 的字數，最多掃 4 輪到穩定（實務上 1～2 輪）
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (const r of runs) {
+      const own = rowOf.get(r);
+      const rLen = (r.text || '').length;
+      const key = Math.round(r.bbox[3]);
+      let best = null;
+      for (let k = key - 1; k <= key + 1; k++) {
+        const bucket = byBaseline.get(k);
+        if (!bucket) continue;
+        for (const q of bucket) {
+          const other = rowOf.get(q);
+          if (other === own) continue;
+          if (Math.abs(q.bbox[3] - r.bbox[3]) > BASELINE_MATCH_TOLERANCE) continue;
+          const gap = Math.max(q.bbox[0], r.bbox[0]) - Math.min(q.bbox[2], r.bbox[2]);
+          // 字級相同的兩個 run 本來就該同 row（只是被 refTop 連鎖切開），用一般同行間距；
+          // 字級不同才要求緊鄰
+          const sameSize = Math.abs((q.fontSize || 0) - (r.fontSize || 0)) <= BASELINE_MATCH_TOLERANCE;
+          const limit = sameSize
+            ? sameLineMaxXGap
+            : BASELINE_ADJACENT_GAP_FACTOR * Math.min(q.fontSize || 0, r.fontSize || 0);
+          let effGap = gap;
+          // （間隔超過 4 倍門檻的直接跳過：逐字成 run 的 CJK 頁每條基線上百個 run，不設上限會變成三重迴圈）
+          if (sameSize && gap > limit && gap <= limit * 4) {
+            // 中間夾著自己 row 的其他 run（把這個 run 帶偏的上標）時，扣掉它們佔的寬度
+            const x0 = Math.min(q.bbox[2], r.bbox[2]);
+            const x1 = Math.max(q.bbox[0], r.bbox[0]);
+            for (const m of own.runs) {
+              if (m !== r && m.bbox[0] >= x0 - 1 && m.bbox[2] <= x1 + 1) effGap -= (m.bbox[2] - m.bbox[0]);
+            }
+          }
+          if (effGap > limit || (!sameSize && gap < -limit)) continue;
+          if (!best || other.weight > best.weight) best = other;
+        }
+      }
+      if (best && best.weight > own.weight - rLen) {
+        own.runs.splice(own.runs.indexOf(r), 1);
+        own.weight -= rLen;
+        best.runs.push(r);
+        best.weight += rLen;
+        rowOf.set(r, best);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  for (const row of rows) {
+    if (row.runs.length === 0) continue;
+    let top = Infinity;
+    for (const r of row.runs) { if (r.bbox[1] < top) top = r.bbox[1]; }
+    row.refTop = top;
+  }
 }
 
 function newLineFromRun(run) {

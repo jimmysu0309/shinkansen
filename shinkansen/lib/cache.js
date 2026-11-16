@@ -31,6 +31,7 @@ const EVICTION_CHECK_INTERVAL_MS = 30_000; // 最多每 30 秒檢查一次
 const pendingTouches = {};
 let touchFlushTimer = null;
 const TOUCH_FLUSH_DELAY_MS = 5000; // 5 秒後統一 flush
+const TOUCH_MIN_AGE_MS = 24 * 60 * 60 * 1000; // 時間戳超過一天才更新（見 getBatch）
 
 function scheduleTouchFlush() {
   if (touchFlushTimer) return; // 已排程，不重複
@@ -326,7 +327,9 @@ export async function getBatch(texts, keySuffix = '') {
   const results = keys.map(k => {
     if (!(k in stored)) return null;
     const val = extractValue(stored[k]);
-    if (val != null) {
+    // 時間戳還新（一天內寫過 / 讀過）的不回寫：LRU 淘汰順序精確到「天」就夠用，
+    // 省掉「同一頁當天再開一次就把所有命中條目整包重寫」（實測 1,700 條一次 55–180ms 的背景寫入）
+    if (val != null && Date.now() - extractTimestamp(stored[k]) > TOUCH_MIN_AGE_MS) {
       pendingTouches[k] = wrapValue(val);
     }
     return val;

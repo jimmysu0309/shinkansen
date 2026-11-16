@@ -207,6 +207,29 @@
         const _storage = (typeof browser !== 'undefined' && browser.storage) || (typeof chrome !== 'undefined' && chrome.storage);
         if (!_storage || !_storage.local) {
           respond({ ok: false, error: 'storage.local unavailable in this context' });
+        } else if (!SK.isDevTailBuild()) {
+          // 商店版只回條數與 bytes（bridge 對任意網頁常開）：不讀整池內容——原本每次請求都把
+          // 整個快取池（可達數 MB）反序列化一遍，網頁可以反覆送請求拖慢分頁；也不回最舊 / 最新
+          // 翻譯時間戳（那是使用者的使用時間資訊）。getKeys 不存在的舊瀏覽器只回 bytes
+          const keysP = typeof _storage.local.getKeys === 'function' ? _storage.local.getKeys() : Promise.resolve(null);
+          keysP.then((keys) => {
+            let stats = null;
+            if (Array.isArray(keys)) {
+              stats = { tc: 0, gloss: 0, bookgloss: 0, other: 0, tcOldestT: null, tcNewestT: null, glossOldestT: null };
+              for (const k of keys) {
+                if (k.startsWith('tc_')) stats.tc++;
+                else if (k.startsWith('gloss_')) stats.gloss++;
+                else if (k.startsWith('bookgloss_')) stats.bookgloss++;
+                else stats.other++;
+              }
+            }
+            const respondWith = (bytes) => respond({ ok: true, bytes, stats });
+            if (typeof _storage.local.getBytesInUse === 'function') {
+              _storage.local.getBytesInUse(null).then(respondWith).catch(() => respondWith(null));
+            } else {
+              respondWith(null);
+            }
+          }).catch((err) => respond({ ok: false, error: err?.message || String(err) }));
         } else {
           _storage.local.get(null)
             .then((all) => {
@@ -2098,6 +2121,16 @@
     if (ac) {
       _earlyRestoredAborts.add(ac);
       ac.abort();
+    }
+    // 取消當下就釋放 run state（與 content-spa.js resetForSpaNavigation 同做法）。原本留給主流程
+    // unwind 的 releaseRunState——非串流批次沒有網路層取消，要等進行中的批次回來（最長 90 秒）
+    // 才清；這段期間頁面已還原、狀態卻仍是「翻譯中」（工具列選單顯示翻譯中、游標懸停翻譯
+    // 被擋）。舊輪 unwind 的各個守衛都以「STATE.abortController 還是不是自己這輪」判斷，
+    // 清成 null 等同已交出頁面所有權，不會重複還原 / 重複跳 toast
+    if (ac && STATE.abortController === ac) {
+      STATE.translating = false;
+      STATE.translatingConvertOnly = false;
+      STATE.abortController = null;
     }
     restoreOriginalHTMLAndReset();
     // silent：手動翻譯擠掉背景 convertOnly run 時不跳「已取消」——使用者按的是

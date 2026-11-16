@@ -1293,6 +1293,12 @@
     if (asrTracks.length === 1) return { track: asrTracks[0], asrCount: 1, via: 'single' };
     // 多條 ASR = 自動配音影片。順序不可信（每次載入不同），必須靠 YouTube 訊號。
     const h = hints || {};
+    // 原音音軌語言不可信時（多音軌影片找不到原音標記、bridge 只能退「預設音軌」——預設音軌與
+    // defaultCaptionTrackIndex 都會依觀看者語言指向配音）：標題文字系統能定案的先認標題
+    if (h.originalAudioLangExplicit === false) {
+      const byTitle = _findTrackByLang(asrTracks, _guessLangFromTitle(h.title));
+      if (byTitle) return { track: byTitle, asrCount: asrTracks.length, via: 'title-lang' };
+    }
     // 先認原音音軌語言（bridge 由 YouTube 明示的 original 標記取得，與觀看者無關），
     // 再退 defaultCaptionTrackIndex：後者會受觀看者帳號的字幕語言偏好影響
     // （實測 KRqTLZ1YCLg 登入帳號下，日文原音音軌的 defaultCaptionTrackIndex 指向英文軌）
@@ -1330,7 +1336,9 @@
     let kana = 0, hangul = 0, han = 0, latin = 0;
     for (const ch of title) {
       const c = ch.codePointAt(0);
-      if ((c >= 0x3040 && c <= 0x30FF)) kana++;
+      // 假名區段扣掉 ゠（30A0）・（30FB）ー（30FC）：中黑點與長音符中文標題也用（外國人名的間隔號），
+      // 算進去會把「凱蒂・佩芮・演唱會」這類中文標題判成日文
+      if ((c >= 0x3040 && c <= 0x30FF) && c !== 0x30A0 && c !== 0x30FB && c !== 0x30FC) kana++;
       else if (c >= 0xAC00 && c <= 0xD7AF) hangul++;
       else if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF)) han++;
       else if ((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)) latin++;
@@ -1353,16 +1361,26 @@
     const picked = sourceAsr || _pickSourceAsrTrack(tracks, hints);
     if (picked.track) return { lang: picked.track.languageCode, asrTrack: picked.track, via: picked.via };
     const h = hints || {};
+    // 標題判定。純漢字標題只能說「中文或日文」：字幕軌同時有中文與日文時不下結論
+    //（純漢字的日文標題很常見，判成中文會選錯軌）
+    const titleTrack = () => {
+      const guess = _guessLangFromTitle(h.title);
+      if (!guess) return null;
+      if (guess === 'zh' && _findTrackByLang(tracks, 'ja')) return null;
+      return _findTrackByLang(tracks, guess);
+    };
+    const audioTrusted = h.originalAudioLangExplicit !== false;
+    if (!audioTrusted) {
+      const byTitle = titleTrack();
+      if (byTitle) return { lang: byTitle.languageCode, asrTrack: null, via: 'title-lang' };
+    }
     if (typeof h.originalAudioLang === 'string' && h.originalAudioLang) {
       const byAudio = _findTrackByLang(tracks, h.originalAudioLang);
       if (byAudio) return { lang: byAudio.languageCode, asrTrack: null, via: 'audio-lang-manual' };
     }
     if (tracks.length === 1) return { lang: tracks[0].languageCode, asrTrack: null, via: 'single-manual' };
-    const guess = _guessLangFromTitle(h.title);
-    if (guess) {
-      const byTitle = _findTrackByLang(tracks, guess);
-      if (byTitle) return { lang: byTitle.languageCode, asrTrack: null, via: 'title-lang' };
-    }
+    const byTitle = titleTrack();
+    if (byTitle) return { lang: byTitle.languageCode, asrTrack: null, via: 'title-lang' };
     return { lang: null, asrTrack: null, via: 'none' };
   }
 
@@ -1485,6 +1503,7 @@
     const hints = {
       defaultCaptionTrackIndex: detail.defaultCaptionTrackIndex,
       originalAudioLang:        detail.originalAudioLang,
+      originalAudioLangExplicit: detail.originalAudioLangExplicit,
       title:                    detail.title,
     };
     const decision = _chooseBestCaptionTrack(detail.captionTracks, detail.activeTrack, targetLanguage, hints);
@@ -2470,7 +2489,7 @@
     }
     track.mode = showNow ? 'showing' : 'hidden';
     for (const c of cues) {
-      try { track.addCue(new VTTCue(c.startSec, c.endSec, c.text)); } catch (e) { /* 單 cue 失敗不影響其他 */ }
+      try { track.addCue(new VTTCue(c.startSec, c.endSec, SK.escapeCueText(c.text))); } catch (e) { /* 單 cue 失敗不影響其他 */ }
     }
     return track;
   }
@@ -2868,6 +2887,7 @@
     // 世代快照：await 回來後 SPA 換片 / stop-restart 會換掉 captionMap / displayCues
     // (物件同一個 YT，屬性換新)，不比對就把舊影片的譯文與 cue 寫進新影片 session
     const _myGen = YT.captionSourceGen || 0;
+    const _origin = _usageOrigin();
     const lastSeg = subSegs[subSegs.length - 1];
     // v2.0.54:子批末條 e 改用 rawSegments 真實後繼片段起點(下一子批首條 = 本值,
     // 子批間仍不重疊),不再固定 +1500ms——固定值讓 LLM 對末句時距的認知系統性偏短
@@ -2897,9 +2917,11 @@
       SK.sendLog('info', 'youtube', 'asr sub-batch result discarded (session changed)', {
         batchIdx, gen: _myGen, currentGen: YT.captionSourceGen, active: YT.active,
       });
+      // 譯文丟棄，但這批已經計費：記到送出時那支影片名下
+      _logWindowUsage(subSegs.length, res.usage, _origin, true);
       return;
     }
-    _logWindowUsage(subSegs.length, res.usage);
+    _logWindowUsage(subSegs.length, res.usage, _origin);
 
     const rawText = res.result?.[0] || '';
     const entries = _parseAsrLlmOutput(rawText, subSegs, batchEndMs);
@@ -3086,6 +3108,7 @@
     const _batchApiMs = new Array(batches.length).fill(0);
     // 世代快照——await 回來後 SPA 換片 / stop-restart 時丟棄結果(同 _runAsrSubBatch)
     const _myGen = YT.captionSourceGen || 0;
+    const _origin = _usageOrigin();
 
     // 依 ytSubtitle.engine 路由(同非 ASR 字幕，單元已是英文整句不走 ASR JSON 模式)
     const _heuristicMsgType = SK.getSubtitleBatchType(SK.YT.config?.engine, false);
@@ -3102,9 +3125,10 @@
           SK.sendLog('info', 'youtube', 'asr heuristic batch result discarded (session changed)', {
             batchIdx: b, gen: _myGen, currentGen: YT.captionSourceGen, active: YT.active,
           });
+          _logWindowUsage(batchUnits.length, res.usage, _origin, true);
           return;
         }
-        _logWindowUsage(batchUnits.length, res.usage);
+        _logWindowUsage(batchUnits.length, res.usage, _origin);
         // v1.10.39(code review 2026-06-09 M8):防 res.ok=true 但 res.result 缺失時
         // res.result[j] 直接 throw(對齊非 ASR 主路徑 _injectBatchResult 的 res.result || [])
         const results = res.result || [];
@@ -3306,17 +3330,29 @@
     // 結尾不得把 windowStartMs 標進（新軌的）translatedWindows，否則新軌該視窗被誤跳過。
     const _myCaptionGen = YT.captionSourceGen || 0;
 
+    // 防重入標記要在第一個 await 之前加：原本「檢查在 await 前、加入在 await 後」，同一個視窗的兩次
+    // 呼叫（timeupdate 與 seeked 幾乎同時觸發）都通過檢查，各送一次翻譯（重複計費）。
+    // v1.10.46: 快照 Set 本身——來源切換（_resetCaptionSourceBookkeeping）會換新 Set,
+    // 舊 run 的 finally 必須刪「自己加進的那個」，不可誤刪新 run 在新 Set 的同 key 標記
+    const _myTranslatingWindows = YT.translatingWindows;
+    _myTranslatingWindows.add(windowStartMs);  // v1.2.54: 加入 Set，允許其他視窗並行
+    // 本視窗執行期間有沒有其他視窗並行（結尾判斷「本視窗有沒有產出」用）
+    const _myWindowSeq = (YT._windowStartSeq = (YT._windowStartSeq || 0) + 1);
+    const _startedSolo = _myTranslatingWindows.size === 1;
+
     // 取得設定
-    const config = await getYtConfig();
+    let config;
+    try {
+      config = await getYtConfig();
+    } catch (err) {
+      _myTranslatingWindows.delete(windowStartMs);
+      throw err;
+    }
     const windowSizeMs = (config.windowSizeS || 30) * 1000;
     const windowEndMs  = windowStartMs + windowSizeMs;
 
     // 標記「已排程翻譯到此位置」，防止 timeupdate 重複觸發
     YT.translatedUpToMs = windowEndMs;
-    // v1.10.46: 快照 Set 本身——來源切換（_resetCaptionSourceBookkeeping）會換新 Set,
-    // 舊 run 的 finally 必須刪「自己加進的那個」，不可誤刪新 run 在新 Set 的同 key 標記
-    const _myTranslatingWindows = YT.translatingWindows;
-    _myTranslatingWindows.add(windowStartMs);  // v1.2.54: 加入 Set，允許其他視窗並行
 
     // v1.3.5: try-finally 確保 translatingWindows.delete 無論如何都會執行
     // （涵蓋：正常完成、!YT.active 提前 return、catch 繼續後到達 finally）
@@ -3758,9 +3794,13 @@
     if (!_genStale) YT.captionMapCoverageUpToMs = Math.max(YT.captionMapCoverageUpToMs, windowEndMs);
     // v1.9.22: 只有「真的有譯文進帳」或「視窗本來就沒字幕」才加 translatedWindows。
     // 全 batches 失敗時不加,下次 seek 此視窗會重跑翻譯(避免「靜默空白」bug)。
-    const _windowProducedTranslation =
+    // captionMap / displayCues 是整支影片共用的：有其他視窗並行時，別的視窗寫進去的譯文會讓這個
+    // 比較誤判成「本視窗有產出」（全批失敗的視窗被標成已翻 → 該段永久空白）。只有本視窗從頭到尾
+    // 沒有其他視窗並行時才採信；並行時以 _okBatchCount（本視窗自己的成功批次數）為準
+    const _ranSolo = _startedSolo && YT._windowStartSeq === _myWindowSeq;
+    const _windowProducedTranslation = _ranSolo && (
       YT.captionMap.size > _cmSizeBefore ||
-      YT.displayCues.length > _cuesCountBefore;
+      YT.displayCues.length > _cuesCountBefore);
     if (_genStale) {
       SK.sendLog('info', 'youtube', 'window finished after caption source switch / cache clear — not marking translated', {
         windowStartMs, gen: _myCaptionGen, currentGen: YT.captionSourceGen,
@@ -4119,7 +4159,13 @@
         rawSegCount: SK.YT.rawSegments.length,
       });
     }
-    if (!SK.YT.pendingQueue.has(key)) SK.YT.pendingQueue.set(key, []);
+    if (!SK.YT.pendingQueue.has(key)) {
+      // 佇列以正規化後的 key（轉小寫、壓空白）去重，但送去翻的必須是畫面上的原文：
+      // 送小寫版會讓模型失去專有名詞 / 句首 / 縮寫的大小寫線索（「US」變「us」、人名變普通字）
+      const els = [];
+      els.sourceText = String(original == null ? '' : original).replace(/\s+/g, ' ').trim() || key;
+      SK.YT.pendingQueue.set(key, els);
+    }
     SK.YT.pendingQueue.get(key).push(el);
     clearTimeout(SK.YT.batchTimer);
     SK.YT.batchTimer = setTimeout(flushOnTheFly, 300);
@@ -4203,6 +4249,8 @@
     const queue = new Map(YT.pendingQueue);
     YT.pendingQueue.clear();
     const texts = Array.from(queue.keys());
+    // 送翻用原文（大小寫保留）；captionMap 仍以正規化 key 存取
+    const sendTexts = texts.map((k) => queue.get(k)?.sourceText || k);
 
     if (YT.config?.debugToast) {
       SK.sendLog('info', 'youtube-debug', 'flushOnTheFly batch', {
@@ -4216,7 +4264,7 @@
       const _onTheFlyMsgType = SK.getSubtitleBatchType(YT.config?.engine, false);
       const res = await SK.safeSendMessage({
         type: _onTheFlyMsgType,
-        payload: { texts, glossary: null },
+        payload: { texts: sendTexts, glossary: null },
       });
       if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || SK.t('common.errorUnknown'));
       // v1.8.20: await 後再次檢查 active——stop 在 await 期間發生時放棄寫入，
@@ -4234,7 +4282,7 @@
       for (let i = 0; i < texts.length; i++) {
         const key = texts[i];
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
-        const trans = SK.sanitizeMarkers(results[i] || texts[i]);
+        const trans = SK.sanitizeMarkers(results[i] || sendTexts[i]);
         YT.captionMap.set(key, trans);
         const isBilingual = YT.config?.bilingualMode === true;
         for (const el of (queue.get(key) || [])) {
@@ -4345,31 +4393,48 @@
   // 每次 TRANSLATE_SUBTITLE_BATCH 回傳後，累積到 YT.sessionUsage；
   // 同時立刻送出 LOG_USAGE（逐批紀錄，方便查看每段字幕的費用細目）。
 
-  function _logWindowUsage(batchTexts, usage) {
+  // 送翻當下的歸屬資訊快照。回應回來時若 session 已換（SPA 換片 / 停止再啟動），API 已經計費，
+  // 用量仍要記到「送出時那支影片」名下——不可用回應當下的 location / videoId（那是新影片）
+  function _usageOrigin() {
+    const YT = SK.YT;
+    return {
+      url: location.href,
+      title: document.title,
+      videoId: YT.videoId || getVideoIdFromUrl(),
+      // 自訂模型走不同的 model 來源與計價；不帶 engine 時背景一律當 Gemini 記
+      engine: YT.config?.engine === 'openai-compat' ? 'openai-compat' : 'gemini',
+      model: (YT.config?.model) || undefined,
+    };
+  }
+
+  // origin：送翻當下的 _usageOrigin()；staleSession = 回應屬於已結束的 session（只記帳，不累加到
+  // 目前 session 的合計）
+  function _logWindowUsage(batchTexts, usage, origin, staleSession) {
     if (!usage || (usage.inputTokens === 0 && usage.cacheHits === 0)) return;
     const YT = SK.YT;
     const u = usage;
+    const o = origin || _usageOrigin();
 
     // 累積 session 合計
-    YT.sessionUsage.inputTokens     += u.inputTokens     || 0;
-    YT.sessionUsage.outputTokens    += u.outputTokens    || 0;
-    YT.sessionUsage.cachedTokens    += u.cachedTokens    || 0;
-    YT.sessionUsage.billedInputTokens += u.billedInputTokens || 0;
-    YT.sessionUsage.billedCostUSD   += u.billedCostUSD   || 0;
-    YT.sessionUsage.segments        += batchTexts;
-    YT.sessionUsage.cacheHits       += u.cacheHits       || 0;
-
-    // 取得本次使用的模型名稱（from config，若設定了 ytModel 就帶入）
-    const model = (YT.config?.model) || undefined;
+    if (!staleSession) {
+      YT.sessionUsage.inputTokens     += u.inputTokens     || 0;
+      YT.sessionUsage.outputTokens    += u.outputTokens    || 0;
+      YT.sessionUsage.cachedTokens    += u.cachedTokens    || 0;
+      YT.sessionUsage.billedInputTokens += u.billedInputTokens || 0;
+      YT.sessionUsage.billedCostUSD   += u.billedCostUSD   || 0;
+      YT.sessionUsage.segments        += batchTexts;
+      YT.sessionUsage.cacheHits       += u.cacheHits       || 0;
+    }
 
     SK.safeSendMessage({
       type: 'LOG_USAGE',
       payload: {
-        url:   location.href,
-        title: document.title,
+        url:   o.url,
+        title: o.title,
         source: 'youtube-subtitle',
-        videoId: YT.videoId || getVideoIdFromUrl(),  // v1.4.18: 合併用 key
-        model,
+        videoId: o.videoId,  // v1.4.18: 合併用 key
+        engine: o.engine,
+        model: o.model,
         inputTokens:      u.inputTokens     || 0,
         outputTokens:     u.outputTokens    || 0,
         cachedTokens:     u.cachedTokens    || 0,
@@ -4382,6 +4447,8 @@
       },
     }).catch(() => {});
   }
+  SK._ytLogWindowUsage = _logWindowUsage;   // regression spec 用
+  SK._ytUsageOrigin = _usageOrigin;
 
   // ─── 停止 ─────────────────────────────────────────────────
 
@@ -4491,6 +4558,10 @@
 
     YT.active  = true;
     YT.videoId = getVideoIdFromUrl();
+    // 啟動流程的守門：下面三個 await 的空檔內使用者可能已關掉字幕翻譯（或關掉又重開一輪）。
+    // 不擋的話這一輪會接著啟動字幕 observer、改播放器的雙語顯示狀態，把已經停掉的功能半開回來
+    const _myActivateSeq = (YT._activateSeq = (YT._activateSeq || 0) + 1);
+    const _activationStale = () => !YT.active || YT._activateSeq !== _myActivateSeq;
     YT.config  = null; // 強制重新讀取設定
     // v1.2.39: 重置用量累積器
     YT.sessionUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0, billedInputTokens: 0, billedCostUSD: 0, segments: 0, cacheHits: 0 };
@@ -4518,6 +4589,7 @@
     attachVideoListener();
 
     const config = await getYtConfig();
+    if (_activationStale()) return;
     _debugUpdate('字幕翻譯已啟動，等待 CC 字幕資料…');
 
     // v1.8.42:確保 player root class / stylesheet / overlay 狀態對齊雙語設定。
@@ -4535,7 +4607,9 @@
     // 而是 YT 已翻譯後 zh-Hans 字幕的問題（_chooseBestCaptionTrack 註解詳述）。
     if (config.preferOriginalTrack !== false) {
       const { targetLanguage = 'zh-TW' } = await browser.storage.sync.get('targetLanguage');
+      if (_activationStale()) return;
       const action = await _runCaptionTrackChooser(targetLanguage);
+      if (_activationStale()) return;
       // skip / switch-to-native:YT 顯示 native target,Shinkansen 沒翻譯工作
       // - 單語:stopYouTubeTranslation 清監聽(target 顯示就是終點)
       // - 雙語:留 Shinkansen 監聽,等使用者手動切到非 target 軌 → XHR interceptor 抓到後

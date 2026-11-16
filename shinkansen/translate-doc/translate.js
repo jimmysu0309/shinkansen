@@ -505,7 +505,7 @@ export async function translateDocument(doc, options = {}) {
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
 export async function translateSingleBlock(block, options = {}) {
-  const { modelOverride, glossary, engine = 'gemini', extraPrompt = null } = options;
+  const { modelOverride, glossary, engine = 'gemini', extraPrompt = null, filename = null } = options;
   // v1.9.6: Google MT 不支援文件翻譯，retry 路徑同步擋（理論上 UI 層已先擋掉走不到這，
   // 但 currentEngine 是 module state，測試 / 程式錯誤造成 stale 時這裡是最後守門）
   if (engine === 'google') {
@@ -520,12 +520,13 @@ export async function translateSingleBlock(block, options = {}) {
   const startTime = Date.now();
 
   let response;
+  const retryTexts = [buildMarkedText(block)];
+  const retryMessage = {
+    type: engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH',
+    payload: { texts: retryTexts, modelOverride, glossary, preferArticleGlossary: true, extraPrompt },
+  };
   try {
-    const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
-    response = await chrome.runtime.sendMessage({
-      type: messageType,
-      payload: { texts: [buildMarkedText(block)], modelOverride, glossary, preferArticleGlossary: true, extraPrompt },
-    });
+    response = await chrome.runtime.sendMessage(retryMessage);
   } catch (err) {
     const msg = (err && err.message) || String(err);
     block.translationStatus = 'failed';
@@ -542,14 +543,42 @@ export async function translateSingleBlock(block, options = {}) {
     return { ok: false, error: msg };
   }
 
-  // 用量寫進紀錄(retry 通常很小，但仍計入)
-  const usage = response.usage || {};
+  // 輸出語言驗證（與 translateDocument 的批次驗證同一支判斷、同樣「清快取 → 重打一次 → 仍錯就標失敗」）。
+  // 原本這條重試路徑不驗：批次那邊因語言不符被標失敗的段，按重試後若模型又回原文語言就直接標成功；
+  // 且錯譯已被 background 寫進快取，不清的話再按重試只會秒回同一份
+  const usageParts = [response.usage || {}];
+  let targetLanguage = 'zh-TW';
+  try { targetLanguage = (await getSettings()).targetLanguage || 'zh-TW'; } catch (_) { /* fail-open，同 translateDocument */ }
+  let langMismatch = false;
+  if (detectDocBatchLangMismatch(response.result, targetLanguage)) {
+    console.warn('[Shinkansen] retry output language mismatch, retrying once', block.blockId);
+    await clearTcCacheForTexts(retryTexts);
+    let again = null;
+    try { again = await chrome.runtime.sendMessage(retryMessage); } catch { again = null; }
+    if (again && Array.isArray(again.result) && again.result.length > 0) {
+      usageParts.push(again.usage || {});
+      if (detectDocBatchLangMismatch(again.result, targetLanguage)) langMismatch = true;
+      else response = again;
+    } else {
+      langMismatch = true;
+    }
+    if (langMismatch) await clearTcCacheForTexts(retryTexts);
+  }
+
+  // 用量寫進紀錄(retry 通常很小，但仍計入；語言不符多打的那一次也算)
+  const sumUsage = (k) => usageParts.reduce((acc, u) => acc + (Number(u[k]) || 0), 0);
+  const usage = usageParts.length === 1 ? usageParts[0] : {
+    inputTokens: sumUsage('inputTokens'), outputTokens: sumUsage('outputTokens'),
+    billedInputTokens: sumUsage('billedInputTokens'), billedCostUSD: sumUsage('billedCostUSD'), cacheHits: sumUsage('cacheHits'),
+  };
   try {
     await chrome.runtime.sendMessage({
       type: 'LOG_USAGE',
       payload: {
-        url: 'pdf://retry',
-        title: `(retry ${block.blockId})`,
+        // 與主翻譯同一個網址（pdf://<檔名>），用量紀錄才會歸在同一份文件底下；原本寫死 pdf://retry，
+        // 所有文件的重試全擠成同一筆來源
+        url: `pdf://${filename || 'retry'}`,
+        title: filename ? `${filename} (retry ${block.blockId})` : `(retry ${block.blockId})`,
         // raw / billed 分開記(同 translateDocument);`??` 而非 `||`,billed===0 合法
         inputTokens: usage.inputTokens ?? usage.billedInputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0,
@@ -566,6 +595,14 @@ export async function translateSingleBlock(block, options = {}) {
       },
     });
   } catch (_) { /* swallow */ }
+
+  if (langMismatch) {
+    const i18n = window.__SK?.i18n;
+    const msg = (i18n && typeof i18n.t === 'function') ? i18n.t('doc.translate.outputLangMismatch') : 'output language does not match target language';
+    block.translationStatus = 'failed';
+    block.translationError = msg;
+    return { ok: false, error: msg };
+  }
 
   // LLM 協定殘片修復 + 句尾句號對齊,同 translateDocument 的 applyBlockResults（v2.0.53）
   const tr = typeof response.result[0] === 'string'

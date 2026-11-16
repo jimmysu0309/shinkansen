@@ -269,7 +269,9 @@ async function load() {
   //   saved 未寫入 + target≠zh-TW → 空陣列(zh-CN/en 等不需要禁用中國用語)
   // 之前用 s.forbiddenTerms(已 spread DEFAULTS)會永遠拿到 25 條 → en/zh-CN 使用者
   // 看到滿表中→中對映無意義。
-  forbiddenTerms = Array.isArray(saved.forbiddenTerms)
+  // saved 逐條等於某一版舊預設（早期版本把預設表寫死進 storage 的殘留）→ 視為未寫入，
+  // 與 getSettings() 同一條判斷：翻譯實際用的是新預設表，設定頁也要顯示新預設表
+  forbiddenTerms = (Array.isArray(saved.forbiddenTerms) && !isLegacyDefaultForbiddenTerms(saved.forbiddenTerms))
     ? saved.forbiddenTerms
     : (s.targetLanguage === 'zh-TW' ? DEFAULT_FORBIDDEN_TERMS.map(t => ({ ...t })) : []);
   renderForbiddenTermsTable();
@@ -1030,6 +1032,33 @@ function updateYtPromptCostHint() {
     `<span style="font-size: 11px; color: #999;">${_t('options.gemini.cost.estimateFooter.html', { pct: cachedPct })}</span>`;
 }
 
+// 數值欄位存檔值：解析後依 input 的 min / max 夾住。瀏覽器的 min / max 只影響上下鍵與表單驗證，
+// 手打超出範圍的數字照樣進得來——原本直接存，設定頁顯示值與實際生效值對不上（術語表逾時填 0
+// 會永遠逾時）。空白 / 非數字仍回 fallback（同 parseUserNum）
+function numFromInput(id, fallback) {
+  const el = $(id);
+  const n = parseUserNum(el?.value, fallback);
+  return clampToInputRange(el, n);
+}
+function clampToInputRange(el, n) {
+  if (!el || !Number.isFinite(n)) return n;
+  const min = el.min === '' ? NaN : Number(el.min);
+  const max = el.max === '' ? NaN : Number(el.max);
+  if (Number.isFinite(min) && n < min) return min;
+  if (Number.isFinite(max) && n > max) return max;
+  return n;
+}
+// 離開欄位（change）時把畫面上的值也改成夾住後的值，讓「看到的 = 存進去的」。
+// 不在 input 事件做：打「50」的過程會先經過「5」，邊打邊改會打斷輸入
+document.addEventListener('change', (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement) || el.type !== 'number' || el.value.trim() === '') return;
+  const n = Number(el.value);
+  if (!Number.isFinite(n)) return;
+  const c = clampToInputRange(el, n);
+  if (c !== n) el.value = String(c);
+});
+
 // v1.8.14: 並發 save 防護
 // 之前 save() 是 read-modify-write(sync.get → 組整桶 → sync.set)，沒任何 lock。
 // 兩個 Tab 的儲存按鈕共用同一個 save()，快速連按 / 跨 Tab 同時改 / 打字+按鈕同時觸發
@@ -1078,13 +1107,13 @@ async function _saveImpl() {
       model: existingModel,
       serviceTier: $('serviceTier').value,
       // v1.8.20: 改用 parseUserNum——空字串/非法字元走 default，避免 NaN 寫進 storage 後送 API 拒絕。
-      temperature: parseUserNum($('temperature').value, DEFAULTS.geminiConfig.temperature),
+      temperature: numFromInput('temperature', DEFAULTS.geminiConfig.temperature),
       // v1.10.19: topP/topK UI 已移除(Gemini 3 不使用 top-k sampling、官方建議勿設,
       // buildSamplingFields 對 Gemini 3 一律略過)。沿用 v1.6.15/v1.6.16 pattern:從 storage
       // 拉現存值寫回(保留欄位作非 Gemini-3 模型的 fallback,避免 migration)。
       topP: existing.geminiConfig?.topP ?? DEFAULTS.geminiConfig.topP,
       topK: existing.geminiConfig?.topK ?? DEFAULTS.geminiConfig.topK,
-      maxOutputTokens: parseUserNum($('maxOutputTokens').value, DEFAULTS.geminiConfig.maxOutputTokens),
+      maxOutputTokens: numFromInput('maxOutputTokens', DEFAULTS.geminiConfig.maxOutputTokens),
       systemInstruction: $('systemInstruction').value,
     },
     // v1.6.16: 後備路徑單價 UI 已移除，從 storage 拉現存值寫回（沿用 v1.6.15 對 geminiConfig.model 的同 pattern)
@@ -1098,15 +1127,15 @@ async function _saveImpl() {
     // v1.8.19: safetyMargin 從 UI 移除，save() 不再寫，維持 storage 既有值（0.1)
     // 批次 5-6（v1.10.46）：fallback 全改引用 DEFAULTS 單一資料源——原本字面值手抄，
     // maxConcurrentBatches 已 drift（寫死 10 vs DEFAULTS 30，空欄存檔會悄悄掉到 10）。
-    maxRetries: parseUserNum($('maxRetries').value, DEFAULTS.maxRetries),
-    maxConcurrentBatches: parseUserNum($('maxConcurrentBatches').value, DEFAULTS.maxConcurrentBatches),
-    maxUnitsPerBatch: parseUserNum($('maxUnitsPerBatch').value, DEFAULTS.maxUnitsPerBatch),
-    maxCharsPerBatch: parseUserNum($('maxCharsPerBatch').value, DEFAULTS.maxCharsPerBatch),
-    maxTranslateUnits: parseUserNum($('maxTranslateUnits').value, DEFAULTS.maxTranslateUnits),
+    maxRetries: numFromInput('maxRetries', DEFAULTS.maxRetries),
+    maxConcurrentBatches: numFromInput('maxConcurrentBatches', DEFAULTS.maxConcurrentBatches),
+    maxUnitsPerBatch: numFromInput('maxUnitsPerBatch', DEFAULTS.maxUnitsPerBatch),
+    maxCharsPerBatch: numFromInput('maxCharsPerBatch', DEFAULTS.maxCharsPerBatch),
+    maxTranslateUnits: numFromInput('maxTranslateUnits', DEFAULTS.maxTranslateUnits),
     // v1.8.3: 只翻文章開頭（節省費用）
     partialMode: {
       enabled: $('partialModeEnabled').checked,
-      maxUnits: parseUserNum($('partialModeMaxUnits').value, DEFAULTS.partialMode.maxUnits),
+      maxUnits: numFromInput('partialModeMaxUnits', DEFAULTS.partialMode.maxUnits),
     },
     // v0.69: 術語表一致化
     glossary: {
@@ -1115,17 +1144,17 @@ async function _saveImpl() {
       model: $('glossaryModel').value,
       prompt: $('glossaryPrompt').value,
       // v1.8.20: 改 parseUserNum，避免使用者打 0 （合法 temperature) 被 falsy 改回 0.1
-      temperature: parseUserNum($('glossaryTemperature').value, DEFAULTS.glossary.temperature ?? 0.1),
+      temperature: numFromInput('glossaryTemperature', DEFAULTS.glossary.temperature ?? 0.1),
       skipThreshold: DEFAULTS.glossary.skipThreshold,
       // v1.7.3: blockingThreshold 使用者可調（0 = 永遠 fire-and-forget，大值 = 幾乎都 blocking)
-      blockingThreshold: parseUserNum($('glossaryBlockingThreshold').value, DEFAULTS.glossary.blockingThreshold),
+      blockingThreshold: numFromInput('glossaryBlockingThreshold', DEFAULTS.glossary.blockingThreshold),
       // v1.8.61:UI 是秒,儲存前 × 1000 換算成 ms(storage schema 仍 timeoutMs)
-      timeoutMs: parseUserNum($('glossaryTimeout').value, (DEFAULTS.glossary.timeoutMs ?? 60000) / 1000) * 1000,
+      timeoutMs: numFromInput('glossaryTimeout', (DEFAULTS.glossary.timeoutMs ?? 60000) / 1000) * 1000,
       maxTerms: DEFAULTS.glossary.maxTerms,
     },
     // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
     // v1.8.20: 空字串 → 0/100 = 0 → toast 完全透明，改 parseUserNum 走預設
-    toastOpacity: parseUserNum($('toastOpacity').value, (DEFAULTS.toastOpacity ?? 0.95) * 100) / 100,
+    toastOpacity: numFromInput('toastOpacity', (DEFAULTS.toastOpacity ?? 0.95) * 100) / 100,
     toastPosition: $('toastPosition').value,
     // v1.1.3: Toast 自動關閉
     toastAutoHide: $('toastAutoHide').checked,
@@ -1135,7 +1164,7 @@ async function _saveImpl() {
     // 懸浮翻譯按鈕：使用者明確切過 → 一律寫 boolean（之後不再走平台預設）
     floatingIcon: $('floatingIcon').checked,
     floatingIconSize: (() => { const v = document.querySelector('input[name="floatingIconSize"]:checked')?.value; return ['16', '24', '32'].includes(v) ? Number(v) : 24; })(),
-    floatingIconOpacity: parseUserNum($('floatingIconOpacity').value, (DEFAULTS.floatingIconOpacity ?? 0.7) * 100) / 100,
+    floatingIconOpacity: numFromInput('floatingIconOpacity', (DEFAULTS.floatingIconOpacity ?? 0.7) * 100) / 100,
     // 多指觸控手勢（iOS only；桌面 picker 隱藏但維持 loaded 值，不誤寫）：
     // picker 'off' → enable=false、指數維持 loaded 值；'3' / '4' → enable=true + 指數
     fourFingerGesture: $('touchGestureMode').value !== 'off',
@@ -1169,9 +1198,9 @@ async function _saveImpl() {
       onTheFly:           $('ytOnTheFly').checked,          // v1.2.49
       // preserveLineBreaks: 已移除 toggle，永遠 true（content-youtube.js 硬編碼）
       // v1.8.20: 改 parseUserNum——避免空字串走預設 + temperature 0 不被當 falsy + NaN ?? 1 = NaN 的陷阱
-      windowSizeS:  parseUserNum($('ytWindowSizeS').value, DEFAULTS.ytSubtitle.windowSizeS ?? 30),
-      lookaheadS:   parseUserNum($('ytLookaheadS').value, DEFAULTS.ytSubtitle.lookaheadS ?? 10),
-      temperature:  parseUserNum($('ytTemperature').value, DEFAULTS.ytSubtitle.temperature ?? 1),
+      windowSizeS:  numFromInput('ytWindowSizeS', DEFAULTS.ytSubtitle.windowSizeS ?? 30),
+      lookaheadS:   numFromInput('ytLookaheadS', DEFAULTS.ytSubtitle.lookaheadS ?? 10),
+      temperature:  numFromInput('ytTemperature', DEFAULTS.ytSubtitle.temperature ?? 1),
       systemPrompt: $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
       // v1.2.39: 獨立模型 + 計價
       model: $('ytModel').value || '',
@@ -1282,13 +1311,13 @@ async function _saveImpl() {
       temperature: (() => {
         const raw = String($('cp-temperature').value ?? '').trim();
         if (raw === '') return null;
-        return parseUserNum(raw, DEFAULTS.customProvider?.temperature ?? 0.7);
+        return clampToInputRange($('cp-temperature'), parseUserNum(raw, DEFAULTS.customProvider?.temperature ?? 0.7));
       })(),
-      fetchTimeoutSec: parseUserNum($('cp-fetchTimeout').value, DEFAULTS.customProvider?.fetchTimeoutSec ?? 90),
+      fetchTimeoutSec: numFromInput('cp-fetchTimeout', DEFAULTS.customProvider?.fetchTimeoutSec ?? 90),
       // 單價空欄 fallback 0 是刻意 sentinel（空 = 無計價，費用顯示 $0），不引 DEFAULTS 的
       // OpenRouter 校準單價——清空欄位不該悄悄用別人的價格估費
-      inputPerMTok: parseUserNum($('cp-inputPerMTok').value, 0),
-      outputPerMTok: parseUserNum($('cp-outputPerMTok').value, 0),
+      inputPerMTok: numFromInput('cp-inputPerMTok', 0),
+      outputPerMTok: numFromInput('cp-outputPerMTok', 0),
       // v1.9.2: UI 0-100% → 儲存比例 0-1;空白 → null(讓 background 走 baseUrl 自動推導)
       cachedDiscount: (() => {
         const raw = $('cp-cachedDiscount')?.value?.trim();
@@ -1654,6 +1683,14 @@ window.addEventListener('pagehide', () => {
   _autoSaveTimer = null;
   save();
 });
+// 「回復預設」/「匯入」這類整批改寫 storage 的動作開始前呼叫：取消還沒發出的自動存檔、
+// 等進行中的那一次寫完。不這樣做，改完欄位 600ms 內按回復預設 / 匯入，稍後才跑的自動存檔
+// 會把畫面上的舊值整份寫回去，蓋掉剛回復 / 匯入的結果
+async function quiesceAutoSave() {
+  if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
+  _savePending = false;
+  while (_saveInFlight) { _savePending = false; await new Promise((r) => setTimeout(r, 20)); }
+}
 function markDirty() {
   scheduleAutoSave();
   const bar = $('save-bar');
@@ -1953,6 +1990,7 @@ async function resetSyncPreservingLinks(storage) {
 
 $('reset-defaults').addEventListener('click', async () => {
   if (!confirm(_t('options.reset.confirm'))) return;
+  await quiesceAutoSave();
   // v0.62 起：apiKey 在 browser.storage.local，不在 sync 裡，clear sync 不影響 apiKey。
   // 自訂模型金鑰例外（code review 2026-11-15 O-2）：回復預設會把端點改回預設主機，
   // 原端點若是別的主機，那把金鑰留著就會被送到預設主機 → 一併清掉並告知；
@@ -2023,6 +2061,7 @@ $('import-input').addEventListener('change', async (e) => {
     }
     // 子物件以「現值 ← 匯入值」逐欄合併後才寫入（code review 2026-11-15 O-2）：
     // sync.set 是整顆取代，匯入檔沒列的欄位不可因此被重設回預設
+    await quiesceAutoSave();
     const curSync = await browser.storage.sync.get(IMPORT_MERGE_KEYS);
     const merged = mergeImportOverCurrent(clean, curSync);
     // 2026-10-20 security review：baseUrl 換到不同 origin 時清掉既有自訂模型金鑰，
@@ -3081,12 +3120,22 @@ function getFilteredLogs() {
 // （先 escapeHtml，再對 escape 後字串做大小寫不敏感的 mark 包裝）。
 // search 為空時直接回傳 escapeHtml 結果不動。
 function highlightSearch(text, searchLower) {
-  const escaped = escapeHtml(text);
-  if (!searchLower) return escaped;
-  // 在 escaped 字串中以大小寫不敏感方式包 <mark>。
-  // 用 RegExp 但要 escape regex meta 字。
+  const raw = String(text ?? '');
+  if (!searchLower) return escapeHtml(raw);
+  // 在「原文」上找命中、每一段各自 escape 後再組回去。原本先 escape 整串再對結果做取代：
+  // 搜尋字串若落在 HTML entity 裡（搜「amp」「lt」「quot」「&」）會把 &amp; 切成 &<mark>amp</mark>;，
+  // 畫面出現殘破的 entity；含 < > & 的搜尋字串則永遠找不到（escape 後長得不一樣）
   const safe = searchLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return escaped.replace(new RegExp(safe, 'gi'), m => `<mark class="log-search-hit">${m}</mark>`);
+  const re = new RegExp(safe, 'gi');
+  let out = '';
+  let last = 0;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    if (m[0].length === 0) { re.lastIndex++; continue; }
+    out += escapeHtml(raw.slice(last, m.index)) + `<mark class="log-search-hit">${escapeHtml(m[0])}</mark>`;
+    last = m.index + m[0].length;
+  }
+  return out + escapeHtml(raw.slice(last));
 }
 
 // ─── 渲染 ───────────────────────────────────────────────
@@ -3144,10 +3193,13 @@ function renderLogTable() {
   // 欄位渲染前都經 escapeHtml/escapeAttr，搜尋字串（user input）也經 escape 才插入 <mark>。
   tbody.innerHTML = visible.map(entry => {
     const time = formatLogTime(entry.t);
-    const catClass = `log-cat log-cat-${entry.category || 'system'}`;
-    const catLabel = LOG_CAT_LABELS[entry.category] || entry.category || 'system';
-    const lvlClass = `log-lvl log-lvl-${entry.level || 'info'}`;
-    const lvlLabel = (entry.level || 'info').toUpperCase();
+    // category / level 來自 log 紀錄本身（content script 也能寫 log）：class 名只留安全字元、
+    // 顯示文字一律 escape，不把紀錄內容當 HTML
+    const safeToken = (v, fallback) => String(v || fallback).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) || fallback;
+    const catClass = `log-cat log-cat-${safeToken(entry.category, 'system')}`;
+    const catLabel = escapeHtml(LOG_CAT_LABELS[entry.category] || entry.category || 'system');
+    const lvlClass = `log-lvl log-lvl-${safeToken(entry.level, 'info')}`;
+    const lvlLabel = escapeHtml(String(entry.level || 'info').toUpperCase());
     const rowClass = entry.level === 'error' ? 'log-row-error' :
                      entry.level === 'warn'  ? 'log-row-warn'  : '';
     const msg = highlightSearch(entry.message || '', searchLower);

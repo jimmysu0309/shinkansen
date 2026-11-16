@@ -18,6 +18,8 @@
   --primary-soft: rgba(0, 113, 227, 0.08);
   --error-bg: #fbe9e7;
   --error-text: #a32418;
+  --warn-bg: #fff4d6;
+  --warn-text: #6b4a00;
   --radius: 10px;
   --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.04);
   --font: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
@@ -164,6 +166,17 @@ body {
   color: var(--error-text);
   border-radius: var(--radius);
   font-size: 14px;
+}
+
+/* 解析警告（不擋操作的提醒，例如部分文字不會翻）。放在摘要與按鈕列之間 */
+.warning-banner {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border-radius: var(--radius);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 /* ----- 解析中 ----- */

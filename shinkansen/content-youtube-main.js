@@ -113,6 +113,9 @@
     //     語言（id 形如 `en-US.4`，取 `.` 前段）；沒配音的影片沒 audioTrack 欄位 → null
     let defaultCaptionTrackIndex = null;
     let originalAudioLang = null;
+    // originalAudioLang 是否可信：true = YouTube 明示的原音標記，或影片只有一條音軌；false = 多音軌影片
+    // 找不到原音標記、只能退「預設音軌」（預設音軌會依觀看者語言被設成配音軌）；null = 沒有音軌資訊
+    let originalAudioLangExplicit = null;
     let title = null; // 沒 ASR 軌也沒音軌資訊時，isolated 端用標題文字系統猜原始語
     const player = document.querySelector('#movie_player');
     try {
@@ -157,8 +160,12 @@
               return /acont[\s\S]{0,4}original/.test(raw);
             } catch (_) { return false; }
           };
-          const def = withTrack.find(isOriginal) || withTrack.find((f) => f.audioTrack.audioIsDefault);
-          if (def) originalAudioLang = def.audioTrack.id.split('.')[0] || null;
+          const orig = withTrack.find(isOriginal);
+          const def = orig || withTrack.find((f) => f.audioTrack.audioIsDefault);
+          if (def) {
+            originalAudioLang = def.audioTrack.id.split('.')[0] || null;
+            originalAudioLangExplicit = !!orig || new Set(withTrack.map((f) => f.audioTrack.id)).size <= 1;
+          }
         }
       } catch (_) {}
       // adaptiveFormats 拿不到音軌資訊時，退字幕 renderer 的預設音軌 id（形如 `ja.4`）
@@ -167,7 +174,10 @@
           const audioTracks = renderer?.audioTracks;
           const ai = Number.isInteger(renderer?.defaultAudioTrackIndex) ? renderer.defaultAudioTrackIndex : -1;
           const id = Array.isArray(audioTracks) ? audioTracks[ai]?.audioTrackId : null;
-          if (typeof id === 'string' && id) originalAudioLang = id.split('.')[0] || null;
+          if (typeof id === 'string' && id) {
+            originalAudioLang = id.split('.')[0] || null;
+            originalAudioLangExplicit = audioTracks.length <= 1;
+          }
         }
       } catch (_) {}
       title = typeof resp?.videoDetails?.title === 'string' ? resp.videoDetails.title : null;
@@ -189,7 +199,7 @@
       }
     } catch (_) {}
     window.dispatchEvent(new CustomEvent('shinkansen-yt-player-response', {
-      detail: { captionTracks, playerResponseAvailable, videoId, activeTrack, defaultCaptionTrackIndex, originalAudioLang, title },
+      detail: { captionTracks, playerResponseAvailable, videoId, activeTrack, defaultCaptionTrackIndex, originalAudioLang, originalAudioLangExplicit, title },
     }));
   });
 

@@ -40,11 +40,12 @@ import { execFileSync } from 'node:child_process';
 import fontkit from '@pdf-lib/fontkit';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
-const EXT_PATH = path.join(ROOT, 'shinkansen');
+// SK_EXT_PATH / SK_OUT_ROOT：對照實驗用（指向擴充功能副本、輸出到別處），不覆寫當日的正式輸出
+const EXT_PATH = process.env.SK_EXT_PATH || path.join(ROOT, 'shinkansen');
 const PDF_DIR = path.join(ROOT, 'docs/excluded/test pdf');
 const CORPUS_DIR = path.join(PDF_DIR, 'corpus');
 const RUN_DATE = new Date().toISOString().slice(0, 10);
-const OUT_ROOT = path.join(PDF_DIR, `${RUN_DATE} test pdf output`);
+const OUT_ROOT = process.env.SK_OUT_ROOT || path.join(PDF_DIR, `${RUN_DATE} test pdf output`);
 const OUT_DIR = path.join(OUT_ROOT, 'corpus');
 
 const argv = process.argv.slice(2);

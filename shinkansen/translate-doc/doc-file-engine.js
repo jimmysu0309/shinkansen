@@ -655,12 +655,12 @@ export function buildTranslatedDocText(doc, dedupe = null) {
  * @returns {Promise<string>}
  */
 export async function buildTranslatedHtmlDoc(doc, targetLanguage, dedupe = null) {
-  const { applyBlockTranslation } = await import('./epub-writer.js');
+  const { applyBlockTranslation, restoreBlockSource } = await import('./epub-writer.js');
   const SK = getSerializerSK();
   const htmlDoc = doc.htmlDoc;
   for (const ch of doc.chapters) {
     for (const b of ch.blocks) {
-      if (b.translationStatus !== 'done') continue;
+      if (b.translationStatus !== 'done') { restoreBlockSource(b); continue; }
       applyBlockTranslation(SK, htmlDoc, b, dedupe ? dedupe.get(b.blockId) : null, false);
     }
   }

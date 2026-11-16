@@ -154,7 +154,10 @@ function injectTranslations(doc, mode, ratio = 0.45) {
   for (const page of doc.pages) {
     for (const block of page.blocks) {
       if (TRANSLATABLE_TYPES.has(block.type) && block.plainText && block.plainText.trim()) {
-        block.translation = mode === 'pseudo-cjk' ? pseudoCjkTranslate(block.plainText, idx, ratio) : block.plainText;
+        // 偽譯文的種子用「原文內容」而不是 block 序號：序號當種子時，版面分析只要多併 / 多切一個
+        // block，後面所有 block 的偽譯文（含每 7 塊一次的加長探針）全部換一批，改動前後的截斷數
+        // 沒辦法比（2026-11-16 E-8 語料比對實測：只差 1 個 block 的表格檔截斷數 23 → 65）
+        block.translation = mode === 'pseudo-cjk' ? pseudoCjkTranslate(block.plainText, pseudoHash(block.plainText, 0), ratio) : block.plainText;
         block.translationStatus = 'done';
         count++;
         idx++;

@@ -104,6 +104,10 @@ async function save() {
       _savePending = false;
       await _saveImpl();
     }
+  } catch (err) {
+    // 寫入失敗（配額 / storage 錯誤）要讓使用者看到：原本沒接，save-bar 永遠停在「儲存中⋯」
+    console.warn('[Shinkansen doc settings] save failed', err);
+    showSaveBar('dirty', t('options.action.saveFailed', { error: err?.message || String(err) }));
   } finally {
     _saveInFlight = false;
   }
@@ -181,4 +185,11 @@ $('td-clear-all-cache-btn').addEventListener('click', async () => {
   }
 });
 
-load();
+// 讀設定失敗時 initialLoaded 停在 false，之後所有編輯都被 markDirty 靜默丟掉（畫面看起來正常、
+// 其實什麼都沒存）。不能改成照存——欄位此時是 HTML 內建預設值，存下去會蓋掉使用者原本的設定。
+// 改成明講：欄位鎖住 + 顯示錯誤，請使用者重新整理
+load().catch((err) => {
+  console.warn('[Shinkansen doc settings] load failed', err);
+  for (const el of document.querySelectorAll('.container input, .container textarea, .container select, #td-reset-prompt')) el.disabled = true;
+  showSaveBar('dirty', t('doc.settingsPage.saveBar.loadFailed', { error: err?.message || String(err) }));
+});

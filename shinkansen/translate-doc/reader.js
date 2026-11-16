@@ -82,10 +82,8 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
 
   async function regenerateTranslatedPdf() {
     if (destroyed) return;
-    if (translatedPdfDoc) {
-      try { await translatedPdfDoc.destroy(); } catch (_) { /* ignore */ }
-      translatedPdfDoc = null;
-    }
+    // 舊的譯文 PDF 留到新的開好才換掉。原本先銷毀再重建：重建要幾秒，這段空窗內捲進畫面的右欄頁
+    // 拿不到 PDF、畫不出來，重建完又只重繪「有重翻成功的頁」，那些頁就一直留白到捲出再捲回
     // 共用解析階段的 PDF.js doc：renderer 不再重新解析整份 PDF（§6.4）
     const built = await buildBilingualPdf(originalArrayBuffer, doc, { pdfDoc: originalPdfDoc });
     // zh-CN / ja / ko 需要遠端字型但抓不到 → 已退回內建 TC，讓 index.js 提示使用者
@@ -101,7 +99,15 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       disableFontFace: true,
       password: '',
     });
-    translatedPdfDoc = await task.promise;
+    const next = await task.promise;
+    if (destroyed) { next.destroy().catch(() => {}); return; }
+    const prev = translatedPdfDoc;
+    translatedPdfDoc = next;
+    if (prev) {
+      // 還在畫舊 PDF 的那一頁先畫完再銷毀（之後排進來的都用新的）
+      try { await renderChain; } catch (_) { /* ignore */ }
+      try { await prev.destroy(); } catch (_) { /* ignore */ }
+    }
   }
 
   await regenerateTranslatedPdf();
@@ -299,7 +305,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       const successPages = new Set();  // review G5:只重繪含重翻成功 block 的頁
       for (const { block, pageIdx } of failed) {
         if (destroyed) return { total: failed.length, success }; // 已換檔，停止燒 API
-        const r = await translateSingleBlock(block, { modelOverride, engine, glossary, extraPrompt });
+        const r = await translateSingleBlock(block, { modelOverride, engine, glossary, extraPrompt, filename: doc.meta?.filename || null });
         if (r.ok) { success++; successPages.add(pageIdx); }
       }
       // 至少有 1 個重翻成功 → 重建譯文 PDF + 只重繪變動頁

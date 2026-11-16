@@ -57,6 +57,28 @@ export function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual =
   return true;
 }
 
+// 把曾經套用過譯文的 block 還原成原文（沒套用過 = 沒有快照 = 不動）。同一份文件 DOM 會被重複
+// 下載重複套用；某個 block 上次下載時是 done、這次不是（重翻失敗 / 取消勾選該章 / 匯入較舊的
+// 工作階段）時，寫回迴圈只處理 done 的 block，上次寫進 DOM 的譯文就原封不動留在輸出檔裡
+export function restoreBlockSource(block) {
+  if (block.el && block._srcChildNodes) {
+    block.el.replaceChildren(...block._srcChildNodes.map((n) => n.cloneNode(true)));
+    return true;
+  }
+  if (block._srcFragNodes && block._fragParent) {
+    const parent = block._fragParent;
+    for (const n of (block._placedNodes || [])) {
+      if (n.parentNode) n.parentNode.removeChild(n);
+    }
+    const next = (block._fragNext && block._fragNext.parentNode === parent) ? block._fragNext : null;
+    const srcClones = block._srcFragNodes.map((n) => n.cloneNode(true));
+    for (const n of srcClones) parent.insertBefore(n, next);
+    block._placedNodes = srcClones;
+    return true;
+  }
+  return false;
+}
+
 // 譯文內容節點（editedHtml → ⟦N⟧ 反序列化 → 純文字 fallback）：優先鏈走 block-output.js
 // resolveBlockFragment（與 docx / txt / 預覽四個消費端同一份），這裡只負責 importNode 進 xhtmlDoc。
 // element / fragment 兩條寫回路徑共用
@@ -139,10 +161,15 @@ export function insertDualTranslation(xhtmlDoc, el, content) {
   const tag = (el.localName || '').toLowerCase();
   const inner = DUAL_INNER_TAGS.has(tag);
   const holder = xhtmlDoc.createElementNS(XHTML_NS, inner ? 'span' : (tag || 'div'));
-  holder.setAttribute('class', 'sk-dual-tr');
+  const cls = el.getAttribute('class');
+  // sibling 型的譯文段沿用原段落的 class 與行內樣式：書的 CSS 多半以 class 定縮排 / 字級 / 對齊
+  //（p.indent、p.center、div.epigraph），不帶的話譯文段掉回預設樣式，跟上面的原文段長得不一樣。
+  // 內嵌 span 型不需要（它在原元素裡面，本來就繼承）
+  const srcClasses = inner ? [] : (cls || '').split(/\s+/).filter((c) => c && c !== 'sk-dual-src' && c !== 'sk-dual-tr');
+  holder.setAttribute('class', [...srcClasses, 'sk-dual-tr'].join(' '));
+  if (!inner && el.getAttribute('style')) holder.setAttribute('style', el.getAttribute('style'));
   holder.appendChild(content);
   for (const n of [...holder.querySelectorAll('[id]')]) n.removeAttribute('id');
-  const cls = el.getAttribute('class');
   if (!(cls || '').split(/\s+/).includes('sk-dual-src')) {
     el.setAttribute('class', cls ? `${cls} sk-dual-src` : 'sk-dual-src');
   }
@@ -429,6 +456,12 @@ function hrefRelativeToOpfDir(fullPath, opfDir) {
   return ups + '/' + fullPath;
 }
 
+// zip 內的檔案路徑 → href：逐段做百分比編碼。章節檔名含空白 / # / ? / % / 非 ASCII 字元時，
+// 原樣放進 href 會被閱讀器當成片段識別字或查詢字串（「第 1 章 #1.xhtml」只連到「第 1 章 」）
+function encodeHrefPath(p) {
+  return String(p || '').split('/').map((seg) => (seg === '..' || seg === '.' ? seg : encodeURIComponent(seg))).join('/');
+}
+
 function escapeXml(s) {
   return String(s || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -436,10 +469,10 @@ function escapeXml(s) {
 }
 
 // EPUB2 → 3 升級：從章節清單（TOC 標題已解析）生成 EPUB3 必備的 nav 文件
-function buildNavDoc(epubDoc, targetLanguage) {
+export function buildNavDoc(epubDoc, targetLanguage) {
   const items = epubDoc.chapters
     .filter((c) => c.title)
-    .map((c) => `      <li><a href="${escapeXml(hrefRelativeToOpfDir(c.href, epubDoc.opf.dir))}">${escapeXml(c.title)}</a></li>`)
+    .map((c) => `      <li><a href="${escapeXml(encodeHrefPath(hrefRelativeToOpfDir(c.href, epubDoc.opf.dir)))}">${escapeXml(c.title)}</a></li>`)
     .join('\n');
   const lang = escapeXml(targetLanguage || epubDoc.meta.language || 'en');
   return `${XML_DECL}<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${lang}" xml:lang="${lang}">
@@ -487,7 +520,7 @@ export function buildTranslatedEpub(epubDoc, targetLanguage, opts = {}) {
     removeDualArtifacts(ch.xhtmlDoc);
     let chApplied = 0;
     for (const b of ch.blocks) {
-      if (b.translationStatus !== 'done') continue;
+      if (b.translationStatus !== 'done') { restoreBlockSource(b); continue; }
       if (applyBlockTranslation(SK, ch.xhtmlDoc, b, dedupe.get(b.blockId), bilingual)) chApplied++;
     }
     if (chApplied > 0) {

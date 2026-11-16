@@ -1,5 +1,5 @@
 // background.js — Shinkansen Service Worker
-// 職責：接收翻譯請求、呼叫 Gemini API、處理快取、處理快捷鍵、統一除錯 Log。
+// 職責：接收翻譯請求、呼叫 Gemini API、處理快取、處理快速鍵、統一除錯 Log。
 
 import { browser } from './lib/compat.js';
 import { IS_IOS_BUILD } from './lib/distribution.js'; // Phase 2: host app 設定橋接只在 iOS build 走 native messaging
@@ -25,7 +25,7 @@ import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 erro
 // 2026-09-12 批次 6（§5.1）：計費公式單一資料源 + 三條翻譯 handler 共用 pipeline
 import { computeBilling, geminiCachedRate, resolveCustomProviderCachedRate, customProviderPricing, withServiceTier } from './lib/billing.js';
 import { createTranslatePipeline } from './lib/translate-pipeline.js';
-import { saveToInstapaper, buildInstapaperPayload } from './lib/instapaper.js'; // 送到 Instapaper（Alt+I 快捷鍵路徑）
+import { saveToInstapaper, buildInstapaperPayload } from './lib/instapaper.js'; // 送到 Instapaper（Alt+I 快速鍵路徑）
 import { planStreamingPartialReuse } from './lib/stream-reuse.js'; // v1.10.61: streaming 批次 missing-only 分流
 import { convertZhBatch, ZH_CONVERT_DIRECTIONS } from './lib/zh-convert.js'; // 簡繁本地互轉（OpenCC 字典，lazy load）
 import './lib/domain-utils.js'; // UMD 副作用載入（掛 globalThis.__SKDomain）：網域術語表 byDomain 比對走與白名單同一份規則
@@ -33,7 +33,7 @@ import './lib/domain-utils.js'; // UMD 副作用載入（掛 globalThis.__SKDoma
 // instapaper-keys.js（gitignored）的 consumer 金鑰載入。
 // 不能用 dynamic import()：MV3 service worker 禁止 dynamic import（實測 throw
 // "import() is disallowed on ServiceWorkerGlobalScope"），這正是「popup 送得出去、
-// 快捷鍵一定失敗」的根因——SW 載不到金鑰 → saveToInstapaper 回 CONFIG。
+// 快速鍵一定失敗」的根因——SW 載不到金鑰 → saveToInstapaper 回 CONFIG。
 // 改用 fetch 自家檔案原始碼（SW 可 fetch 自己打包的資源）+ regex 抽兩個 hex 金鑰
 //（檔案格式由我們自己的模板控制）。缺檔（fresh clone / CI）→ fetch 失敗 catch →
 // 金鑰留空 → 功能停用。載入後掛 globalThis.__SK，lib/instapaper.js 的
@@ -853,6 +853,12 @@ const messageHandlers = {
     handler: async (payload, sender) => {
       const url = payload?.url;
       if (!url || !sender?.tab?.id) return { ok: false, error: 'invalid payload' };
+      // 只代抓 Drive 的字幕端點。訊息來自網頁內的 content script：沒有這道檢查的話，任何能
+      // 冒用這個訊息的頁面內容都能叫背景去抓任意網址（背景有 host 權限、不受頁面同源限制）
+      if (!isDriveTimedtextUrl(url)) {
+        debugLog('warn', 'drive', 'timedtext url rejected (not a Drive timedtext endpoint)', { url: String(url).slice(0, 200) });
+        return { ok: false, error: 'url not allowed' };
+      }
       debugLog('info', 'drive', 'timedtext url received from iframe', {
         tabId: sender.tab.id,
         frameId: sender.frameId,
@@ -1096,7 +1102,12 @@ const messageHandlers = {
   },
   TEST_CUSTOM_PROVIDER: {
     async: true,
-    handler: (payload) => testCustomProvider(payload),
+    // 只接受擴充功能自己的頁面（設定頁的「測試」按鈕）：payload 帶任意 baseUrl 與 key，
+    // 網頁內的 content script 不該能叫背景對任意網址發帶 Authorization 的請求
+    handler: (payload, sender) => {
+      if (!isExtensionPageSender(sender)) throw new Error('TEST_CUSTOM_PROVIDER: sender not allowed');
+      return testCustomProvider(payload);
+    },
   },
   // v1.4.0: Google Translate 字幕翻譯（快取 key 用 _gt_yt 後綴）
   TRANSLATE_SUBTITLE_BATCH_GOOGLE: {
@@ -1249,6 +1260,9 @@ const messageHandlers = {
     handler: async (payload) => {
       const url = payload?.url;
       if (!url) throw new Error('missing url');
+      // 只開 Google 文件的 mobilebasic 頁（content.js getGoogleDocsMobileBasicUrl 產生的形狀）；
+      // 不檢查的話這個訊息等於「替頁面開任意網址的新分頁並自動觸發翻譯」
+      if (!isGoogleDocsMobileBasicUrl(url)) throw new Error('OPEN_GDOC_MOBILE: url not allowed');
       const tab = await browser.tabs.create({ url });
       debugLog('info', 'system', 'opened Google Docs mobilebasic tab', { url, tabId: tab.id });
 
@@ -2355,6 +2369,25 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
 // 快取（scanr_，key 由 caller 以 items 內容 hash 計算）→ API → 寫快取 → 記用量。
 // 對照結果是「同 payload 同結果」的確定性映射 → 續翻後重掃、重開同書都吃快取，
 // 不重複計費
+// ─── 訊息來源 / 網址白名單（code review 2026-11-15 B-6）───────────────
+// 會依訊息內容「對外發請求 / 開分頁」的 handler 用。content script 跑在網頁的 renderer 裡，
+// 那個 renderer 被攻陷時這些訊息可以被偽造；白名單把能做的事限制在功能本來就需要的範圍
+function isExtensionPageSender(sender) {
+  try {
+    const base = browser.runtime.getURL('');
+    return typeof sender?.url === 'string' && sender.url.startsWith(base);
+  } catch (_) { return false; }
+}
+function isDriveTimedtextUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && u.hostname === 'drive.google.com' && /^\/u\/\d+\/timedtext$/.test(u.pathname);
+  } catch (_) { return false; }
+}
+function isGoogleDocsMobileBasicUrl(url) {
+  return typeof url === 'string' && /^https:\/\/docs\.google\.com\/document\/d\/[A-Za-z0-9_-]+\/mobilebasic$/.test(url);
+}
+
 async function handleScanTermRenderings(payload, sender) {
   const settings = await getSettingsCached();
   if (!settings.apiKey) {
@@ -2402,8 +2435,8 @@ async function handleScanTermRenderings(payload, sender) {
   return { renderings, usage: { ...usage, billedCostUSD: scanBilledCostUSD }, fromCache: false, _diag: _diag || null };
 }
 
-// ─── 快捷鍵 ────────────────────────────────────────────────
-// v1.4.12: 三個 preset 快捷鍵（Alt+A/S/D 預設，可在 chrome://extensions/shortcuts 改）。
+// ─── 快速鍵 ────────────────────────────────────────────────
+// v1.4.12: 三個 preset 快速鍵（Alt+A/S/D 預設，可在 chrome://extensions/shortcuts 改）。
 // 每個對應 translatePresets[slot-1]，由 content.js 依 preset.engine/model 派送。
 // v1.8.19: chrome://extensions/shortcuts 顯示順序由 command id 字典序決定，
 //   要讓「主要預設」排最前必須改 id 從「translate-preset-2」→「translate-preset-0」,
@@ -2422,10 +2455,10 @@ browser.commands.onCommand.addListener(async (command) => {
   if (!slot) return;
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
-  // 在 chrome://、Chrome Web Store、新分頁等頁面按快捷鍵時，該 tab 沒有
+  // 在 chrome://、Chrome Web Store、新分頁等頁面按快速鍵時，該 tab 沒有
   // content script listening,sendMessage 會 reject:
   //   "Could not establish connection. Receiving end does not exist."
-  // 這是預期情境（使用者可能不小心按到快捷鍵），靜默吞掉即可，不讓它冒成
+  // 這是預期情境（使用者可能不小心按到快速鍵），靜默吞掉即可，不讓它冒成
   // uncaught promise rejection 污染 background.js 的錯誤面板。
   browser.tabs.sendMessage(tab.id, { type: 'TRANSLATE_PRESET', payload: { slot } }).catch(() => {});
 });
@@ -2485,8 +2518,8 @@ async function generateInstapaperSummary(text, sender) {
   }
 }
 
-// 送到 Instapaper 快捷鍵處理：取 active tab → 擷取頁面 HTML → 摘要 → OAuth 簽章 + fetch。
-// 回饋透過 INSTAPAPER_TOAST 訊息派給 content（快捷鍵無 popup）。
+// 送到 Instapaper 快速鍵處理：取 active tab → 擷取頁面 HTML → 摘要 → OAuth 簽章 + fetch。
+// 回饋透過 INSTAPAPER_TOAST 訊息派給 content（快速鍵無 popup）。
 async function handleSendToInstapaperCommand() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;

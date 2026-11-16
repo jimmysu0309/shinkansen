@@ -450,6 +450,13 @@
       SK.sendLog('info', 'drive', 'autoTranslate off — skipping captions');
       return;
     }
+    // 同頁單一 instance 選舉（content-ns.js SK.isInstanceLeader，與網頁翻譯 / YouTube / X 同一套）：
+    // 同一個瀏覽器裝了兩份 Shinkansen（商店版 + 開發版）時，原本兩份各翻一次（費用加倍）、
+    // 各掛一個 overlay 疊在一起
+    if (SK.isInstanceLeader && !SK.isInstanceLeader()) {
+      SK.sendLog('info', 'drive', 'another Shinkansen instance leads on this page — skipping captions');
+      return;
+    }
     const { json3, url } = message.payload || {};
     if (!json3) {
       SK.sendLog('warn', 'drive', 'DRIVE_ASR_CAPTIONS payload missing json3');
@@ -603,7 +610,18 @@
   // 暴露給 spec 用（drive captions pipeline regression：重入 guard / entry 對齊 / engine latch）
   SK._driveHandleCaptionsMessage = _handleCaptionsMessage;
   SK._driveSetEngine = (v) => { _engine = _normalizeDriveEngine(v); };
-  SK._driveSetAutoTranslate = (v) => { _autoTranslateEnabled = v !== false; };
+  SK._driveSetAutoTranslate = (v) => { _autoTranslateEnabled = !_stoodDown && v !== false; };
+  // 讓位給同頁另一份較高版 Shinkansen（content-ns.js _instanceStandDown 呼叫）：停掉進行中的批次
+  //（runId +1 讓回來的結果被丟棄）、清掉已畫的譯文；之後設定變更 / 選單開關都不再重新啟用
+  let _stoodDown = false;
+  SK.stopDriveSubtitles = function stopDriveSubtitles() {
+    _stoodDown = true;
+    _autoTranslateEnabled = false;
+    DRIVE.runId++;
+    DRIVE.entries = [];
+    DRIVE.currentEntryIdx = -2;
+    try { _renderActiveCue(); } catch (_) { /* overlay 尚未建立 */ }
+  };
   SK._driveSetTargetLanguage = (v) => { _targetLanguage = _normalizeTarget(v); };
 
   // ─── Runtime gate ───────────────────────────────────
@@ -620,7 +638,7 @@
       // displayMode === 'dual'(舊 ytSubtitle.bilingualMode 殘留 key 忽略)
       const { ytSubtitle = {}, displayMode, targetLanguage } = await browser.storage.sync.get(['ytSubtitle', 'displayMode', 'targetLanguage']);
       _targetLanguage = _normalizeTarget(targetLanguage);
-      _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
+      _autoTranslateEnabled = !_stoodDown && ytSubtitle.autoTranslate !== false;
       _engine = _normalizeDriveEngine(ytSubtitle.engine);
       _ytModel = ytSubtitle.model || '';
       DRIVE.bilingualMode = displayMode === 'dual';
@@ -636,7 +654,7 @@
     if (changes.targetLanguage) _targetLanguage = _normalizeTarget(changes.targetLanguage.newValue);
     if (changes.ytSubtitle) {
       const newVal = changes.ytSubtitle.newValue || {};
-      const nextEnabled = newVal.autoTranslate !== false;
+      const nextEnabled = !_stoodDown && newVal.autoTranslate !== false;
       if (nextEnabled !== _autoTranslateEnabled) {
         _autoTranslateEnabled = nextEnabled;
         SK.sendLog('info', 'drive', 'autoTranslate setting changed', { enabled: nextEnabled });
@@ -817,7 +835,7 @@
       return;
     }
     if (message?.type === 'SET_TAB_SUBTITLE') {
-      const next = !!message.payload?.enabled;
+      const next = !_stoodDown && !!message.payload?.enabled;
       if (next !== _autoTranslateEnabled) {
         _autoTranslateEnabled = next;
         SK.sendLog('info', 'drive', 'autoTranslate toggled for this tab', { enabled: next });

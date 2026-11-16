@@ -269,12 +269,22 @@ export async function extractGlossary(compressedText, settings) {
   const maxTerms = gc.maxTerms ?? 200;
   const fetchTimeoutMs = gc.fetchTimeoutMs ?? 15_000;
 
+  // 與主翻譯同一支 thinking / 額外請求欄位組裝：術語表抽取打的是同一個 endpoint，使用者為了讓
+  // 這個 provider 能用而設的 extraBodyJson（必填的自訂欄位）與 thinking 開關原本只套在主翻譯——
+  // 主翻譯正常、術語表抽取卻被拒絕或開著 thinking 把 15 秒逾時用光
+  const thinkingPayload = buildThinkingPayload({
+    baseUrl, model,
+    level: cp.thinkingLevel || 'auto',
+    extraBodyRaw: cp.extraBodyJson || '',
+    onWarn: (msg) => { debugLog('warn', 'glossary', `customProvider thinking config: ${msg}`); },
+  });
   const body = {
     messages: [
       { role: 'system', content: glossaryPrompt },
       { role: 'user', content: compressedText },
     ],
     stream: false,
+    ...thinkingPayload,
   };
   // v2.0.79:術語表抽取打的是同一個 provider endpoint——自訂模型 temperature 留空
   //(null)代表該 provider 不接受此參數,術語表路徑也必須不送,否則主翻譯正常、
@@ -294,13 +304,25 @@ export async function extractGlossary(compressedText, settings) {
   const controller = new AbortController();
   const abortTimer = setTimeout(() => controller.abort(), fetchTimeoutMs);
   let resp;
+  const post = () => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  });
   try {
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    resp = await post();
+    // 與主翻譯同一條自動退路：400 且錯誤訊息點名 temperature → 拿掉後原樣重打一次（僅一次，
+    // 共用同一個逾時計時）。術語表有自己的 temperature 設定，使用者不一定知道要去把它清空
+    if (resp.status === 400 && ('temperature' in body)) {
+      let errText = '';
+      try { errText = await resp.clone().text(); } catch (_) { /* 讀不到就不重試 */ }
+      if (/temperature/i.test(errText)) {
+        await debugLog('warn', 'glossary', 'openai-compat glossary 400 mentions temperature — retry once without it', { model });
+        delete body.temperature;
+        resp = await post();
+      }
+    }
   } catch (err) {
     clearTimeout(abortTimer);
     const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';

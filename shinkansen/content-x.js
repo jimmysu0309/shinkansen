@@ -226,8 +226,36 @@
       SK.sendLog('warn', 'x', 'native caption track keeps re-showing — stop taking over');
       return;
     }
-    for (const t of others) t.mode = 'hidden';
+    for (const t of others) {
+      t.mode = 'hidden';
+      // 記下被我們藏起來的原文軌：關閉字幕翻譯 / 讓位時要還給使用者（見 _restoreNativeTracks）
+      (video._skXHiddenTracks || (video._skXHiddenTracks = new Set())).add(t);
+    }
     if (ours.mode !== 'showing') ours.mode = 'showing';
+  }
+
+  // 關閉字幕翻譯（或讓位給另一份 Shinkansen）時，把先前為了只顯示譯文而藏起來的原文軌打開。
+  // 原本只關譯文軌：使用者本來開著 X 的字幕、被我們換成譯文，一關翻譯畫面上就什麼字幕都沒有，
+  // 要自己再按兩次 CC 才回得來
+  function _restoreNativeTracks(video) {
+    const hidden = video._skXHiddenTracks;
+    if (!hidden || !hidden.size) return;
+    for (const t of hidden) { try { if (t.mode === 'hidden') t.mode = 'showing'; } catch (_) {} }
+    hidden.clear();
+  }
+
+  // 同一個 <video> 元素換了影片（X 的時間軸 / 全螢幕播放器會重用元素、只換 poster 與來源）：
+  // 把它從舊影片的紀錄移除並清掉舊譯文 cue，否則舊影片的譯文會照舊時間點浮在新影片上
+  function _bindVideoMedia(video, mediaId) {
+    const prev = video._skXMediaId;
+    if (prev && prev !== mediaId) {
+      XV.media.get(prev)?.videos.delete(video);
+      if (video._skXTrack) {
+        for (const c of (video._skXCues || [])) { try { video._skXTrack.removeCue(c); } catch (_) {} }
+        video._skXCues = [];
+      }
+    }
+    video._skXMediaId = mediaId;
   }
 
   function _watchNativeTracks(video) {
@@ -239,6 +267,7 @@
   function _renderVideo(video, rec) {
     if (!XV.autoTranslate) {
       if (video._skXTrack) video._skXTrack.mode = 'disabled';
+      _restoreNativeTracks(video);
       return;
     }
     if (!rec.entries.length) return;
@@ -249,7 +278,7 @@
     const Cue = window.VTTCue || window.TextTrackCue;
     for (const c of buildCueList(rec.entries, rec.rawSegments, XV.bilingualMode, rec.sourceLang)) {
       try {
-        const cue = new Cue(c.startSec, c.endSec, c.text);
+        const cue = new Cue(c.startSec, c.endSec, SK.escapeCueText(c.text));
         track.addCue(cue);
         video._skXCues.push(cue);
       } catch (_) { /* 單則失敗不影響其他 */ }
@@ -447,6 +476,7 @@
       rec = { status: 'idle', rawSegments: [], entries: [], runId: 0, sourceLang: '', videos: new Set(), batches: [], batchState: null, running: false };
       XV.media.set(mediaId, rec);
     }
+    _bindVideoMedia(video, mediaId);
     rec.videos.add(video);
     if (rec.status === 'done') { _renderVideo(video, rec); return; }
     if (rec.status === 'ready') { _renderVideo(video, rec); _pump(mediaId, rec); return; }
@@ -495,10 +525,14 @@
     }
   }
   SK._xStartForVideo = startForVideo;
+  SK._xSetAutoTranslate = (enabled) => { const changed = _setAutoTranslate(enabled); if (changed) _renderAll(); return changed; };
   SK._xSetEngine = (v) => { XV.engine = SK._driveNormalizeEngine ? SK._driveNormalizeEngine(v) : 'gemini'; };
 
   // 同頁另一份較高版 Shinkansen 勝出時讓位（content-ns.js _instanceStandDown 呼叫）
   SK.stopXSubtitles = function stopXSubtitles() {
+    // 讓位是這個 instance 在本頁的終局：之後設定變更 / 選單開關都不可再把它翻回啟用
+    //（原本 onChanged 一來就重開，兩份又同時翻、各掛一條譯文軌）
+    XV.stoodDown = true;
     XV.autoTranslate = false;
     _renderAll();
   };
@@ -536,6 +570,7 @@
     if (video.paused || video.muted || video.volume === 0) return;
     const mediaId = mediaIdFromPoster(video.getAttribute('poster'));
     if (!mediaId) return;
+    _bindVideoMedia(video, mediaId);
     const rec = XV.media.get(mediaId);
     if (rec && rec.videos.has(video) && rec.status !== 'idle') {
       if (rec.status === 'ready') _pump(mediaId, rec);   // 繼續播 / 取消靜音 → 接著翻
@@ -571,7 +606,7 @@
   (async () => {
     try {
       const { ytSubtitle = {}, displayMode } = await browser.storage.sync.get(['ytSubtitle', 'displayMode']);
-      XV.autoTranslate = ytSubtitle.autoTranslate !== false;
+      XV.autoTranslate = !XV.stoodDown && ytSubtitle.autoTranslate !== false;
       SK._xSetEngine(ytSubtitle.engine);
       XV.model = ytSubtitle.model || '';
       XV.bilingualMode = displayMode === 'dual';
@@ -588,6 +623,7 @@
   // 本分頁的字幕翻譯開關。兩個來源共用：設定頁改全域 ytSubtitle.autoTranslate（onChanged）、
   // 工具列圖示選單的開關（SET_TAB_SUBTITLE，只影響本分頁、不寫 storage）。回傳是否有變動
   function _setAutoTranslate(enabled) {
+    if (enabled && XV.stoodDown) return false;
     if (enabled === XV.autoTranslate) return false;
     XV.autoTranslate = enabled;
     if (enabled) {
