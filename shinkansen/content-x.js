@@ -646,9 +646,43 @@
       return;
     }
     if (msg?.type === 'SET_TAB_SUBTITLE') {
-      if (_setAutoTranslate(!!msg.payload?.enabled)) _renderAll();
-      sendResponse({ enabled: XV.autoTranslate });
+      sendResponse({ enabled: SK._xSetTabSubtitle(msg.payload?.enabled) });
     }
+  });
+
+  // 本分頁開關的單一入口：工具列圖示選單（SET_TAB_SUBTITLE）與 Debug Bridge（X_SET_SUBTITLE，
+  // dev tail 才開）共用。只改本分頁狀態、不寫 storage
+  SK._xSetTabSubtitle = (enabled) => {
+    if (_setAutoTranslate(!!enabled)) _renderAll();
+    return XV.autoTranslate;
+  };
+
+  // Debug Bridge GET_X_DEBUG 用：本分頁 X 影片字幕的狀態快照（唯讀）
+  SK._xDebugState = () => ({
+    autoTranslate: XV.autoTranslate,
+    stoodDown: !!XV.stoodDown,
+    bilingualMode: XV.bilingualMode,
+    engine: XV.engine,
+    media: [...XV.media.entries()].map(([id, rec]) => ({
+      id,
+      status: rec.status,
+      sourceLang: rec.sourceLang || null,
+      rawCount: rec.rawSegments ? rec.rawSegments.length : 0,
+      entryCount: rec.entries ? rec.entries.length : 0,
+      videoCount: rec.videos ? rec.videos.size : 0,
+      running: !!rec.running,
+    })),
+    videos: [...document.querySelectorAll('video')].map((v) => ({
+      mediaId: mediaIdFromPoster(v.getAttribute('poster')),
+      paused: v.paused,
+      currentTime: Math.round(v.currentTime),
+      tracks: [...v.textTracks].map((t) => ({
+        label: t.label, language: t.language, kind: t.kind, mode: t.mode,
+        cues: t.cues ? t.cues.length : null,
+        ours: t === v._skXTrack,
+        firstCue: t.cues && t.cues.length ? String(t.cues[0].text || '').slice(0, 60) : null,
+      })),
+    })),
   });
 
   browser.storage.onChanged.addListener((changes, area) => {

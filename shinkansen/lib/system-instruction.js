@@ -282,6 +282,12 @@ export function packChunks(texts, opts = {}) {
   return batches;
 }
 
+// 輸入是否含數字型佔位符(配對 ⟦N⟧ / ⟦/N⟧ 或原子 ⟦*N⟧)。與序列化端產出的形狀一致
+const NUMERIC_PLACEHOLDER_RE = /⟦[*/]?\d+⟧/;
+export function hasNumericPlaceholder(text) {
+  return typeof text === 'string' && NUMERIC_PLACEHOLDER_RE.test(text);
+}
+
 /**
  * 組合最終的 system instruction。
  *
@@ -329,8 +335,12 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
     );
   }
 
-  // 佔位符保留規則
-  if (joined.indexOf('⟦') !== -1) {
+  // 佔位符保留規則:只在輸入真的含「數字型」佔位符(⟦N⟧ / ⟦/N⟧ / ⟦*N⟧)時注入。
+  // PDF 路徑的樣式標記(⟦b⟧ / ⟦i⟧ / ⟦l:N⟧)是另一套協定,有自己的說明
+  // (DOC_INLINE_MARKER_INSTRUCTION),不可觸發這段:這段規則以「腳註參照 [2] ↔ ⟦*2⟧」
+  // 當範例,模型在沒有任何 ⟦*N⟧ 的 PDF 批次讀到後,會把內文的 [162] 自行改寫成
+  // ⟦*162⟧(真翻譯實測:含引用編號的 21 段全數命中),PDF 端不認得這個樣式,原樣畫進譯文
+  if (hasNumericPlaceholder(joined)) {
     parts.push(
       '額外規則（極重要，處理佔位符標記）:\n輸入中可能含有兩種佔位符標記，都是用來保留原文結構，必須原樣保留、不可翻譯、不可省略、不可改寫、不可新增、不可重排。佔位符裡的數字、斜線、星號 **必須是半形 ASCII 字元**（0-9、/、*），絕對不可改成全形（０-９、／、＊），否則程式無法配對會整段崩壞。\n\n（A）配對型 ⟦數字⟧…⟦/數字⟧（例如 ⟦0⟧Tokugawa Ieyasu⟦/0⟧)：\n- 把標記視為透明外殼。外殼「內部」的文字跟外殼「外部」的文字一樣，都要翻譯（翻成前面指定的翻譯目標語言，與殼外文字相同的語言，不是固定繁體中文）。\n- ⟦數字⟧ 與 ⟦/數字⟧ 兩個標記本身原樣保留，數字不變。\n- **配對型可以巢狀嵌套**（例如 ⟦0⟧may incorporate text from a ⟦1⟧large language model⟦/1⟧, which is ...⟦/0⟧）。巢狀代表原文是 `<b>text <a>link</a> more text</b>` 這類嵌套結構。翻譯時必須**同時**保留外層與內層兩組標記、不可扁平化成單層、不可交換順序、不可遺漏任何一層。外層與內層的內部文字都要翻譯（翻成前面指定的目標語言，與殼外文字相同）。\n\n（B）自閉合 ⟦*數字⟧（例如 ⟦*5⟧)：\n- 這是「原子保留」位置記號，代表原文裡有一段不可翻譯的小區塊（例如維基百科腳註參照 [2])。\n- 整個 ⟦*數字⟧ token 原樣保留，不可拆開、不可翻譯、不可省略，數字不變。\n- 它的位置代表那段內容應該插在譯文的哪裡。\n\n具體範例 1（單層）：\n輸入： ⟦0⟧Tokugawa Ieyasu⟦/0⟧ won the ⟦1⟧Battle of Sekigahara⟦/1⟧ in 1600.⟦*2⟧\n正確輸出： ⟦0⟧德川家康⟦/0⟧於 1600 年贏得⟦1⟧關原之戰⟦/1⟧。⟦*2⟧\n錯誤輸出 1： ⟦0⟧Tokugawa Ieyasu⟦/0⟧於 1600 年贏得⟦1⟧Battle of Sekigahara⟦/1⟧。⟦*2⟧（配對型內部英文沒翻）\n錯誤輸出 2： ⟦0⟧德川家康⟦/0⟧於 1600 年贏得⟦1⟧關原之戰⟦/1⟧。[2]（自閉合 ⟦*2⟧ 被擅自還原成 [2])\n\n具體範例 2（巢狀）：\n輸入： This article ⟦0⟧may incorporate text from a ⟦1⟧large language model⟦/1⟧, which is ⟦2⟧prohibited in Wikipedia articles⟦/2⟧⟦/0⟧.\n正確輸出： 本條目⟦0⟧可能包含來自⟦1⟧大型語言模型⟦/1⟧的文字，這在⟦2⟧維基百科條目中是被禁止的⟦/2⟧⟦/0⟧。\n錯誤輸出 3： 本條目可能包含來自⟦1⟧大型語言模型⟦/1⟧的文字，這在⟦2⟧維基百科條目中是被禁止的⟦/2⟧。（外層 ⟦0⟧…⟦/0⟧ 被扁平化丟掉）'
     );

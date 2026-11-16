@@ -559,6 +559,30 @@ export async function migrateClearGoogleMtCacheOnce(flagKey) {
 }
 
 /**
+ * 一次性 migration：只清掉 LLM 文件翻譯（PDF / EPUB 等）的翻譯 cache（cacheTag '_doc' / '_oc_doc'）。
+ * 網頁、字幕、Google MT、術語表（含 EPUB 全書術語表 bookgloss_）都不動。
+ *
+ * 用在文件翻譯專用的提示變動時：cache key 不含提示文字，舊提示產的譯文會一直 cache hit，
+ * 使用者升級後看不到修正。清的範圍只限文件翻譯，不讓使用者為此損失網頁翻譯的快取。
+ * 比對方式與 clearDocTranslationCache 相同（cacheTag 緊接在 sha1 之後，錨定比對）。
+ *
+ * @param {string} flagKey 例 '__shinkansen_v269_doc_cache_cleared'
+ * @returns {Promise<{ cleared: number, ranMigration: boolean }>}
+ */
+export async function migrateClearDocTranslationCacheOnce(flagKey) {
+  const flagged = await browser.storage.local.get(flagKey);
+  if (flagged[flagKey]) return { cleared: 0, ranMigration: false };
+  const all = await browser.storage.local.get(null);
+  const docRe = /^tc_[0-9a-f]{40}(?:_oc)?_doc(?:_|$)/;
+  const docKeys = Object.keys(all).filter((k) => docRe.test(k));
+  if (docKeys.length > 0) {
+    await browser.storage.local.remove(docKeys);
+  }
+  await browser.storage.local.set({ [flagKey]: true });
+  return { cleared: docKeys.length, ranMigration: true };
+}
+
+/**
  * 比對 manifest 版本與儲存版本,版本變更時更新標記。
  *
  * v1.8.45 起改成「不清快取」:過去版本變更會 clearAll(),理由是 prompt / cache

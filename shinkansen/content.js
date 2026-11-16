@@ -324,6 +324,18 @@
       // Debug Bridge:停掉 YouTube 字幕翻譯(乾淨重啟測試循環)
       try { SK.stopYouTubeTranslation?.(); respond({ ok: true }); }
       catch (err) { respond({ ok: false, error: err?.message || String(err) }); }
+    } else if (action === 'X_SET_SUBTITLE') {
+      // Debug Bridge:撥本分頁的 X 影片字幕翻譯開關(等同工具列圖示選單的開關,只影響本分頁、
+      // 不寫 storage)。cage 進不了選單,實機驗「關閉後恢復原文字幕」用
+      if (!SK._xSetTabSubtitle) { respond({ ok: false, error: 'not on X page' }); }
+      else { respond({ ok: true, enabled: SK._xSetTabSubtitle(!!e.detail?.enabled) }); }
+    } else if (action === 'GET_X_DEBUG') {
+      // Debug Bridge:X 影片字幕狀態快照(各影片的字幕軌 mode / cue 數、各 media 的翻譯進度)
+      if (!SK._xDebugState) { respond({ ok: false, error: 'not on X page' }); }
+      else {
+        try { respond({ ok: true, x: SK._xDebugState() }); }
+        catch (err) { respond({ ok: false, error: err?.message || String(err) }); }
+      }
     } else if (action === 'RELOAD_EXTENSION') {
       // DEBUG: hot reload extension(讀磁碟新 code),sendResponse 同步先回再讓
       // background 重啟 SW；此 tab 的 content script 會變成 orphan，下次 navigate

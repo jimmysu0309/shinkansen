@@ -39,6 +39,16 @@ const READER_LAZY_MARGIN = '200%';
 // 同一欄 → 新舊譯文頁交錯混排；換檔情境舊輪還對已 close 的 pdfDoc 逐頁空燒。
 // 每次 renderReader 進場 bump，舊輪 loop 每頁開頭比對失配即自我終止。
 let _renderReaderGen = 0;
+// 換檔時由 index.js 的 releaseCurrentDoc 呼叫：骨架迴圈還在跑的那一輪作廢。
+// 只 bump 世代不夠——迴圈停在 `await getPage` 上，而原文 PDF 已被關閉，那個 promise 不會回來
+// （實測按下時已建 6 頁，20 秒後仍停在 7 頁），迴圈永遠走不到下一次世代比對；這一輪開的譯文
+// PDF 與已畫的 canvas bitmap 就沒有人釋放。所以另外給每一輪一個「作廢」promise，迴圈裡的
+// await 與它競速
+let _cancelCurrentRender = null;
+export function cancelPendingReaderRender() {
+  _renderReaderGen++;
+  if (_cancelCurrentRender) { _cancelCurrentRender(); _cancelCurrentRender = null; }
+}
 
 /**
  * 渲染雙頁並排閱讀器。
@@ -57,6 +67,9 @@ let _renderReaderGen = 0;
  */
 export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, originalCol, translatedCol, opts = {}) {
   const _myRenderGen = ++_renderReaderGen;   // G3：見 _renderReaderGen 註解
+  const CANCELLED = Symbol('cancelled');
+  const cancelled = new Promise((resolve) => { _cancelCurrentRender = () => resolve(CANCELLED); });
+  const orCancel = (p) => Promise.race([p, cancelled]);
   const { modelOverride, engine, glossary, extraPrompt = null, onFailedCountChange = () => {}, onFontFallback = null } = opts;
   let currentZoom = opts.initialZoom || 1.0;
   let syncEnabled = opts.initialSyncEnabled !== false;
@@ -147,6 +160,21 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
     });
   }
 
+  // 不看 inZone 的 render（全量 render hook、重翻後重繪右欄）也排進同一條 renderChain。
+  // 原本這兩個入口直接呼叫 renderPage：佇列裡正在畫同一頁時，後到的這次先把 canvas 尺寸
+  // 重設（清空畫到一半的內容、座標轉換歸零），接著 PDF.js 丟「Cannot use the same canvas
+  // during multiple render() operations」；先到的那次在被重設的 canvas 上畫完，整頁上下顛倒。
+  // force = 已 render 過也重畫（譯文 PDF 換新之後）；回傳的 promise 在這一頁處理完時 resolve
+  function enqueueRender(pageEl, force) {
+    const p = renderChain.then(() => {
+      const m = pageMeta.get(pageEl);
+      if (!m || (m.rendered && !force)) return undefined;
+      return renderPage(pageEl);
+    });
+    renderChain = p;
+    return p;
+  }
+
   const onZoneChange = (entries) => {
     for (const e of entries) {
       const meta = pageMeta.get(e.target);
@@ -167,21 +195,31 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
     root: translatedCol, rootMargin: `${READER_LAZY_MARGIN} 0px`,
   });
 
+  // 這一輪作廢（世代失配 / 換檔）：handle 不會 return，沒有人能幫忙 destroy，自己把開過的資源收掉
+  async function abandonRound() {
+    destroyed = true;
+    leftIO.disconnect();
+    rightIO.disconnect();
+    for (const [pageEl, meta] of pageMeta) {
+      meta.rendered = false;
+      releaseCanvas(pageEl);
+    }
+    pageMeta.clear();
+    if (translatedPdfDoc) {
+      const d = translatedPdfDoc;
+      translatedPdfDoc = null;
+      try { await d.destroy(); } catch (_) { /* ignore */ }
+    }
+    translatedBytes = null;
+    return null;
+  }
+
   const pageCount = Math.min(doc.pages.length, originalPdfDoc.numPages, translatedPdfDoc.numPages);
   for (let i = 0; i < pageCount; i++) {
     // G3：世代失配 = 第二輪 renderReader 已清欄開跑——本輪自我終止，不再 append
     // 舊頁進新欄（交錯混排）也不對可能已 close 的 pdfDoc 空燒。自己開的
     // translatedPdfDoc 順手收掉（handle 不會 return，沒人幫收）
-    if (_myRenderGen !== _renderReaderGen) {
-      destroyed = true;
-      leftIO.disconnect();
-      rightIO.disconnect();
-      if (translatedPdfDoc) {
-        try { await translatedPdfDoc.destroy(); } catch (_) { /* ignore */ }
-        translatedPdfDoc = null;
-      }
-      return null;
-    }
+    if (_myRenderGen !== _renderReaderGen) return abandonRound();
     const leftPage = document.createElement('div');
     leftPage.className = 'reader-page reader-page-original';
     leftPage.dataset.pageIndex = String(i);
@@ -202,8 +240,12 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
 
     try {
       // 尺寸先就位(getViewport 不 rasterize,便宜)
-      const leftViewport = (await originalPdfDoc.getPage(i + 1)).getViewport({ scale: READER_RENDER_SCALE });
-      const rightViewport = (await translatedPdfDoc.getPage(i + 1)).getViewport({ scale: READER_RENDER_SCALE });
+      const lp = await orCancel(originalPdfDoc.getPage(i + 1));
+      if (lp === CANCELLED) return abandonRound();
+      const rp = await orCancel(translatedPdfDoc.getPage(i + 1));
+      if (rp === CANCELLED) return abandonRound();
+      const leftViewport = lp.getViewport({ scale: READER_RENDER_SCALE });
+      const rightViewport = rp.getViewport({ scale: READER_RENDER_SCALE });
       leftPage.dataset.baseWidth = String(leftViewport.width);
       leftPage.dataset.baseHeight = String(leftViewport.height);
       rightPage.dataset.baseWidth = String(rightViewport.width);
@@ -227,7 +269,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
   async function renderAllPages() {
     for (const [pageEl, meta] of pageMeta) {
       if (destroyed || _myRenderGen !== _renderReaderGen) return;
-      if (!meta.rendered) await renderPage(pageEl);
+      if (!meta.rendered) await enqueueRender(pageEl, false);
     }
   }
   window.__skReaderRenderAll = renderAllPages;
@@ -260,7 +302,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       const meta = pageMeta.get(pageEl);
       if (!meta) continue;
       if (meta.inZone) {
-        await renderPage(pageEl);
+        await enqueueRender(pageEl, true);
       } else if (meta.rendered) {
         meta.rendered = false;
         releaseCanvas(pageEl);

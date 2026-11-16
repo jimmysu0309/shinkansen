@@ -2645,6 +2645,24 @@ async function runV2075PromptCacheClear(triggerLabel) {
 browser.runtime.onStartup?.addListener(() => { runV2075PromptCacheClear('onStartup'); });
 runV2075PromptCacheClear('sw-init');
 
+// v2.6.9 一次性 migration：文件翻譯的提示變動後，清掉舊提示產的文件翻譯快取。
+// 這一版文件翻譯的行內標記說明加了兩條規則（方括號引用編號逐字保留、連結標記不可用書名號
+// 包住或取代），cache key 不含提示文字，不清的話已翻過的文件升級後仍吐舊譯文。
+// 只清文件翻譯（'_doc' / '_oc_doc'），網頁 / 字幕 / Google MT / 術語表不動。
+const V269_DOC_CACHE_FLAG = '__shinkansen_v269_doc_cache_cleared';
+async function runV269DocCacheClear(triggerLabel) {
+  try {
+    const r = await cache.migrateClearDocTranslationCacheOnce(V269_DOC_CACHE_FLAG);
+    if (r.ranMigration) {
+      debugLog('info', 'cache', `v2.6.9 doc translation cache cleared (${triggerLabel})`, { cleared: r.cleared });
+    }
+  } catch (err) {
+    debugLog('warn', 'cache', 'v2.6.9 doc translation cache clear failed', { error: err && err.message, trigger: triggerLabel });
+  }
+}
+browser.runtime.onStartup?.addListener(() => { runV269DocCacheClear('onStartup'); });
+runV269DocCacheClear('sw-init');
+
 // 累計用量 path 合一（IndexedDB 為單一資料源）後，storage.local['usageStats'] 殘餘清掉
 browser.storage.local.remove('usageStats').catch(() => {});
 
@@ -2660,6 +2678,7 @@ browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   await runV198GoogleMtCacheClear('onInstalled');
   await runV2065EchoCacheClear('onInstalled');
   await runV2075PromptCacheClear('onInstalled');
+  await runV269DocCacheClear('onInstalled');
 
   // v1.6.5: CWS 自動更新到 major / minor 新版時，寫 welcomeNotice 讓使用者下次
   // 開 popup 或翻譯成功 toast 時看到「🎉 已升級至 vX.Y」+ 重大更新清單。

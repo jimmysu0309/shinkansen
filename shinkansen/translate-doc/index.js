@@ -8,7 +8,7 @@ import { parsePdf, preflightFile, renderPageToCanvas, closeDocument, PdfParseErr
 import { analyzeLayout } from './layout-analyzer.js';
 import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts, clearTcCacheForTexts, clearTcCacheForDoc, stripPlaceholderTokens } from './translate.js';
 import { TRANSLATABLE_TYPES } from './block-types.js';
-import { renderReader, buildPlainTextDump } from './reader.js';
+import { renderReader, buildPlainTextDump, cancelPendingReaderRender } from './reader.js';
 import { downloadBilingualPdf, buildBilingualPdf } from './pdf-renderer.js';
 import { formatMoney, resolveDisplayCurrency } from '../lib/format.js';
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
@@ -248,6 +248,8 @@ function releaseCurrentDoc() {
   // render 可達 10 秒+,await 期間 currentReaderHandle 是 null，這裡摸不到它)——
   // gen 失配讓那輪完成後自行 destroy，不把舊檔的 handle / DOM 寫進新檔的欄位
   readerGeneration++;
+  // 骨架迴圈還在跑的那一輪直接作廢（它停在已關閉 PDF 的 getPage 上，自己不會醒來）
+  cancelPendingReaderRender();
   if (currentReaderHandle) {
     try { currentReaderHandle.destroy(); } catch (_) { /* ignore */ }
     currentReaderHandle = null;
