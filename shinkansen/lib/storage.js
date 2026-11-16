@@ -914,6 +914,10 @@ export const DEFAULT_SETTINGS = {
 // 避免機密跨裝置同步）。讀取時注入 merged.customProvider.apiKey，存 sync 時要剝掉。
 const API_KEY_STORAGE_KEY = 'apiKey';
 const CUSTOM_PROVIDER_API_KEY = 'customProviderApiKey';
+// 自訂模型的額外 request headers（JSON 字串，issue #78）。值可能含機密（例如 `api-key`），
+// 比照 API Key 只存 local：不跨裝置同步、不進匯出檔、不被 Debug Bridge GET_STORAGE 帶出。
+// 讀取時注入 merged.customProvider.extraHeadersJson，存 sync 時要剝掉。
+const CUSTOM_PROVIDER_HEADERS_KEY = 'customProviderHeaders';
 
 // v1.8.14: storage.sync legacy key cleanup
 // 之前移除的設定欄位仍躺在使用者 sync storage 佔 quota(8KB / item, 100KB total)。
@@ -1125,6 +1129,7 @@ function _bindSettingsCacheInvalidator() {
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync' && !(area === 'local' && changes
       && (API_KEY_STORAGE_KEY in changes || CUSTOM_PROVIDER_API_KEY in changes
+        || CUSTOM_PROVIDER_HEADERS_KEY in changes
         || LOCAL_SETTINGS_KEYS.some((k) => k in changes)))) return;
     _settingsCachePromise = null;
   });
@@ -1152,7 +1157,7 @@ export async function getSettings() {
   // 大項設定（固定術語表 / 禁用詞）存 local：sync 殘留先搬過去，再以 local 為準（批次 6）
   await migrateLargeKeysToLocalIfNeeded(saved);
   // local 一次讀完：apiKey（v0.62 起的正規位置）+ customProvider apiKey + 大項設定
-  const localAll = await browser.storage.local.get([API_KEY_STORAGE_KEY, CUSTOM_PROVIDER_API_KEY, ...LOCAL_SETTINGS_KEYS]);
+  const localAll = await browser.storage.local.get([API_KEY_STORAGE_KEY, CUSTOM_PROVIDER_API_KEY, CUSTOM_PROVIDER_HEADERS_KEY, ...LOCAL_SETTINGS_KEYS]);
   for (const k of LOCAL_SETTINGS_KEYS) {
     if (Object.prototype.hasOwnProperty.call(localAll, k)) saved[k] = localAll[k];
   }
@@ -1200,6 +1205,9 @@ export async function getSettings() {
   merged.apiKey = apiKey;
   // v1.5.7: customProvider apiKey 也在 local（上面一次讀完）
   merged.customProvider.apiKey = localAll[CUSTOM_PROVIDER_API_KEY] || '';
+  // 自訂 headers 同樣只在 local；sync 內若混進同名欄位（舊檔 / 手動寫入）一律不採信
+  const savedHeaders = localAll[CUSTOM_PROVIDER_HEADERS_KEY];
+  merged.customProvider.extraHeadersJson = typeof savedHeaders === 'string' ? savedHeaders : '';
   return merged;
 }
 
@@ -1247,6 +1255,13 @@ export async function setSettings(patch) {
     const cp = { ...rest.customProvider };
     await browser.storage.local.set({ [CUSTOM_PROVIDER_API_KEY]: cp.apiKey });
     delete cp.apiKey;
+    rest.customProvider = cp;
+  }
+  // 自訂模型額外 headers：同樣抽出寫 local，不進 sync
+  if (rest.customProvider && Object.prototype.hasOwnProperty.call(rest.customProvider, 'extraHeadersJson')) {
+    const cp = { ...rest.customProvider };
+    await browser.storage.local.set({ [CUSTOM_PROVIDER_HEADERS_KEY]: typeof cp.extraHeadersJson === 'string' ? cp.extraHeadersJson : '' });
+    delete cp.extraHeadersJson;
     rest.customProvider = cp;
   }
 

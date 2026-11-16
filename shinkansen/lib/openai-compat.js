@@ -37,6 +37,74 @@ import {
 // ~openai/gpt-latest 網頁翻譯每批三連 body read timeout）
 const DEFAULT_FETCH_TIMEOUT_MS = 90_000;
 
+// ─── 自訂 request headers（issue #78）─────────────────────────
+// 部分 OpenAI 相容端點除了 Authorization 還要求額外 header（session id、`api-key`、
+// gateway 路由標記等）。使用者在「自訂模型」分頁填一段 JSON 物件，這裡驗過後併進請求。
+// 主翻譯 / 術語表抽取 / 設定頁「測試」三條路徑都走 buildRequestHeaders——單一資料源，
+// 不可各自組 header（否則測試綠燈、正式翻譯才炸）。
+//
+// 值可能是機密（例如 `api-key`），所以比照 API Key：只存 storage.local、不進匯出檔、
+// 不寫進 debug log（log 只記錯誤訊息與 header 名稱，不記值）。
+const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;   // RFC 7230 token
+const HEADER_VALUE_RE = /^[\t\x20-\x7E\x80-\xFF]*$/;       // fetch 只收 ISO-8859-1，且不可含 CR / LF / NUL
+// Content-Type / Content-Length 由本檔與 fetch 決定，蓋掉只會讓 body 被誤讀
+const RESERVED_HEADER_NAMES = new Set(['content-type', 'content-length']);
+
+/**
+ * 解析使用者填的自訂 headers JSON。不 throw；有問題的項目略過並列進 errors。
+ * @param {string} raw
+ * @returns {{ headers: Record<string,string>, errors: string[] }}
+ */
+export function parseExtraHeaders(raw) {
+  const out = { headers: {}, errors: [] };
+  if (typeof raw !== 'string' || !raw.trim()) return out;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw.trim());
+  } catch (e) {
+    out.errors.push(`invalid JSON: ${e.message}`);
+    return out;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    out.errors.push('must be a JSON object, e.g. {"x-header": "value"}');
+    return out;
+  }
+  for (const [name, value] of Object.entries(parsed)) {
+    if (!HEADER_NAME_RE.test(name)) {
+      out.errors.push(`invalid header name "${name}"`);
+      continue;
+    }
+    if (RESERVED_HEADER_NAMES.has(name.toLowerCase())) {
+      out.errors.push(`"${name}" cannot be overridden`);
+      continue;
+    }
+    if (!['string', 'number', 'boolean'].includes(typeof value)) {
+      out.errors.push(`value of "${name}" must be a string`);
+      continue;
+    }
+    const str = String(value).trim();
+    if (!HEADER_VALUE_RE.test(str)) {
+      out.errors.push(`value of "${name}" contains characters not allowed in a header`);
+      continue;
+    }
+    out.headers[name] = str;
+  }
+  return out;
+}
+
+/**
+ * 組自訂模型請求的 headers（不含 Content-Type，由呼叫端 / fetchWithRetry 補）。
+ * apiKey 為空不送 Authorization（本機 llama.cpp / Ollama）；使用者在自訂 headers 內自己給了
+ * Authorization（任意大小寫）時以使用者的為準，不重複送。
+ */
+export function buildRequestHeaders(apiKey, extraHeadersJson, onWarn) {
+  const { headers: extra, errors } = parseExtraHeaders(extraHeadersJson);
+  if (onWarn) for (const msg of errors) onWarn(msg);
+  const userSetsAuth = Object.keys(extra).some((k) => k.toLowerCase() === 'authorization');
+  const base = (apiKey && !userSetsAuth) ? { 'Authorization': `Bearer ${apiKey}` } : {};
+  return { ...base, ...extra };
+}
+
 /**
  * 把 OpenAI 風格的 base URL 標準化成 chat.completions endpoint。
  *   "https://openrouter.ai/api/v1"          → ".../chat/completions"
@@ -75,7 +143,7 @@ export async function translateBatch(texts, settings, glossary, fixedGlossary, f
 async function translateChunk(texts, settings, glossary, fixedGlossary, forbiddenTerms) {
   if (!texts?.length) return { parts: [], usage: emptyUsage() };
   const cp = settings.customProvider || {};
-  const { baseUrl, model, systemPrompt, temperature, apiKey, thinkingLevel, extraBodyJson } = cp;
+  const { baseUrl, model, systemPrompt, temperature, apiKey, thinkingLevel, extraBodyJson, extraHeadersJson } = cp;
   // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key）；商用後端漏填會自然 401
   // v1.8.41:Model 也允許為空（llama.cpp 啟動時鎖 model,body 不送 model 欄位即用 server 預設）;
   // 商用後端不送 model 會自然 4xx「model required」，讓 provider error 自己講話。
@@ -124,7 +192,9 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   const url = resolveChatCompletionsUrl(baseUrl);
   // v1.6.7: apiKey 為空時不送 Authorization（本機 llama.cpp / Ollama 等不需要 key）
-  const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
+  // 自訂 headers（issue #78）格式有錯的項目略過 + warn，不阻斷翻譯（同 extraBodyJson）
+  const headers = buildRequestHeaders(apiKey, extraHeadersJson,
+    (msg) => { debugLog('warn', 'api', `customProvider extra headers: ${msg}`); });
 
   await debugLog('info', 'api', 'openai-compat request', {
     baseUrl, model, segments: texts.length, chars: joined.length,
@@ -294,7 +364,8 @@ export async function extractGlossary(compressedText, settings) {
   if (model) body.model = model;
 
   const url = resolveChatCompletionsUrl(baseUrl);
-  const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
+  const headers = buildRequestHeaders(apiKey, cp.extraHeadersJson,
+    (msg) => { debugLog('warn', 'glossary', `customProvider extra headers: ${msg}`); });
 
   await debugLog('info', 'glossary', 'openai-compat glossary extraction request', {
     baseUrl, model, chars: compressedText.length, fetchTimeoutMs,

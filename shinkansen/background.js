@@ -4,7 +4,7 @@
 import { browser } from './lib/compat.js';
 import { IS_IOS_BUILD } from './lib/distribution.js'; // Phase 2: host app 設定橋接只在 iOS build 走 native messaging
 import { modelDropsSamplingParams, translateBatch, extractGlossary, extractTermRenderings, translateBatchStream, summarizeArticle } from './lib/gemini.js';
-import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
+import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom, parseExtraHeaders, buildRequestHeaders } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt, LANG_LABELS, isPromptUnchangedFromAnyTargetDefault, DEFAULT_SETTINGS } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, getAnomalyLogs, clearPersistedLogs } from './lib/logger.js';
@@ -1970,10 +1970,19 @@ async function testCustomProvider(payload) {
   // v1.8.41:Model ID 也允許為空（llama.cpp 啟動時鎖 model,body 不送 model 欄位即用 server 預設）。
   // 商用後端（OpenAI / OpenRouter / DeepSeek）會自然回「model required」4xx，讓 provider error 自己講話。
 
+  // 自訂 headers（issue #78）：測試路徑從嚴——任何一項格式有錯就直接回報，不送請求。
+  // 正式翻譯是略過壞項目繼續翻；測試時使用者正盯著結果，這裡講清楚比事後翻 log 好
+  const extraHeadersJson = typeof payload?.extraHeadersJson === 'string' ? payload.extraHeadersJson : '';
+  const headerErrors = parseExtraHeaders(extraHeadersJson).errors;
+  if (headerErrors.length > 0) {
+    const msg = headerErrors.join('; ');
+    return { ok: false, ...errorFields(codedError('customHeadersInvalid', { msg }, `自訂 headers 格式有誤：${msg}`)) };
+  }
+
   const url = /\/chat\/completions$/.test(baseUrl) ? baseUrl : baseUrl + '/chat/completions';
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    // 與正式翻譯同一支 buildRequestHeaders（單一資料源）
+    const headers = { 'Content-Type': 'application/json', ...buildRequestHeaders(apiKey, extraHeadersJson) };
     const reqBody = {
       messages: [{ role: 'user', content: 'ping' }],
       stream: false,

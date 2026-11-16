@@ -7,7 +7,7 @@
 - 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.6.9
+- 目前 Extension 版本：2.6.10
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.6.9 為止）
+### 2.1 已實作（v2.6.10 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -153,6 +153,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 - **設定欄位**：`baseUrl`（預設 OpenRouter）、`model`（預設 `openai/gpt-5.4-mini`；留空 = 不送 model 欄位，配合 Ollama / llama.cpp 單模型 server）、獨立 `systemPrompt`、`temperature`（留空 = 不送，配合只接受自家預設的 reasoning model）、計價（`inputPerMTok` / `outputPerMTok`，USD / 1M tokens，填 0 = 不顯示費用）
 - **Cache 命中折扣** `cachedDiscount`（0–1，預設 0.90）：空白時依 baseUrl 自動推導各家折扣（OpenAI / Anthropic 命中部分付 10%、DeepSeek 2%、xAI 20%、其他端點 50%）；填 0 才是「沒有折扣」
 - **Thinking 控制** `thinkingLevel`（auto / off / low / medium / high，預設 off）：自動翻譯成各家 provider 的對應參數；`extraBodyJson` 供進階使用者透傳自訂欄位
+- **自訂 request headers**（選填，JSON 物件）：給「除了 API Key 還要求額外 header」的端點使用（session id、`api-key`、gateway 路由標記等），翻譯、術語表抽取與設定頁「測試」按鈕的每個請求都會帶上。自行填了 `Authorization` 時取代 API Key 產生的那一個；`Content-Type` / `Content-Length` 不可覆寫。格式有誤時：「測試」按鈕直接回報且不送出請求，正式翻譯則略過有問題的項目並在 Debug 分頁記一條 warn。值可能含憑證，保存方式比照 API Key（見 §5 機密）
 - **強化段序號標記** `useStrongSegMarker`（預設開）：防本機量化模型把段落標記誤譯進譯文；商用 LLM 使用者可關閉省 token
 - **API 逾時** `fetchTimeoutSec`（預設 90 秒，範圍 5–600）：本機 LLM 冷啟動可調高
 - **API Key**：存 `chrome.storage.local`，不跨裝置同步、不在匯出範圍
@@ -511,7 +512,7 @@ shinkansen/
 }
 ```
 
-註：`customProvider.apiKey` **不存** sync，存 `chrome.storage.local`（key `customProviderApiKey`），與主 Gemini `apiKey` 設計一致。`customProvider.temperature` 可為 `null`（options 欄位留空）＝ 請求不送 `temperature`，見 §3.8。`ytSubtitle.bilingualMode` 已於 v2.0.85 移除——字幕雙語跟隨 `displayMode === 'dual'`（§4.1），舊版寫入的殘留 key 讀取時忽略、匯入時 sanitize 丟棄。
+註：`customProvider.apiKey` **不存** sync，存 `chrome.storage.local`（key `customProviderApiKey`），與主 Gemini `apiKey` 設計一致；自訂 request headers 同樣只存 local（key `customProviderHeaders`，JSON 字串）。`customProvider.temperature` 可為 `null`（options 欄位留空）＝ 請求不送 `temperature`，見 §3.8。`ytSubtitle.bilingualMode` 已於 v2.0.85 移除——字幕雙語跟隨 `displayMode === 'dual'`（§4.1），舊版寫入的殘留 key 讀取時忽略、匯入時 sanitize 丟棄。
 
 - **API Key** 存 `chrome.storage.local`（key `apiKey`），不跨裝置同步。舊版（≤v0.61）存在 sync 的 Key 會自動遷移至 local
 - manifest `commands` 預設快捷鍵由 Chrome 原生管理不存設定；三組 preset 的**自訂**鍵位存 `customShortcuts`（in-page recorder，§10.1）
@@ -524,7 +525,7 @@ shinkansen/
 - **術語表快取**：key `gloss_<sha1>` → 術語對照 JSON
 - **版本標記**：key `__cacheVersion` → manifest version（v1.8.45 起版本變更**不**清快取，只更新標記）
 - **累計費用顯示基準點**：key `usageResetAt` → ms epoch。popup「累計費用」的「清除」寫入；popup 只加總此時間點之後的 usage-db 紀錄。usage-db 與此 key 同為裝置本機，不跨裝置同步
-- **機密**：`apiKey`（Gemini）、`customProviderApiKey`（自訂 Provider）、`instapaperToken` / `instapaperTokenSecret`（Instapaper OAuth）——不跨裝置同步、不在匯出範圍
+- **機密**：`apiKey`（Gemini）、`customProviderApiKey`（自訂 Provider）、`customProviderHeaders`（自訂 Provider 的額外 request headers）、`instapaperToken` / `instapaperTokenSecret`（Instapaper OAuth）——不跨裝置同步、不在匯出範圍
 - **大項設定**：`fixedGlossary`（固定術語表）、`forbiddenTerms`（禁用詞清單）——sync 每個 key 上限 8,192 bytes，術語表百餘條即超限；改存 local 後不跨裝置同步，匯出 / 匯入 JSON 仍包含。舊版寫在 sync 的值於下次讀取設定時自動搬到 local 並從 sync 移除（`lib/storage.js` `LOCAL_SETTINGS_KEYS`）
 - **通知狀態**：`welcomeNotice`（升級歡迎橫幅）、`updateAvailable`（`lib/update-check.js` 寫入的新版資訊）
 - **其他**：`exchangeRate`（匯率 cache）、`translateDocPresetSlot`（文件翻譯頁上次選的 preset）、`hostSettingsConsumedSeq`（Safari host app 設定交接序號）、`yt_debug_log` / `anomaly_log`（持久 log ring，§12）
@@ -533,8 +534,8 @@ shinkansen/
 
 - `chrome.storage.sync` 自動跨裝置同步設定（不含 API Key，也不含固定術語表 / 禁用詞清單——兩者存 local，§8.2）
 - 翻譯快取與術語表快取只存 local，不同步
-- 設定頁提供匯出/匯入 JSON（API Key 不含在匯出範圍），匯入時 `sanitizeImport()` 驗證所有欄位；設定子物件（`geminiConfig` / `pricing` / `domainRules` / `glossary` / `ytSubtitle` / `partialMode` / `customProvider` / `translateDoc`）以「現值 ← 匯入值」逐欄合併，匯入檔沒列到的欄位維持原值（陣列與表格型設定如 `translatePresets`、術語表、禁用詞、自訂快速鍵仍整份取代）；匯入檔把自訂模型 `customProvider.baseUrl` 換到不同 origin（scheme + host + port）時，先跳確認框顯示新舊端點網址，取消則整份匯入不寫入，繼續則既有的自訂模型 API Key 會被清除並提示使用者重新輸入（只改 path 視為同一服務、不跳確認、金鑰保留），避免匯入檔把金鑰或網頁內容導到別的主機
-- 「回復預設設定」保留 Gemini API Key；自訂模型端點會回到預設主機，原端點若在別的主機，自訂模型 API Key 一併清除並提示（原本就在預設主機則保留）
+- 設定頁提供匯出/匯入 JSON（API Key 與自訂模型的自訂 request headers 不含在匯出範圍，匯入檔若帶了也不採用），匯入時 `sanitizeImport()` 驗證所有欄位；設定子物件（`geminiConfig` / `pricing` / `domainRules` / `glossary` / `ytSubtitle` / `partialMode` / `customProvider` / `translateDoc`）以「現值 ← 匯入值」逐欄合併，匯入檔沒列到的欄位維持原值（陣列與表格型設定如 `translatePresets`、術語表、禁用詞、自訂快速鍵仍整份取代）；匯入檔把自訂模型 `customProvider.baseUrl` 換到不同 origin（scheme + host + port）時，先跳確認框顯示新舊端點網址，取消則整份匯入不寫入，繼續則既有的自訂模型 API Key 與自訂 request headers 會被清除並提示使用者重新輸入（只改 path 視為同一服務、不跳確認、金鑰保留），避免匯入檔把金鑰或網頁內容導到別的主機
+- 「回復預設設定」保留 Gemini API Key；自訂模型端點會回到預設主機，原端點若在別的主機，自訂模型 API Key 與自訂 request headers 一併清除並提示（原本就在預設主機則保留）
 
 ---
 

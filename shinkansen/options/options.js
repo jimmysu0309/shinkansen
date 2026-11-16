@@ -309,6 +309,9 @@ async function load() {
   // 從 storage.local 讀 customProviderApiKey
   const { customProviderApiKey = '' } = await browser.storage.local.get('customProviderApiKey');
   $('cp-apiKey').value = customProviderApiKey;
+  // 自訂 headers 同樣只存 local（值可能含機密，issue #78）
+  const { customProviderHeaders = '' } = await browser.storage.local.get('customProviderHeaders');
+  if ($('cp-extra-headers-json')) $('cp-extra-headers-json').value = typeof customProviderHeaders === 'string' ? customProviderHeaders : '';
 
   // v1.2.11: YouTube 字幕設定
   const yt = { ...DEFAULTS.ytSubtitle, ...(s.ytSubtitle || {}) };
@@ -1347,7 +1350,9 @@ async function _saveImpl() {
   }
   // v1.5.7: customProvider.apiKey 走 storage.local（與主 apiKey 同樣設計），先抽出再寫 sync
   const cpApiKeyValue = ($('cp-apiKey').value || '').trim();
-  await browser.storage.local.set({ customProviderApiKey: cpApiKeyValue });
+  // 自訂 headers 比照 apiKey 走 local（不進 sync / 匯出檔）
+  const cpHeadersValue = ($('cp-extra-headers-json')?.value || '').trim();
+  await browser.storage.local.set({ customProviderApiKey: cpApiKeyValue, customProviderHeaders: cpHeadersValue });
   // 固定術語表 / 禁用詞走 local（避開 sync 每 key 8KB 上限，批次 6）；其餘 sync
   const { syncPart, localPart } = splitSettingsPatch(settings);
   if (Object.keys(localPart).length > 0) await browser.storage.local.set(localPart);
@@ -1382,6 +1387,7 @@ $('cp-test-apiKey').addEventListener('click', async () => {
         baseUrl: ($('cp-baseUrl').value || '').trim(),
         model: ($('cp-model').value || '').trim(),
         apiKey: ($('cp-apiKey').value || '').trim(),
+        extraHeadersJson: ($('cp-extra-headers-json')?.value || '').trim(),
       },
     }),
   });
@@ -2001,9 +2007,10 @@ $('reset-defaults').addEventListener('click', async () => {
     ? cpBeforeReset.baseUrl : defaultCpBaseUrl;
   let cpKeyCleared = false;
   if (isDifferentOrigin(cpBaseUrlBeforeReset, defaultCpBaseUrl)) {
-    const { customProviderApiKey } = await browser.storage.local.get('customProviderApiKey');
-    if (customProviderApiKey) {
-      await browser.storage.local.remove('customProviderApiKey');
+    // 自訂 headers 同屬只該送往原端點的憑證，一併清
+    const { customProviderApiKey, customProviderHeaders } = await browser.storage.local.get(['customProviderApiKey', 'customProviderHeaders']);
+    if (customProviderApiKey || customProviderHeaders) {
+      await browser.storage.local.remove(['customProviderApiKey', 'customProviderHeaders']);
       cpKeyCleared = true;
     }
   }
@@ -2075,9 +2082,9 @@ $('import-input').addEventListener('change', async (e) => {
     if (importChangesCustomProviderOrigin(curBaseUrl, merged)) {
       const nextUrl = merged.customProvider.baseUrl;
       if (!confirm(_t('options.io.importEndpointConfirm', { url: nextUrl, from: curBaseUrl }))) return;
-      const { customProviderApiKey } = await browser.storage.local.get('customProviderApiKey');
-      if (customProviderApiKey) {
-        await browser.storage.local.remove('customProviderApiKey');
+      const { customProviderApiKey, customProviderHeaders } = await browser.storage.local.get(['customProviderApiKey', 'customProviderHeaders']);
+      if (customProviderApiKey || customProviderHeaders) {
+        await browser.storage.local.remove(['customProviderApiKey', 'customProviderHeaders']);
         cpKeyClearedNote = _t('options.io.importCpKeyCleared', { url: nextUrl });
       }
     }

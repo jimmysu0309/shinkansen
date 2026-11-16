@@ -1,7 +1,7 @@
 // lib/i18n-content.js — content script 專用 i18n 子集（GENERATED，不可手改）
 //
 // 由 tools/build/generate-i18n-content.mjs 從 lib/i18n.js 產出：runtime 原封不動，8 語 dict 只留
-// content script（manifest content_scripts）用得到的 85 個 key。完整 dict 仍是
+// content script（manifest content_scripts）用得到的 86 個 key。完整 dict 仍是
 // lib/i18n.js（popup / options / translate-doc 載入）；改字串一律改 i18n.js 再重生本檔。
 // test/unit/i18n-content-subset.spec.js 鎖「本檔 = 重生結果」與「子集值 = 完整 dict 值」。
 //
@@ -65,6 +65,7 @@
     'error.bg.testTimeout': '連線逾時，請確認網址與網路狀態',
     'error.bg.testNonJsonGemini': 'HTTP {status}，但回應不是有效的 JSON。可能是網路環境（公司 proxy / 登入頁）攔截了請求，請換網路再試',
     'error.bg.testNonJsonCustom': 'HTTP {status}，但 Provider 回應不是有效的 JSON。請確認 Base URL 是否為正確的 OpenAI-compatible API endpoint',
+    'error.bg.customHeadersInvalid': '自訂 request headers 格式有誤，尚未送出測試：{msg}',
     'error.bg.network': '網路錯誤：{msg}',
     'error.bg.timeout': '網路錯誤：逾時（{ms}ms）',
     'error.bg.readTimeout': '網路錯誤：回應讀取逾時（{ms}ms）',
@@ -156,6 +157,7 @@
     'error.bg.testTimeout': '连接超时，请确认网址与网络状态',
     'error.bg.testNonJsonGemini': 'HTTP {status}，但响应不是有效的 JSON。可能是网络环境（公司 proxy / 登录页）拦截了请求，请换网络再试',
     'error.bg.testNonJsonCustom': 'HTTP {status}，但 Provider 响应不是有效的 JSON。请确认 Base URL 是否为正确的 OpenAI-compatible API endpoint',
+    'error.bg.customHeadersInvalid': '自定义 request headers 格式有误，尚未发出测试：{msg}',
     'error.bg.network': '网络错误：{msg}',
     'error.bg.timeout': '网络错误：超时（{ms}ms）',
     'error.bg.readTimeout': '网络错误：响应读取超时（{ms}ms）',
@@ -247,6 +249,7 @@
     'error.bg.testTimeout': 'Connection timed out. Check the URL and your network',
     'error.bg.testNonJsonGemini': 'HTTP {status}, but the response is not valid JSON. Your network (corporate proxy / login page) may be intercepting the request; try another network',
     'error.bg.testNonJsonCustom': 'HTTP {status}, but the provider response is not valid JSON. Check that the Base URL is a correct OpenAI-compatible API endpoint',
+    'error.bg.customHeadersInvalid': 'Custom request headers are invalid; the test was not sent: {msg}',
     'error.bg.network': 'Network error: {msg}',
     'error.bg.timeout': 'Network error: timed out ({ms}ms)',
     'error.bg.readTimeout': 'Network error: response read timed out ({ms}ms)',
@@ -338,6 +341,7 @@
     'error.bg.testTimeout': '接続がタイムアウトしました。URL とネットワーク状態を確認してください',
     'error.bg.testNonJsonGemini': 'HTTP {status} ですが、応答が有効な JSON ではありません。ネットワーク環境（社内 proxy / ログインページ）がリクエストを横取りしている可能性があります。別のネットワークでお試しください',
     'error.bg.testNonJsonCustom': 'HTTP {status} ですが、Provider の応答が有効な JSON ではありません。Base URL が正しい OpenAI-compatible API endpoint か確認してください',
+    'error.bg.customHeadersInvalid': 'カスタム request headers の形式に誤りがあるため、テストは送信されませんでした：{msg}',
     'error.bg.network': 'ネットワークエラー：{msg}',
     'error.bg.timeout': 'ネットワークエラー：タイムアウト（{ms}ms）',
     'error.bg.readTimeout': 'ネットワークエラー：レスポンス読み取りタイムアウト（{ms}ms）',
@@ -429,6 +433,7 @@
     'error.bg.testTimeout': '연결 시간이 초과되었습니다. 주소와 네트워크 상태를 확인하세요',
     'error.bg.testNonJsonGemini': 'HTTP {status}이지만 응답이 유효한 JSON이 아닙니다. 네트워크 환경(회사 proxy / 로그인 페이지)이 요청을 가로챘을 수 있습니다. 다른 네트워크에서 다시 시도하세요',
     'error.bg.testNonJsonCustom': 'HTTP {status}이지만 Provider 응답이 유효한 JSON이 아닙니다. Base URL이 올바른 OpenAI-compatible API endpoint인지 확인하세요',
+    'error.bg.customHeadersInvalid': '커스텀 request headers 형식이 잘못되어 테스트를 보내지 않았습니다: {msg}',
     'error.bg.network': '네트워크 오류: {msg}',
     'error.bg.timeout': '네트워크 오류: 시간 초과 ({ms}ms)',
     'error.bg.readTimeout': '네트워크 오류: 응답 읽기 시간 초과 ({ms}ms)',
@@ -519,6 +524,7 @@
     'error.bg.testTimeout': 'Tiempo de conexión agotado. Comprueba la URL y tu red',
     'error.bg.testNonJsonGemini': 'HTTP {status}, pero la respuesta no es JSON válido. Puede que tu red (proxy corporativo / página de inicio de sesión) esté interceptando la solicitud; prueba con otra red',
     'error.bg.testNonJsonCustom': 'HTTP {status}, pero la respuesta del proveedor no es JSON válido. Comprueba que la Base URL sea un endpoint de API compatible con OpenAI correcto',
+    'error.bg.customHeadersInvalid': 'Los request headers personalizados no son válidos; no se envió la prueba: {msg}',
     'error.bg.network': 'Error de red: {msg}',
     'error.bg.timeout': 'Error de red: tiempo agotado ({ms} ms)',
     'error.bg.readTimeout': 'Error de red: tiempo de lectura de la respuesta agotado ({ms} ms)',
@@ -609,6 +615,7 @@
     'error.bg.testTimeout': 'Délai de connexion dépassé. Vérifiez l’URL et votre réseau',
     'error.bg.testNonJsonGemini': 'HTTP {status}, mais la réponse n’est pas du JSON valide. Votre réseau (proxy d’entreprise / page de connexion) intercepte peut-être la requête ; essayez un autre réseau',
     'error.bg.testNonJsonCustom': 'HTTP {status}, mais la réponse du fournisseur n’est pas du JSON valide. Vérifiez que la Base URL est bien un endpoint d’API compatible OpenAI',
+    'error.bg.customHeadersInvalid': 'Les request headers personnalisés sont invalides ; le test n\'a pas été envoyé : {msg}',
     'error.bg.network': 'Erreur réseau : {msg}',
     'error.bg.timeout': 'Erreur réseau : délai dépassé ({ms} ms)',
     'error.bg.readTimeout': 'Erreur réseau : délai de lecture de la réponse dépassé ({ms} ms)',
@@ -699,6 +706,7 @@
     'error.bg.testTimeout': 'Zeitüberschreitung der Verbindung. Bitte URL und Netzwerk prüfen',
     'error.bg.testNonJsonGemini': 'HTTP {status}, aber die Antwort ist kein gültiges JSON. Möglicherweise fängt das Netzwerk (Firmen-Proxy / Login-Seite) die Anfrage ab; bitte ein anderes Netzwerk versuchen',
     'error.bg.testNonJsonCustom': 'HTTP {status}, aber die Provider-Antwort ist kein gültiges JSON. Bitte prüfen, ob die Base URL ein korrekter OpenAI-kompatibler API-Endpoint ist',
+    'error.bg.customHeadersInvalid': 'Die benutzerdefinierten Request-Header sind ungültig; der Test wurde nicht gesendet: {msg}',
     'error.bg.network': 'Netzwerkfehler: {msg}',
     'error.bg.timeout': 'Netzwerkfehler: Zeitüberschreitung ({ms} ms)',
     'error.bg.readTimeout': 'Netzwerkfehler: Zeitüberschreitung beim Lesen der Antwort ({ms} ms)',

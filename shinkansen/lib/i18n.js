@@ -134,6 +134,7 @@
     'error.bg.testTimeout': '連線逾時，請確認網址與網路狀態',
     'error.bg.testNonJsonGemini': 'HTTP {status}，但回應不是有效的 JSON。可能是網路環境（公司 proxy / 登入頁）攔截了請求，請換網路再試',
     'error.bg.testNonJsonCustom': 'HTTP {status}，但 Provider 回應不是有效的 JSON。請確認 Base URL 是否為正確的 OpenAI-compatible API endpoint',
+    'error.bg.customHeadersInvalid': '自訂 request headers 格式有誤，尚未送出測試：{msg}',
     'error.bg.network': '網路錯誤：{msg}',
     'error.bg.timeout': '網路錯誤：逾時（{ms}ms）',
     'error.bg.readTimeout': '網路錯誤：回應讀取逾時（{ms}ms）',
@@ -364,7 +365,7 @@
     'options.io.importOk': '匯入成功',
     'options.io.importEndpointConfirm': '這份設定檔會把自訂模型的 API 端點改為：\n{url}\n\n目前的端點：\n{from}\n\n之後用自訂模型翻譯時，網頁內容會送到新的網址。請確認你信任這份設定檔的來源。\n\n要繼續匯入嗎？',
     'options.io.importFooter': '\n\n（API Key 不在匯入範圍，請自行輸入）',
-    'options.io.importCpKeyCleared': '\n\n自訂模型的 API 端點已改為 {url}，為安全起見已清除原本的自訂模型 API Key，請確認端點無誤後重新輸入',
+    'options.io.importCpKeyCleared': '\n\n自訂模型的 API 端點已改為 {url}，為安全起見已清除原本的自訂模型 API Key 與自訂 request headers，請確認端點無誤後重新輸入',
     'options.io.importFailed': '匯入失敗：{error}',
 
     // ── options 回復預設 ─────────────────────────────────
@@ -517,7 +518,7 @@
     'options.cp.tempHint': '留空 = 不送 temperature 參數。部分推理模型只接受自家預設值，帶了會直接失敗',
     'options.cp.timeoutLabel': 'API 逾時時間（秒）',
     'options.cp.timeoutHint': '每次 API 請求等待回應的最長時間。本機 LLM（Ollama 等）冷啟動載入模型可能需要 120-300 秒，請視硬體調高；商用 API 通常不需更改',
-    'options.cp.advSummary': '進階：思考強度 / 段序號 / 逾時 / 自訂 body',
+    'options.cp.advSummary': '進階：思考強度 / 段序號 / 逾時 / 自訂 body / headers',
     'options.cp.thinkingLabel': '思考強度',
     'options.cp.thinkingAuto': '自動（用 provider 預設）',
     'options.cp.thinkingOff': '關閉',
@@ -529,6 +530,8 @@
     'options.cp.strongMarkerHint.html': '本機量化模型（如 gemma-4 量化版）會把預設的「<code>«1»</code> <code>«2»</code>」段序號誤譯為「N1、N2」洩漏到譯文。開啟後改用 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 格式，弱模型不會誤翻；代價是每段批次多約 7 tokens（input + output 雙倍開銷）。商用 API（OpenRouter / Groq 等）不需此選項，但開啟也無害',
     'options.cp.extraBodyLabel': '自訂 request body 額外參數（JSON，覆蓋上方思考強度）',
     'options.cp.extraBodyHint.html': '內容會深層合併進 chat.completions request body，可用來：（1）強制覆蓋上方「思考強度」自動產生的設定；（2）加 provider 專屬參數（例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、Anthropic 的 <code>metadata</code>）。格式錯誤會在 Debug 分頁 log 一條 warn 並忽略，翻譯不會中斷',
+    'options.cp.extraHeadersLabel': '自訂 request headers（JSON，選填）',
+    'options.cp.extraHeadersHint.html': '給「除了 API Key 之外還要求額外 header」的端點使用，每個請求都會帶上（翻譯、術語表、上方的「測試」按鈕皆同）。格式為 JSON 物件，例如 <code>{"x-session-id":"my-stable-id"}</code>；若在這裡自行填了 <code>Authorization</code>，會取代上方 API Key 產生的那一個。內容可能含金鑰，所以與 API Key 一樣只存在你的瀏覽器本機：不跨裝置同步，也不會寫進匯出的設定檔',
 
     'options.cp.pricing.heading': '模型計價（USD）',
     'options.cp.pricing.intro.html': '請填入 input / output 單價，系統會用來估算翻譯費用顯示在翻譯完成通知與「用量紀錄」分頁。填 <strong>0</strong> 代表不顯示費用（token 數仍會記錄）',
@@ -1206,6 +1209,7 @@
     'error.bg.testTimeout': '连接超时，请确认网址与网络状态',
     'error.bg.testNonJsonGemini': 'HTTP {status}，但响应不是有效的 JSON。可能是网络环境（公司 proxy / 登录页）拦截了请求，请换网络再试',
     'error.bg.testNonJsonCustom': 'HTTP {status}，但 Provider 响应不是有效的 JSON。请确认 Base URL 是否为正确的 OpenAI-compatible API endpoint',
+    'error.bg.customHeadersInvalid': '自定义 request headers 格式有误，尚未发出测试：{msg}',
     'error.bg.network': '网络错误：{msg}',
     'error.bg.timeout': '网络错误：超时（{ms}ms）',
     'error.bg.readTimeout': '网络错误：响应读取超时（{ms}ms）',
@@ -1434,7 +1438,7 @@
     'options.io.importOk': '导入成功',
     'options.io.importEndpointConfirm': '这份设置文件会把自定义模型的 API 端点改为：\n{url}\n\n当前的端点：\n{from}\n\n之后用自定义模型翻译时，网页内容会发送到新的网址。请确认你信任这份设置文件的来源。\n\n要继续导入吗？',
     'options.io.importFooter': '\n\n（API Key 不在导入范围，请自行输入）',
-    'options.io.importCpKeyCleared': '\n\n自定义模型的 API 端点已改为 {url}，为安全起见已清除原本的自定义模型 API Key，请确认端点无误后重新输入',
+    'options.io.importCpKeyCleared': '\n\n自定义模型的 API 端点已改为 {url}，为安全起见已清除原本的自定义模型 API Key 与自定义 request headers，请确认端点无误后重新输入',
     'options.io.importFailed': '导入失败：{error}',
 
     // ── options 恢复默认 ─────────────────────────────────
@@ -1587,7 +1591,7 @@
     'options.cp.tempHint': '留空 = 不发送 temperature 参数。部分推理模型只接受自家默认值，带了会直接失败',
     'options.cp.timeoutLabel': 'API 超时时间（秒）',
     'options.cp.timeoutHint': '每次 API 请求等待回应的最长时间。本地 LLM（Ollama 等）冷启动加载模型可能需要 120-300 秒，请根据硬件调高；商用 API 通常不需更改',
-    'options.cp.advSummary': '高级：思考强度 / 段序号 / 超时 / 自定义 body',
+    'options.cp.advSummary': '高级：思考强度 / 段序号 / 超时 / 自定义 body / headers',
     'options.cp.thinkingLabel': '思考强度',
     'options.cp.thinkingAuto': '自动（用 provider 默认）',
     'options.cp.thinkingOff': '关闭',
@@ -1599,6 +1603,8 @@
     'options.cp.strongMarkerHint.html': '本地量化模型（如 gemma-4 量化版）会把默认的「<code>«1»</code> <code>«2»</code>」段序号误译为「N1、N2」泄漏到译文。开启后改用 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 格式，弱模型不会误翻；代价是每段批次多约 7 tokens（input + output 双倍开销）。商用 API（OpenRouter / Groq 等）不需此选项，但开启也无害',
     'options.cp.extraBodyLabel': '自定义 request body 额外参数（JSON，覆盖上方思考强度）',
     'options.cp.extraBodyHint.html': '内容会深层合并进 chat.completions request body，可用来：（1）强制覆盖上方「思考强度」自动产生的设置；（2）加 provider 专属参数（例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、Anthropic 的 <code>metadata</code>）。格式错误会在 Debug 分页 log 一条 warn 并忽略，翻译不会中断',
+    'options.cp.extraHeadersLabel': '自定义 request headers（JSON，选填）',
+    'options.cp.extraHeadersHint.html': '给「除了 API Key 之外还要求额外 header」的端点使用，每个请求都会带上（翻译、术语表、上方的「测试」按钮皆同）。格式为 JSON 对象，例如 <code>{"x-session-id":"my-stable-id"}</code>；若在这里自行填了 <code>Authorization</code>，会取代上方 API Key 生成的那一个。内容可能含密钥，所以与 API Key 一样只存在你的浏览器本地：不跨设备同步，也不会写进导出的设置文件',
 
     'options.cp.pricing.heading': '模型计价（USD）',
     'options.cp.pricing.intro.html': '请填入 input / output 单价，系统会用来估算翻译费用显示在翻译完成通知与「用量记录」分页。填 <strong>0</strong> 代表不显示费用（token 数仍会记录）',
@@ -2274,6 +2280,7 @@
     'error.bg.testTimeout': 'Connection timed out. Check the URL and your network',
     'error.bg.testNonJsonGemini': 'HTTP {status}, but the response is not valid JSON. Your network (corporate proxy / login page) may be intercepting the request; try another network',
     'error.bg.testNonJsonCustom': 'HTTP {status}, but the provider response is not valid JSON. Check that the Base URL is a correct OpenAI-compatible API endpoint',
+    'error.bg.customHeadersInvalid': 'Custom request headers are invalid; the test was not sent: {msg}',
     'error.bg.network': 'Network error: {msg}',
     'error.bg.timeout': 'Network error: timed out ({ms}ms)',
     'error.bg.readTimeout': 'Network error: response read timed out ({ms}ms)',
@@ -2502,7 +2509,7 @@
     'options.io.importOk': 'Import successful',
     'options.io.importEndpointConfirm': 'This settings file changes the custom model API endpoint to:\n{url}\n\nCurrent endpoint:\n{from}\n\nFrom now on, page content translated with the custom model will be sent to the new address. Only continue if you trust the source of this file.\n\nContinue importing?',
     'options.io.importFooter': '\n\n(API Key not in import scope, please enter manually)',
-    'options.io.importCpKeyCleared': '\n\nThe custom model API endpoint was changed to {url}. For your security, the existing custom model API Key was cleared — please verify the endpoint and enter the key again',
+    'options.io.importCpKeyCleared': '\n\nThe custom model API endpoint was changed to {url}. For your security, the existing custom model API Key and custom request headers were cleared — please verify the endpoint and enter them again',
     'options.io.importFailed': 'Import failed: {error}',
 
     // ── options reset ─────────────────────────────────────
@@ -2655,7 +2662,7 @@
     'options.cp.tempHint': 'Leave blank to omit the temperature parameter. Some reasoning models accept only their own default and fail outright if one is sent',
     'options.cp.timeoutLabel': 'API timeout (seconds)',
     'options.cp.timeoutHint': 'Maximum wait time per API request. Local LLMs (Ollama, etc.) may need 120-300 seconds for cold start model loading; commercial APIs usually don\'t need changes',
-    'options.cp.advSummary': 'Advanced: thinking effort / segment markers / timeout / custom body',
+    'options.cp.advSummary': 'Advanced: thinking effort / segment markers / timeout / custom body / headers',
     'options.cp.thinkingLabel': 'Thinking effort',
     'options.cp.thinkingAuto': 'Auto (use provider default)',
     'options.cp.thinkingOff': 'Off',
@@ -2667,6 +2674,8 @@
     'options.cp.strongMarkerHint.html': 'Local quantized models (e.g. gemma-4 quantized) often mistranslate the default "<code>«1»</code> <code>«2»</code>" segment markers as "N1, N2", leaking into the translation. When enabled, switches to <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> format which weak models won\'t mistranslate; cost is ~7 extra tokens per segment per batch (input + output, double overhead). Commercial APIs (OpenRouter / Groq, etc.) don\'t need this option, but enabling it does no harm',
     'options.cp.extraBodyLabel': 'Custom request body extra params (JSON, overrides thinking effort above)',
     'options.cp.extraBodyHint.html': 'Content is deep-merged into the chat.completions request body. Uses: (1) force-override the auto-generated "thinking effort" settings above; (2) add provider-specific params (e.g. OpenRouter\'s <code>top_k</code> / <code>min_p</code>, Anthropic\'s <code>metadata</code>). Format errors log a warn on the Debug tab and are ignored; translation continues',
+    'options.cp.extraHeadersLabel': 'Custom request headers (JSON, optional)',
+    'options.cp.extraHeadersHint.html': 'For endpoints that require extra headers in addition to the API Key. They are sent with every request (translation, glossary, and the Test button above). Enter a JSON object, e.g. <code>{"x-session-id":"my-stable-id"}</code>; if you set <code>Authorization</code> here, it replaces the one generated from the API Key above. Because the values may contain secrets, they are stored only in your browser locally, like the API Key: not synced across devices and never written to the exported settings file',
 
     'options.cp.pricing.heading': 'Model pricing (USD)',
     'options.cp.pricing.intro.html': 'Fill in input / output prices; the system estimates translation cost for the completion notification and "Usage history" tab. <strong>0</strong> means do not display cost (token count is still recorded)',
@@ -3342,6 +3351,7 @@
     'error.bg.testTimeout': '接続がタイムアウトしました。URL とネットワーク状態を確認してください',
     'error.bg.testNonJsonGemini': 'HTTP {status} ですが、応答が有効な JSON ではありません。ネットワーク環境（社内 proxy / ログインページ）がリクエストを横取りしている可能性があります。別のネットワークでお試しください',
     'error.bg.testNonJsonCustom': 'HTTP {status} ですが、Provider の応答が有効な JSON ではありません。Base URL が正しい OpenAI-compatible API endpoint か確認してください',
+    'error.bg.customHeadersInvalid': 'カスタム request headers の形式に誤りがあるため、テストは送信されませんでした：{msg}',
     'error.bg.network': 'ネットワークエラー：{msg}',
     'error.bg.timeout': 'ネットワークエラー：タイムアウト（{ms}ms）',
     'error.bg.readTimeout': 'ネットワークエラー：レスポンス読み取りタイムアウト（{ms}ms）',
@@ -3570,7 +3580,7 @@
     'options.io.importOk': 'インポート成功',
     'options.io.importEndpointConfirm': 'この設定ファイルはカスタムモデルの API エンドポイントを次のように変更します：\n{url}\n\n現在のエンドポイント：\n{from}\n\n以後、カスタムモデルで翻訳するとページの内容は新しいアドレスに送信されます。この設定ファイルの提供元を信頼できる場合のみ続行してください。\n\nインポートを続行しますか？',
     'options.io.importFooter': '\n\n（API Key はインポート対象外のため、ご自分で入力してください）',
-    'options.io.importCpKeyCleared': '\n\nカスタムモデルの API エンドポイントが {url} に変更されたため、安全のため既存のカスタムモデル API Key を削除しました。エンドポイントを確認のうえ再入力してください',
+    'options.io.importCpKeyCleared': '\n\nカスタムモデルの API エンドポイントが {url} に変更されたため、安全のため既存のカスタムモデル API Key とカスタム request headers を削除しました。エンドポイントを確認のうえ再入力してください',
     'options.io.importFailed': 'インポート失敗：{error}',
 
     // ── options デフォルト復元 ─────────────────────────────
@@ -3723,7 +3733,7 @@
     'options.cp.tempHint': '空欄にすると temperature パラメータを送信しません。一部の推論モデルは既定値しか受け付けず、指定すると失敗します',
     'options.cp.timeoutLabel': 'API タイムアウト（秒）',
     'options.cp.timeoutHint': 'API リクエストごとの最大待機時間。ローカル LLM（Ollama など）はコールドスタート時にモデルの読み込みに 120〜300 秒かかる場合があります。ハードウェアに合わせて調整してください。商用 API は通常変更不要です',
-    'options.cp.advSummary': '詳細：思考強度 / セグメント番号 / タイムアウト / カスタム body',
+    'options.cp.advSummary': '詳細：思考強度 / セグメント番号 / タイムアウト / カスタム body / headers',
     'options.cp.thinkingLabel': '思考強度',
     'options.cp.thinkingAuto': '自動（provider のデフォルト使用）',
     'options.cp.thinkingOff': 'オフ',
@@ -3735,6 +3745,8 @@
     'options.cp.strongMarkerHint.html': 'ローカル量子化モデル（gemma-4 量子化版など）はデフォルトの「<code>«1»</code> <code>«2»</code>」セグメント番号を「N1、N2」と誤訳して訳文に漏らすことがあります。有効にすると <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 形式に変更され、弱いモデルでも誤訳しません。コストは 1 バッチあたり約 7 tokens の追加（input + output 双方）。商用 API（OpenRouter / Groq など）には不要ですが、有効化しても害はありません',
     'options.cp.extraBodyLabel': 'カスタム request body 追加パラメータ（JSON、上の思考強度を上書き）',
     'options.cp.extraBodyHint.html': '内容は chat.completions request body にディープマージされ、(1) 上の「思考強度」が自動生成する設定の強制上書き、(2) provider 専用パラメータ追加（OpenRouter の <code>top_k</code> / <code>min_p</code>、Anthropic の <code>metadata</code> など）に使用できます。形式エラーは Debug タブで warn ログを記録して無視され、翻訳は中断されません',
+    'options.cp.extraHeadersLabel': 'カスタム request headers（JSON、任意）',
+    'options.cp.extraHeadersHint.html': 'API Key に加えて追加の header を要求するエンドポイント向けです。すべてのリクエスト（翻訳、用語集、上の「テスト」ボタン）に付与されます。JSON オブジェクトで入力します（例：<code>{"x-session-id":"my-stable-id"}</code>）。ここで <code>Authorization</code> を指定すると、上の API Key から生成されるものを置き換えます。値に秘密情報が含まれる可能性があるため、API Key と同様にブラウザのローカルにのみ保存され、デバイス間で同期されず、エクスポートした設定ファイルにも書き込まれません',
 
     'options.cp.pricing.heading': 'モデル料金（USD）',
     'options.cp.pricing.intro.html': 'input / output 単価を入力すると、システムが翻訳コストを推定して翻訳完了通知と「使用量履歴」タブに表示します。<strong>0</strong> でコスト非表示（token 数は記録されます）',
@@ -4410,6 +4422,7 @@
     'error.bg.testTimeout': '연결 시간이 초과되었습니다. 주소와 네트워크 상태를 확인하세요',
     'error.bg.testNonJsonGemini': 'HTTP {status}이지만 응답이 유효한 JSON이 아닙니다. 네트워크 환경(회사 proxy / 로그인 페이지)이 요청을 가로챘을 수 있습니다. 다른 네트워크에서 다시 시도하세요',
     'error.bg.testNonJsonCustom': 'HTTP {status}이지만 Provider 응답이 유효한 JSON이 아닙니다. Base URL이 올바른 OpenAI-compatible API endpoint인지 확인하세요',
+    'error.bg.customHeadersInvalid': '커스텀 request headers 형식이 잘못되어 테스트를 보내지 않았습니다: {msg}',
     'error.bg.network': '네트워크 오류: {msg}',
     'error.bg.timeout': '네트워크 오류: 시간 초과 ({ms}ms)',
     'error.bg.readTimeout': '네트워크 오류: 응답 읽기 시간 초과 ({ms}ms)',
@@ -4638,7 +4651,7 @@
     'options.io.importOk': '가져오기 성공',
     'options.io.importEndpointConfirm': '이 설정 파일은 사용자 지정 모델의 API 엔드포인트를 다음으로 변경합니다:\n{url}\n\n현재 엔드포인트:\n{from}\n\n이후 사용자 지정 모델로 번역하면 웹페이지 내용이 새 주소로 전송됩니다. 이 설정 파일의 출처를 신뢰하는 경우에만 계속하세요.\n\n가져오기를 계속하시겠습니까?',
     'options.io.importFooter': '\n\n(API Key는 가져오기 범위에 포함되지 않으므로 직접 입력하세요)',
-    'options.io.importCpKeyCleared': '\n\n사용자 지정 모델 API 엔드포인트가 {url}(으)로 변경되어 보안을 위해 기존 사용자 지정 모델 API Key를 삭제했습니다. 엔드포인트를 확인한 후 다시 입력하세요',
+    'options.io.importCpKeyCleared': '\n\n사용자 지정 모델 API 엔드포인트가 {url}(으)로 변경되어 보안을 위해 기존 사용자 지정 모델 API Key와 커스텀 request headers를 삭제했습니다. 엔드포인트를 확인한 후 다시 입력하세요',
     'options.io.importFailed': '가져오기 실패: {error}',
 
     // ── options 기본값 복원 ─────────────────────────────
@@ -4791,7 +4804,7 @@
     'options.cp.tempHint': '비워 두면 temperature 파라미터를 보내지 않습니다. 일부 추론 모델은 자체 기본값만 허용하며 값을 보내면 실패합니다',
     'options.cp.timeoutLabel': 'API 타임아웃 (초)',
     'options.cp.timeoutHint': 'API 요청당 최대 대기 시간. 로컬 LLM(Ollama 등)은 콜드 스타트 시 모델 로딩에 120~300초가 필요할 수 있으며, 하드웨어에 맞게 조정하세요. 상용 API는 보통 변경할 필요 없습니다',
-    'options.cp.advSummary': '고급: 사고 강도 / 단락 번호 / 타임아웃 / 커스텀 body',
+    'options.cp.advSummary': '고급: 사고 강도 / 단락 번호 / 타임아웃 / 커스텀 body / headers',
     'options.cp.thinkingLabel': '사고 강도',
     'options.cp.thinkingAuto': '자동 (provider 기본값 사용)',
     'options.cp.thinkingOff': '꺼짐',
@@ -4803,6 +4816,8 @@
     'options.cp.strongMarkerHint.html': '로컬 양자화 모델 (gemma-4 양자화 버전 등)은 기본 "<code>«1»</code> <code>«2»</code>" 단락 번호를 "N1, N2"로 오역하여 번역문에 누출시킵니다. 활성화 후 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 형식으로 변경되어 약한 모델도 오역하지 않습니다; 대가는 배치당 약 7 tokens 추가 (input + output 양쪽 비용). 상용 API (OpenRouter / Groq 등)에는 불필요하지만, 활성화해도 무해',
     'options.cp.extraBodyLabel': '커스텀 request body 추가 매개변수 (JSON, 위의 사고 강도 덮어쓰기)',
     'options.cp.extraBodyHint.html': '내용은 chat.completions request body에 깊이 병합되어 (1) 위 "사고 강도"가 자동 생성한 설정의 강제 덮어쓰기; (2) provider 전용 매개변수 추가 (OpenRouter의 <code>top_k</code> / <code>min_p</code>, Anthropic의 <code>metadata</code> 등)에 사용 가능. 형식 오류는 Debug 탭에 warn 로그를 기록하고 무시되며 번역은 중단되지 않음',
+    'options.cp.extraHeadersLabel': '커스텀 request headers (JSON, 선택)',
+    'options.cp.extraHeadersHint.html': 'API Key 외에 추가 header를 요구하는 엔드포인트용입니다. 모든 요청(번역, 용어집, 위의 "테스트" 버튼)에 함께 전송됩니다. JSON 객체로 입력하세요(예: <code>{"x-session-id":"my-stable-id"}</code>). 여기에 <code>Authorization</code>을 직접 지정하면 위 API Key로 생성되는 값을 대체합니다. 값에 비밀 정보가 포함될 수 있으므로 API Key와 마찬가지로 브라우저 로컬에만 저장되며, 기기 간 동기화되지 않고 내보낸 설정 파일에도 기록되지 않습니다',
 
     'options.cp.pricing.heading': '모델 가격 (USD)',
     'options.cp.pricing.intro.html': 'input / output 단가를 입력하면 시스템이 번역 비용을 추정하여 번역 완료 알림과 "사용 기록" 탭에 표시합니다. <strong>0</strong>은 비용 미표시 (token 수는 여전히 기록됨)',
@@ -5477,6 +5492,7 @@
     'error.bg.testTimeout': 'Tiempo de conexión agotado. Comprueba la URL y tu red',
     'error.bg.testNonJsonGemini': 'HTTP {status}, pero la respuesta no es JSON válido. Puede que tu red (proxy corporativo / página de inicio de sesión) esté interceptando la solicitud; prueba con otra red',
     'error.bg.testNonJsonCustom': 'HTTP {status}, pero la respuesta del proveedor no es JSON válido. Comprueba que la Base URL sea un endpoint de API compatible con OpenAI correcto',
+    'error.bg.customHeadersInvalid': 'Los request headers personalizados no son válidos; no se envió la prueba: {msg}',
     'error.bg.network': 'Error de red: {msg}',
     'error.bg.timeout': 'Error de red: tiempo agotado ({ms} ms)',
     'error.bg.readTimeout': 'Error de red: tiempo de lectura de la respuesta agotado ({ms} ms)',
@@ -5705,7 +5721,7 @@
     'options.io.importOk': 'Importación correcta',
     'options.io.importEndpointConfirm': 'Este archivo de ajustes cambia el endpoint de la API del modelo personalizado a:\n{url}\n\nEndpoint actual:\n{from}\n\nA partir de ahora, el contenido de las páginas traducidas con el modelo personalizado se enviará a la nueva dirección. Continúa solo si confías en el origen de este archivo.\n\n¿Continuar con la importación?',
     'options.io.importFooter': '\n\n(La API Key no se importa, debes introducirla manualmente)',
-    'options.io.importCpKeyCleared': '\n\nEl endpoint de la API del modelo personalizado cambió a {url}. Por seguridad se borró la API Key anterior del modelo personalizado: verifica el endpoint e introdúcela de nuevo',
+    'options.io.importCpKeyCleared': '\n\nEl endpoint de la API del modelo personalizado cambió a {url}. Por seguridad se borraron la API Key anterior del modelo personalizado y los request headers personalizados: verifica el endpoint e introdúcelos de nuevo',
     'options.io.importFailed': 'Error de importación: {error}',
 
     // ── options restaurar valores predeterminados ─────────────────────────────
@@ -5858,7 +5874,7 @@
     'options.cp.tempHint': 'Déjalo en blanco para no enviar el parámetro temperature. Algunos modelos de razonamiento solo aceptan su valor por defecto y fallan si se envía uno',
     'options.cp.timeoutLabel': 'Tiempo de espera de API (segundos)',
     'options.cp.timeoutHint': 'Tiempo máximo de espera por solicitud API. Los LLM locales (Ollama, etc.) pueden necesitar 120-300 segundos para la carga inicial del modelo; las API comerciales normalmente no requieren cambios',
-    'options.cp.advSummary': 'Avanzado: nivel de razonamiento / numeración de segmentos / tiempo de espera / body personalizado',
+    'options.cp.advSummary': 'Avanzado: nivel de razonamiento / numeración de segmentos / tiempo de espera / body y headers personalizados',
     'options.cp.thinkingLabel': 'Nivel de razonamiento',
     'options.cp.thinkingAuto': 'Automático (usa el predeterminado del proveedor)',
     'options.cp.thinkingOff': 'Desactivado',
@@ -5870,6 +5886,8 @@
     'options.cp.strongMarkerHint.html': 'Los modelos cuantizados locales (como variantes cuantizadas de gemma-4) traducen mal los marcadores "<code>«1»</code> <code>«2»</code>" como "N1, N2" y se cuelan en la traducción. Si lo activas, se cambia a formato <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> y los modelos débiles no lo traducen mal; el coste son ~7 tokens extra por lote (input + output, doble). Las APIs comerciales (OpenRouter / Groq, etc.) no necesitan esta opción, pero activarla no causa problemas',
     'options.cp.extraBodyLabel': 'Parámetros extra del request body (JSON, sobrescribe el nivel de razonamiento de arriba)',
     'options.cp.extraBodyHint.html': 'El contenido se fusiona en profundidad con el body del request a chat.completions y sirve para: (1) sobrescribir lo que genere automáticamente el "Nivel de razonamiento" de arriba; (2) añadir parámetros específicos del proveedor (por ejemplo <code>top_k</code> / <code>min_p</code> de OpenRouter, <code>metadata</code> de Anthropic). Los errores de formato se registran como warning en la pestaña Debug y se ignoran; la traducción no se interrumpe',
+    'options.cp.extraHeadersLabel': 'Request headers personalizados (JSON, opcional)',
+    'options.cp.extraHeadersHint.html': 'Para endpoints que exigen headers adicionales además de la API Key. Se envían en cada petición (traducción, glosario y el botón «Probar» de arriba). Introduce un objeto JSON, p. ej. <code>{"x-session-id":"my-stable-id"}</code>; si defines <code>Authorization</code> aquí, sustituye al generado a partir de la API Key de arriba. Como los valores pueden contener secretos, se guardan solo localmente en tu navegador, igual que la API Key: no se sincronizan entre dispositivos ni se escriben en el archivo de ajustes exportado',
 
     'options.cp.pricing.heading': 'Precios del modelo (USD)',
     'options.cp.pricing.intro.html': 'Introduce el precio de input / output y el sistema estimará el coste de la traducción y lo mostrará en la notificación de fin y en la pestaña "Historial de uso". Pon <strong>0</strong> si no quieres ver el coste (los tokens se siguen contabilizando)',
@@ -6544,6 +6562,7 @@
     'error.bg.testTimeout': 'Délai de connexion dépassé. Vérifiez l’URL et votre réseau',
     'error.bg.testNonJsonGemini': 'HTTP {status}, mais la réponse n’est pas du JSON valide. Votre réseau (proxy d’entreprise / page de connexion) intercepte peut-être la requête ; essayez un autre réseau',
     'error.bg.testNonJsonCustom': 'HTTP {status}, mais la réponse du fournisseur n’est pas du JSON valide. Vérifiez que la Base URL est bien un endpoint d’API compatible OpenAI',
+    'error.bg.customHeadersInvalid': 'Les request headers personnalisés sont invalides ; le test n\'a pas été envoyé : {msg}',
     'error.bg.network': 'Erreur réseau : {msg}',
     'error.bg.timeout': 'Erreur réseau : délai dépassé ({ms} ms)',
     'error.bg.readTimeout': 'Erreur réseau : délai de lecture de la réponse dépassé ({ms} ms)',
@@ -6772,7 +6791,7 @@
     'options.io.importOk': 'Import réussi',
     'options.io.importEndpointConfirm': 'Ce fichier de paramètres remplace le point de terminaison de l\'API du modèle personnalisé par :\n{url}\n\nPoint de terminaison actuel :\n{from}\n\nDésormais, le contenu des pages traduites avec le modèle personnalisé sera envoyé à la nouvelle adresse. Ne continuez que si vous faites confiance à la source de ce fichier.\n\nPoursuivre l\'import ?',
     'options.io.importFooter': '\n\n(L\'API Key n\'est pas dans le périmètre de l\'import, veuillez la saisir vous-même)',
-    'options.io.importCpKeyCleared': '\n\nLe point de terminaison de l\'API du modèle personnalisé a été remplacé par {url}. Par sécurité, l\'API Key existante du modèle personnalisé a été effacée : vérifiez le point de terminaison puis saisissez-la à nouveau',
+    'options.io.importCpKeyCleared': '\n\nLe point de terminaison de l\'API du modèle personnalisé a été remplacé par {url}. Par sécurité, l\'API Key existante du modèle personnalisé et les request headers personnalisés ont été effacés : vérifiez le point de terminaison puis saisissez-les à nouveau',
     'options.io.importFailed': 'Échec de l\'import : {error}',
 
     // ── options restauration des paramètres par défaut ─────────────────────────────
@@ -6925,7 +6944,7 @@
     'options.cp.tempHint': 'Laissez vide pour ne pas envoyer le paramètre temperature. Certains modèles de raisonnement n\'acceptent que leur valeur par défaut et échouent si une valeur est envoyée',
     'options.cp.timeoutLabel': 'Délai d\'expiration API (secondes)',
     'options.cp.timeoutHint': 'Temps d\'attente maximum par requête API. Les LLM locaux (Ollama, etc.) peuvent nécessiter 120 à 300 secondes pour le chargement initial du modèle ; les API commerciales n\'ont généralement pas besoin de modification',
-    'options.cp.advSummary': 'Avancé : intensité de raisonnement / numérotation des segments / délai / body personnalisé',
+    'options.cp.advSummary': 'Avancé : intensité de raisonnement / numérotation des segments / délai / body et headers personnalisés',
     'options.cp.thinkingLabel': 'Intensité de raisonnement',
     'options.cp.thinkingAuto': 'Automatique (utilise le défaut du fournisseur)',
     'options.cp.thinkingOff': 'Désactivé',
@@ -6937,6 +6956,8 @@
     'options.cp.strongMarkerHint.html': 'Les modèles quantifiés locaux (comme les versions quantifiées de gemma-4) traduisent par erreur les numéros de segment « <code>«1»</code> <code>«2»</code> » par défaut en « N1, N2 », fuitant dans la traduction. Une fois activé, on passe au format <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> que les modèles faibles ne traduisent pas mal ; le coût est environ 7 tokens supplémentaires par lot (input + output, double). Les API commerciales (OpenRouter / Groq, etc.) n\'ont pas besoin de cette option, mais l\'activer ne nuit pas',
     'options.cp.extraBodyLabel': 'Paramètres supplémentaires du request body (JSON, écrase l\'intensité de raisonnement ci-dessus)',
     'options.cp.extraBodyHint.html': 'Le contenu est fusionné en profondeur dans le body de la requête chat.completions, utile pour : (1) écraser de force ce que l\'« Intensité de raisonnement » génère automatiquement ; (2) ajouter des paramètres spécifiques au fournisseur (par exemple <code>top_k</code> / <code>min_p</code> d\'OpenRouter, <code>metadata</code> d\'Anthropic). Les erreurs de format sont enregistrées en warning dans l\'onglet Debug et ignorées ; la traduction n\'est pas interrompue',
+    'options.cp.extraHeadersLabel': 'Request headers personnalisés (JSON, facultatif)',
+    'options.cp.extraHeadersHint.html': 'Pour les endpoints qui exigent des headers supplémentaires en plus de l\'API Key. Ils sont envoyés avec chaque requête (traduction, glossaire et bouton « Tester » ci-dessus). Saisissez un objet JSON, par ex. <code>{"x-session-id":"my-stable-id"}</code> ; si vous définissez <code>Authorization</code> ici, il remplace celui généré à partir de l\'API Key ci-dessus. Comme les valeurs peuvent contenir des secrets, elles sont stockées uniquement en local dans votre navigateur, comme l\'API Key : non synchronisées entre appareils et jamais écrites dans le fichier de paramètres exporté',
 
     'options.cp.pricing.heading': 'Tarification du modèle (USD)',
     'options.cp.pricing.intro.html': 'Saisissez le prix d\'input / output, le système estime le coût de la traduction et l\'affiche dans la notification de fin et dans l\'onglet « Historique d\'utilisation ». Mettez <strong>0</strong> pour ne pas afficher le coût (les tokens restent comptabilisés)',
@@ -7611,6 +7632,7 @@
     'error.bg.testTimeout': 'Zeitüberschreitung der Verbindung. Bitte URL und Netzwerk prüfen',
     'error.bg.testNonJsonGemini': 'HTTP {status}, aber die Antwort ist kein gültiges JSON. Möglicherweise fängt das Netzwerk (Firmen-Proxy / Login-Seite) die Anfrage ab; bitte ein anderes Netzwerk versuchen',
     'error.bg.testNonJsonCustom': 'HTTP {status}, aber die Provider-Antwort ist kein gültiges JSON. Bitte prüfen, ob die Base URL ein korrekter OpenAI-kompatibler API-Endpoint ist',
+    'error.bg.customHeadersInvalid': 'Die benutzerdefinierten Request-Header sind ungültig; der Test wurde nicht gesendet: {msg}',
     'error.bg.network': 'Netzwerkfehler: {msg}',
     'error.bg.timeout': 'Netzwerkfehler: Zeitüberschreitung ({ms} ms)',
     'error.bg.readTimeout': 'Netzwerkfehler: Zeitüberschreitung beim Lesen der Antwort ({ms} ms)',
@@ -7839,7 +7861,7 @@
     'options.io.importOk': 'Import erfolgreich',
     'options.io.importEndpointConfirm': 'Diese Einstellungsdatei ändert den API-Endpunkt des benutzerdefinierten Modells auf:\n{url}\n\nAktueller Endpunkt:\n{from}\n\nKünftig werden Seiteninhalte, die mit dem benutzerdefinierten Modell übersetzt werden, an die neue Adresse gesendet. Nur fortfahren, wenn Sie der Quelle dieser Datei vertrauen.\n\nImport fortsetzen?',
     'options.io.importFooter': '\n\n(API Key ist nicht im Import enthalten, bitte selbst eingeben)',
-    'options.io.importCpKeyCleared': '\n\nDer API-Endpunkt des benutzerdefinierten Modells wurde auf {url} geändert. Aus Sicherheitsgründen wurde der bisherige API Key des benutzerdefinierten Modells gelöscht – bitte Endpunkt prüfen und den Key erneut eingeben',
+    'options.io.importCpKeyCleared': '\n\nDer API-Endpunkt des benutzerdefinierten Modells wurde auf {url} geändert. Aus Sicherheitsgründen wurden der bisherige API Key des benutzerdefinierten Modells und die benutzerdefinierten Request-Header gelöscht – bitte Endpunkt prüfen und beides erneut eingeben',
     'options.io.importFailed': 'Import fehlgeschlagen: {error}',
 
     // ── options Standard wiederherstellen ─────────────────────────────
@@ -7992,7 +8014,7 @@
     'options.cp.tempHint': 'Leer lassen, um den Parameter temperature nicht zu senden. Manche Reasoning-Modelle akzeptieren nur ihren eigenen Standardwert und schlagen sonst fehl',
     'options.cp.timeoutLabel': 'API-Zeitlimit (Sekunden)',
     'options.cp.timeoutHint': 'Maximale Wartezeit pro API-Anfrage. Lokale LLMs (Ollama usw.) benötigen beim Kaltstart möglicherweise 120–300 Sekunden zum Laden des Modells; kommerzielle APIs erfordern normalerweise keine Änderung',
-    'options.cp.advSummary': 'Erweitert: Denkstärke / Segmentnummerierung / Zeitlimit / eigener Body',
+    'options.cp.advSummary': 'Erweitert: Denkstärke / Segmentnummerierung / Zeitlimit / eigener Body / Header',
     'options.cp.thinkingLabel': 'Denkstärke',
     'options.cp.thinkingAuto': 'Automatisch (Provider-Standard verwenden)',
     'options.cp.thinkingOff': 'Aus',
@@ -8004,6 +8026,8 @@
     'options.cp.strongMarkerHint.html': 'Lokale quantisierte Modelle (z. B. quantisierte Versionen von gemma-4) übersetzen die Standard-Segmentnummern „<code>«1»</code> <code>«2»</code>" fälschlicherweise als „N1, N2" und lassen sie in die Übersetzung durchsickern. Wenn aktiviert, wird auf das Format <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> umgestellt, das schwächere Modelle nicht falsch übersetzen; der Preis sind ca. 7 zusätzliche Tokens pro Batch (Input + Output, doppelter Aufwand). Kommerzielle APIs (OpenRouter / Groq usw.) brauchen diese Option nicht, das Aktivieren schadet aber nicht',
     'options.cp.extraBodyLabel': 'Zusätzliche Parameter im Request-Body (JSON, überschreibt obige Denkstärke)',
     'options.cp.extraBodyHint.html': 'Der Inhalt wird tief in den chat.completions-Request-Body gemerged und kann verwendet werden, um: (1) die von der „Denkstärke" oben automatisch generierten Einstellungen erzwungen zu überschreiben; (2) provider-spezifische Parameter hinzuzufügen (z. B. OpenRouters <code>top_k</code> / <code>min_p</code>, Anthropics <code>metadata</code>). Formatfehler werden im Debug-Reiter als Warnung geloggt und ignoriert; die Übersetzung wird nicht unterbrochen',
+    'options.cp.extraHeadersLabel': 'Benutzerdefinierte Request-Header (JSON, optional)',
+    'options.cp.extraHeadersHint.html': 'Für Endpoints, die zusätzlich zum API Key weitere Header verlangen. Sie werden bei jeder Anfrage mitgesendet (Übersetzung, Glossar und der „Testen“-Button oben). JSON-Objekt eingeben, z. B. <code>{"x-session-id":"my-stable-id"}</code>; wenn du hier <code>Authorization</code> setzt, ersetzt er den aus dem obigen API Key erzeugten. Da die Werte Geheimnisse enthalten können, werden sie wie der API Key nur lokal in deinem Browser gespeichert: nicht geräteübergreifend synchronisiert und nie in die exportierte Einstellungsdatei geschrieben',
 
     'options.cp.pricing.heading': 'Modellpreise (USD)',
     'options.cp.pricing.intro.html': 'Trage die Input- / Output-Preise ein, das System schätzt damit die Übersetzungskosten und zeigt sie in der Übersetzungsabschluss-Benachrichtigung und im Reiter „Nutzungsverlauf" an. <strong>0</strong> bedeutet keine Kostenanzeige (Token-Anzahl wird trotzdem aufgezeichnet)',

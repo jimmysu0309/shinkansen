@@ -834,7 +834,7 @@
       </label>
 
       <details>
-        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;" data-i18n="options.cp.advSummary">進階：思考強度 / 段序號 / 逾時 / 自訂 body</summary>
+        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;" data-i18n="options.cp.advSummary">進階：思考強度 / 段序號 / 逾時 / 自訂 body / headers</summary>
 
         <label>
           <span data-i18n="options.cp.thinkingLabel">思考強度</span>
@@ -876,6 +876,16 @@
             （2）加 provider 專屬參數（例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、
             Anthropic 的 <code>metadata</code>）。
             格式錯誤會在 Debug 分頁 log 一條 warn 並忽略，翻譯不會中斷
+          </small>
+        </label>
+
+        <label style="margin-top: 8px;">
+          <span data-i18n="options.cp.extraHeadersLabel">自訂 request headers（JSON，選填）</span>
+          <textarea id="cp-extra-headers-json" rows="3" placeholder='e.g. {"x-session-id":"my-stable-id"}' spellcheck="false" autocomplete="off" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
+          <small class="muted" data-i18n-html="options.cp.extraHeadersHint.html">
+            給「除了 API Key 之外還要求額外 header」的端點使用，每個請求都會帶上（翻譯、術語表、上方的「測試」按鈕皆同）。
+            格式為 JSON 物件，例如 <code>{"x-session-id":"my-stable-id"}</code>；若在這裡自行填了 <code>Authorization</code>，會取代上方 API Key 產生的那一個。
+            內容可能含金鑰，所以與 API Key 一樣只存在你的瀏覽器本機：不跨裝置同步，也不會寫進匯出的設定檔
           </small>
         </label>
 

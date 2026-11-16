@@ -261,6 +261,8 @@ export function sanitizeImport(raw, _t, SC = globalThis.__SKShortcuts) {
     if (Object.prototype.hasOwnProperty.call(cp, 'apiKey')) {
       warnings.push(_t('options.import.warningCpApiKey'));
     }
+    // extraHeadersJson（自訂 request headers，issue #78）刻意不收：值可能是憑證，比照 apiKey
+    // 不在匯入範圍——匯出檔本來就不含它，匯入檔若帶了也不寫入
     if (Object.keys(cpClean).length > 0) clean.customProvider = cpClean;
   }
 

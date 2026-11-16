@@ -296,7 +296,7 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
    - **Base URL**: e.g., `https://openrouter.ai/api/v1` (Shinkansen automatically appends `/chat/completions`)
    - **Model ID**: e.g., `anthropic/claude-sonnet-4-5` (OpenRouter format is `provider/model`)
    - **API Key**: the Bearer token for that provider; click "Test" to verify connectivity instantly (~1 token cost)
-3. Optional: translation prompt (leave blank = use the built-in compact default, identical to Gemini's) / temperature (leave blank = omit the parameter entirely, for reasoning models that only accept their own default) / thinking level and advanced JSON parameter pass-through / model pricing input & output rates and cache-hit discount (USD per 1M tokens; 0 = don't display cost)
+3. Optional: translation prompt (leave blank = use the built-in compact default, identical to Gemini's) / temperature (leave blank = omit the parameter entirely, for reasoning models that only accept their own default) / thinking level and advanced JSON parameter pass-through / custom request headers (JSON, for endpoints that require extra headers besides the API Key, such as a session id or `api-key`) / model pricing input & output rates and cache-hit discount (USD per 1M tokens; 0 = don't display cost)
 4. Save
 5. In the "General settings" tab → "Translation shortcuts", change any preset's engine to "Custom model"
 6. Triggering that preset's shortcut now routes through your custom endpoint
@@ -306,7 +306,7 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
 - **Independent translation prompt**: custom models use their own translation prompt, not inherited from the Gemini tab
 - **Shared blocked-word list and custom glossary**: settings from those two tabs are auto-injected into the prompt end; custom models inherit them. Edit once, both engines apply.
 - **Cache partitioning**: the cache key includes a base URL hash — different endpoints with the same model name don't pollute each other
-- **API key not synced**: `customProvider.apiKey` lives only in your local browser — not synced across devices, not included in JSON export
+- **API key not synced**: `customProvider.apiKey` and the custom request headers live only in your local browser — not synced across devices, not included in JSON export
 - **429 retry with backoff built in**: when a provider returns 429 (quota limit), requests are automatically retried with backoff
 - **Strong segment markers** (on by default): local quantized models (e.g. gemma-4 quantized) tend to mistranslate the compact `«1» «2»` segment markers as natural language ("N1, N2") and leak them into the output. With this on, multi-segment batches use `<<<SHINKANSEN_SEG-N>>>` instead — weak models don't mistranslate it. Cost: about 7 extra tokens per segment. Commercial APIs (OpenRouter / Groq, etc.) typically don't need this, but leaving it on is harmless
 
@@ -346,7 +346,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.6.9 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.6.10 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

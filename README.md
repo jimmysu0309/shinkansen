@@ -296,7 +296,7 @@ Shinkansen 有兩層快取機制，各自在不同階段省錢：
    - **Base URL**：例如 `https://openrouter.ai/api/v1`（系統會自動接 `/chat/completions`）
    - **模型 ID**：例如 `anthropic/claude-sonnet-4-5`（OpenRouter 的格式為 `provider/model`）
    - **API Key**：對應 provider 的 Bearer token，按右側「測試」按鈕可立即驗證連線（耗 ~1 token）
-3. 選填：翻譯 Prompt（留空 = 用內建簡短預設，預設值與 Gemini 相同）/ Temperature（留空 = 請求不送這個參數，給只接受自家預設值的推理模型用）/ 推理（thinking）等級與進階參數 JSON 透傳 / 模型計價 input / output 單價與快取命中折扣（USD / 1M tokens；填 0 = 不顯示費用）
+3. 選填：翻譯 Prompt（留空 = 用內建簡短預設，預設值與 Gemini 相同）/ Temperature（留空 = 請求不送這個參數，給只接受自家預設值的推理模型用）/ 推理（thinking）等級與進階參數 JSON 透傳 / 自訂 request headers（JSON，給除了 API Key 還要求額外 header 的端點，例如 session id 或 `api-key`）/ 模型計價 input / output 單價與快取命中折扣（USD / 1M tokens；填 0 = 不顯示費用）
 4. 儲存
 5. 到「一般設定」分頁的「翻譯快速鍵」，把任一組預設引擎改為「自訂模型」
 6. 對該 preset 的快速鍵翻譯時就會走自訂模型端點
@@ -306,7 +306,7 @@ Shinkansen 有兩層快取機制，各自在不同階段省錢：
 - **翻譯 Prompt 獨立**：自訂模型用獨立的翻譯 prompt，不繼承 Gemini 分頁的設定
 - **禁用詞清單與固定術語表共用**：兩個分頁的設定會自動注入到 prompt 末端，自訂模型也享有，改一處兩邊同步生效
 - **快取分區**：cache key 自帶 base URL hash，不同端點的同 model name 不會互相污染
-- **API Key 不上雲**：`customProvider.apiKey` 只存在你的瀏覽器本機，不跨裝置同步、也不在匯出 JSON 範圍內
+- **API Key 不上雲**：`customProvider.apiKey` 與自訂 request headers 只存在你的瀏覽器本機，不跨裝置同步、也不在匯出 JSON 範圍內
 - **429 退避重試內建**：provider 回 429（配額限制）時自動退避重試
 - **強化段序號標記**（預設開啟）：本機量化模型（如 gemma-4 量化版）會把預設的緊湊段序號「«1» «2»」當自然語言誤譯為「N1、N2」洩漏到譯文。開啟後改用 `<<<SHINKANSEN_SEG-N>>>` 格式弱模型不會誤翻；代價是每段批次多約 7 tokens。商用 API（OpenRouter / Groq 等）通常用不到此選項，但開啟也無害
 
@@ -350,7 +350,7 @@ LLM 在翻譯長文時，前後文的人名、地名翻譯容易出現不一致�
 
 ## 目前版本
 
-v2.6.9 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
+v2.6.10 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 
 ## 授權
 
