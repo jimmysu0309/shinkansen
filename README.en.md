@@ -10,6 +10,8 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
+- **X (Twitter) video subtitles** — videos with auto-generated captions are translated into your target language when played with sound, styled and positioned like X's native captions; muted autoplay videos in the timeline are skipped and cost nothing.
+- **Custom models work with more endpoints** — choose Chat Completions or Responses as the API format, and add custom request headers for services that need more than an API key.
 - **Hover translation** — hold a modifier key and rest the cursor on a paragraph to translate just that one, in place; pick the modifier and bilingual / monolingual display under "Translation shortcuts" in Settings (off by default).
 - **Glossary scoped to a site path** — enter "domain/path" to apply a domain glossary only under that path, so sections or series on one site can each have their own; path rules override site-wide rules.
 - **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with multi-finger touch translate and the floating button, ready out of the box.
@@ -19,8 +21,6 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 - Added **EPUB book translation** — a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters; download the translated book in monolingual or bilingual format.
 - Added **TXT / Markdown / HTML file** translation — the translated file keeps the same format as the original; glossary import also accepts **CSV** (two columns: source,translation).
 - **Respects pages' do-not-translate markup** — text marked `translate="no"` / `notranslate` stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.
-- **Several YouTube subtitle fixes** — auto-caption timing corrected, translations appear 1 second earlier, no stale captions when switching videos, and youtube.com/live/ links get subtitle translation.
-- **A large batch of translation-quality and stability fixes** — translating right after automatic Chinese-variant conversion no longer just restores the converted segments, truncated outputs are no longer cached, translations are better protected against front-end frameworks reverting them, and long-page detection is about 30% faster.
 
 ## Why Shinkansen
 
@@ -28,7 +28,7 @@ Most web translation tools forward every page you read to a third-party server, 
 
 ## Performance
 
-We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over a thousand paragraphs): memory usage *dropped* (Chinese is more compact than English), the page stayed responsive throughout (95%+ of the time is spent waiting for the API; the browser does almost no extra work), and once translation finished the DOM was clean with no leftover artifacts. Translating the entire page with the cheapest model costs under USD $0.08; translated content is automatically cached, so re-opening the same page is free. Full numbers in [PERFORMANCE.md](docs/PERFORMANCE.md).
+We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (nearly a thousand paragraphs): the DOM node count actually *dropped* (Chinese is more compact than English) while memory grew by only about 8 MB, the page stayed responsive throughout (95%+ of the time is spent waiting for the API; the browser does almost no extra work), and once translation finished the DOM was clean with no leftover artifacts. Translating the entire page with the cheapest model costs under USD $0.08; translated content is automatically cached, so re-opening the same page is free. Full numbers in [PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Features
 
@@ -36,7 +36,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Instant Translation**: see the page start turning into your target language within 1 second of pressing translate — no waiting for the entire batch to come back before any text is updated (Gemini only).
 - **Preserves page layout**: text is replaced in place; fonts, sizes, colors, and links are kept; bold and italics survive untouched.
 - **Respects the page's "do not translate" markup**: names, codes, and snippets that site authors mark with the standard HTML `translate="no"` or `notranslate` are preserved as-is and never sent to the API; icons drawn with icon fonts (words like `star` or `menu` in the HTML) are not translated into text, so they don't disappear.
-- **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the toolbar icon menu. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
+- **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the toolbar icon menu. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / wavy underline / no mark) for the translated paragraphs.
 - **Three translation engines**: Gemini (AI translation, best quality, requires API key) + Google Translate (unofficial free endpoint, no API key, faster) + Custom model — switch freely depending on what you're reading.
 - **Free Chinese variant conversion**: when your target language is Traditional or Simplified Chinese, content in the opposite variant is converted locally with built-in OpenCC dictionaries — no API key, no API calls, works offline, with phrase-level Taiwan-convention mapping (软件→軟體, 视频→影片, 内存→記憶體). "Auto-convert Chinese variants" is on by default — pages in the opposite variant convert automatically on load, no manual trigger needed; you can turn it off in the toolbar icon menu (unchecking reverts the current page immediately); on mixed-language pages only the Chinese paragraphs use the free conversion while the rest go through your chosen engine. Variant conversion always replaces the original text in place — even in bilingual mode you never get the Simplified and Traditional versions stacked; bilingual display applies only to paragraphs that are actually translated.
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
@@ -57,7 +57,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Edit translations**: after a page is translated, you can directly edit the translated text on the page — handy for cleaning up before printing PDFs or letting Readwise Reader pick it up.
 - **Send to Instapaper**: save the whole translated article to your own Instapaper account via the Instapaper API — what gets saved is the translation you see, not the original. Unlike Instapaper's standard save (which stores the URL and lets the server re-fetch the original article), Shinkansen uploads the translated content directly, so you can re-read the translated version later.
 - **Cross-tab translation continuity**: after triggering translation in tab A, opening a link from A in a new tab B (with Cmd-click on Mac / Ctrl-click on Windows / `target="_blank"` / `window.open`) automatically translates B with the same preset. Multi-level: B opens C, C inherits too.
-- **Auto-translate specific sites**: add domains to a whitelist in settings; pages on those sites auto-translate on load (the toast displays an `[Auto]` prefix to indicate the whitelist trigger).
+- **Auto-translate specific sites**: add domains to a whitelist in settings; pages on those sites auto-translate on load (the toast displays an `[Auto-translate]` prefix to indicate the whitelist trigger).
 - **Restore original**: press the same shortcut to switch back to the original — toggle anytime.
 - **Google Docs translation**: detects Google Docs and opens a translatable read-only view automatically (details below).
 
@@ -72,6 +72,14 @@ Go to the [Chrome Web Store listing](https://chromewebstore.google.com/detail/sh
 Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shinkansen/) and click "Add to Firefox".
 
 > ⚠ **Firefox users**: the default shortcuts `Alt+S` / `Alt+A` / `Alt+D` are intercepted by Firefox or other extensions (Firefox uses `Alt+S` for the History menu, `Alt+D` to focus the address bar; `Alt+A` is commonly grabbed by extensions like Save Page WE). Chrome has no such conflict, but on Firefox these defaults likely won't trigger translation. Go to `about:addons` → gear icon → "Manage Extension Shortcuts" and rebind Shinkansen's three shortcuts to non-conflicting combinations (e.g., `Ctrl+Shift+S`). The "Translation shortcuts" section in settings will also display this warning when running on Firefox.
+
+**Safari (macOS)**
+
+Install from the [Mac App Store listing](https://apps.apple.com/tw/app/shinkansen-translator/id6768586680), open the Shinkansen app and follow the on-screen steps to enable Shinkansen under Safari's "Settings → Extensions" and allow it on websites.
+
+**Safari (iOS / iPadOS)**
+
+Install from the [App Store listing](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298), open the app and follow the first-launch guide to enable the extension in Safari and enter your API key.
 
 **Developer build (load unpacked)**
 
@@ -91,7 +99,7 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
 
 ## Usage
 
-- **Manual translation**: click the toolbar icon → "Translate this page"
+- **Manual translation**: click the toolbar icon → "Translate page"
 - **Translation shortcuts** (three presets):
     - `Option+S` / `Alt+S` — defaults to Gemini Flash Lite (cheapest, recommended for daily use)
     - `Option+A` (macOS) / `Alt+A` — defaults to Gemini 3.8 Flash (best quality)
@@ -100,11 +108,11 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
     - Press any shortcut while translated → restore original
     - Press any shortcut while translating → cancel translation
 - **iOS / iPadOS touch gesture**: on iPhone / iPad Safari, tap the page with several fingers to translate (same as the primary preset shortcut — tap again to restore or cancel); a multi-finger long-press uses the secondary preset. Four fingers by default; switch to three for one-handed use on iPhone under "Touch gesture translate" in settings, or turn it off there if it triggers accidentally — the floating button and external-keyboard shortcuts are unaffected.
-- **YouTube subtitle translation**: open a video with captions (manual or auto-generated), make sure CC is on, click the toolbar icon → toggle "YouTube subtitle translation" on
-- **Auto-translate sites**: add domains to the "Auto-translate sites" list in settings; pages on those sites translate on load (toast shows the `[Auto]` prefix)
+- **YouTube subtitle translation**: open a video with captions (manual or auto-generated) and make sure CC is on — subtitle translation starts automatically by default; to pause or restart it, click the toolbar icon → toggle "YouTube subtitle translation"
+- **Auto-translate sites**: add domains to the "Auto-translate sites" list in settings; pages on those sites translate on load (toast shows the `[Auto-translate]` prefix)
 - **Custom glossary**: add term mappings in the "Glossary" tab; translations are forced to use your preferred renderings
 - **Glossary consistency**: enable it from the toolbar icon menu or settings page; long-form translations build a glossary first to keep proper nouns consistent
-- **Edit translations**: after translating, click "Edit translations" in the toolbar icon menu to directly edit the translated text on the page. While editing, a floating toolbar at the bottom of the page lets you undo changes paragraph by paragraph or finish editing
+- **Edit translations**: after translating, click "Edit translation" in the toolbar icon menu to directly edit the translated text on the page. While editing, a floating toolbar at the bottom of the page lets you undo changes paragraph by paragraph or finish editing
 
 ## Translation shortcuts and presets
 
@@ -116,7 +124,7 @@ Shinkansen offers three customizable translation presets, each bound to a shortc
 | `Alt+A` / `Option+A` | Gemini | 3.8 Flash | Important articles, quality first |
 | `Alt+D` / `Option+D` | Google Translate | — | No API key needed, fast, free |
 
-**All customizable in the "Translation shortcuts" section of settings**: each preset's engine (Gemini / Google Translate), model (Flash Lite / Flash / Pro / custom), and display label can be changed. The keybindings themselves can also be customized right there — click a preset's key field and press the combination you want (on Chrome use `⌥ Option` or `⌃ Control`; on Safari — Mac / iPad / iPhone — use `⌃ Control`, since iOS Safari doesn't pass `⌥` / `⌘` to web pages; the settings page shows the available keys per browser automatically; press `ESC` to cancel). Works with iPad external keyboards too. You can also adjust the built-in default keys at `chrome://extensions/shortcuts` (Chrome) or `about:addons` (Firefox).
+**All customizable in the "Translation shortcuts" section of settings**: each preset's engine (Gemini / Google Translate / Custom model), Gemini model (Flash Lite / Flash family), and display label can be changed. The keybindings themselves can also be customized right there — click a preset's key field and press the combination you want (on Chrome use `⌥ Option` or `⌃ Control`; on Safari — Mac / iPad / iPhone — use `⌃ Control`, since iOS Safari doesn't pass `⌥` / `⌘` to web pages; the settings page shows the available keys per browser automatically; press `ESC` to cancel). Works with iPad external keyboards too. You can also adjust the built-in default keys at `chrome://extensions/shortcuts` (Chrome) or `about:addons` (Firefox).
 
 **Unified cancel / restore behavior**:
 - Press any shortcut while translating → cancel immediately
@@ -140,7 +148,7 @@ When to use it: bulk browsing of English forums, news, product pages, etc. — c
 
 Google Docs renders text via Canvas, so generic web translation extensions can't access the content. Shinkansen detects Google Docs and uses the following flow:
 
-1. On a Google Docs editing page, press `Option+S` (or click "Translate this page" in the toolbar icon menu)
+1. On a Google Docs editing page, press `Option+S` (or click "Translate page" in the toolbar icon menu)
 2. Shinkansen opens the same document in a new tab in "mobile reading view" (mobilebasic)
 3. Once the new tab loads, translation starts automatically — no second keystroke needed
 
@@ -190,7 +198,7 @@ Click the Shinkansen toolbar icon → "Translate document" to open a dedicated t
 - **Timing and structure preserved**: cue numbers, timestamps, the WEBVTT header, NOTE / STYLE blocks, and ASS style sections and `Comment:` lines are left untouched — the translated file has the same cues and timing as the original
 - **Inline tags preserved**: `<i>` / `<b>` / `<c>` tags, speaker tags, and ASS `{\an8}` positioning and `\N` line breaks are restored as-is
 - **No trailing period**: each translated cue ends without a "。" (question and exclamation marks are kept), matching YouTube subtitle translation; it can be turned off in the translation settings, applies to both preview and download, and turning it off restores the AI's original output (only when the target language is Chinese)
-- **Monolingual or bilingual subtitles**: "Translated content" lets you choose translation-only cues, or bilingual cues with the translation on top and the original below (great for side-by-side viewing or language learning); switching re-downloads without re-translating
+- **Monolingual or bilingual subtitles**: "Subtitle content" lets you choose translation-only cues, or bilingual cues with the translation on top and the original below (great for side-by-side viewing or language learning); switching re-downloads without re-translating
 - **Same pipeline**: book-wide glossary (consistent name translations across the whole film), post-translation consistency scan, preview editing, and automatic session saving all carry over
 - **Player-friendly file names**: downloads as `<filename>.<lang>.<ext>` (e.g. `Show S01E01.srt` → `Show S01E01.zh.srt`), so VLC / Plex / Jellyfin pick it up next to the video and label the language automatically; the bilingual version is `<filename>.dual.<lang>.<ext>`
 - **Encoding auto-detected, always saved as UTF-8**: subtitle files in legacy encodings (Big5 / GBK / Shift_JIS / EUC-KR …) load without mojibake, and the translated file is always written as UTF-8 (also applies to TXT / Markdown / HTML files)
@@ -201,7 +209,7 @@ Document translation shares the same translation cache and usage tracking as web
 
 Open a YouTube video with captions (manual or auto-generated), make sure CC is on, click the Shinkansen toolbar icon — the menu will show a "YouTube subtitle translation" toggle. Turn it on. Captions are progressively replaced with your target language (Traditional Chinese by default) without affecting playback; styling matches native YouTube captions exactly. Captions already in the target language are not sent for translation.
 
-If you watch a lot of English YouTube content, enable auto-translate in the "YouTube subtitles" tab in settings — translation will start automatically whenever you open a video, no manual toggling.
+Subtitle auto-translate is on by default — translation starts automatically whenever you open a video, no manual toggling; if you prefer to start it yourself, turn it off in the "YouTube subtitles" tab in settings.
 
 On YouTube video pages, the toolbar icon menu shows a "Caption size" dropdown to enlarge the translated captions (100%–200%). It works on both desktop and mobile; on iPhone / iPad it also scales the captions shown by the iOS system player in fullscreen
 
@@ -251,13 +259,13 @@ Subtitle translation shares the same billing logic and usage tracking as web tra
 - The video must have captions (manually uploaded or auto-generated)
 - Subtitle translation uses an independent system prompt, customizable in the "YouTube subtitles" tab
 - If CC is off, Shinkansen turns it on for you (only once per video session, to respect manual user opt-out afterward)
-- After switching videos, you'll need to toggle the switch on again (or enable auto-translate)
+- If auto-translate is turned off, you'll need to toggle the switch on again after switching videos
 
 ## Translation cache and cost calculation
 
 Shinkansen has two layers of caching, each saving you money at a different stage:
 
-**Layer 1: Local translation cache** — translated paragraphs are stored in `chrome.storage.local`, keyed by SHA-1 hash of the original text. Next time the same text is encountered (even on a different page), the translation is served directly — no API call, no cost. The key also includes the target language, model, glossary and blocked-word lists, and custom prompt, so changed settings never hit stale translations. Extension updates do **not** clear the cache; when an update changes translation output, the release notes say so and recommend clearing it once from the settings page. The cache evicts least-recently-used entries when it fills up (LRU).
+**Layer 1: Local translation cache** — translated paragraphs are stored in `chrome.storage.local`, keyed by SHA-1 hash of the original text. Next time the same text is encountered (even on a different page), the translation is served directly — no API call, no cost. The key also includes the target language, model, glossary and blocked-word lists, and custom prompt, so changed settings never hit stale translations. Extension updates do **not** clear the cache; when an update changes translation output, the release notes say so and recommend clearing it once with "Clear cache" in the toolbar icon menu. The cache evicts least-recently-used entries when it fills up (LRU).
 
 **Layer 2: Gemini implicit context cache** — done server-side by Google. When consecutive requests share a common prompt prefix (e.g., system prompt + glossary), Gemini caches that prefix; cached input tokens are billed at a discount (90% off for the Gemini 3 series, i.e. 10% of the normal rate; per-model discounts are shown in the settings pricing table). In practice Gemini 3 only caches complete prefix blocks of roughly 4,096 tokens or more; a web-translation batch carries a fixed prefix of about 2,400 tokens, so the hit rate shown for ordinary web pages is usually 0% — large glossaries or document translation are more likely to hit. No setup needed — Shinkansen automatically reads the cache hit data from API responses.
 
@@ -266,9 +274,9 @@ Shinkansen has two layers of caching, each saving you money at a different stage
 - Line 1: `{billed tokens} tokens (XX% hit)` — billed token count, plus the Gemini implicit cache hit rate (cached input tokens as % of all input tokens)
 - Line 2: `${cost} (XX% saved)` — actual amount paid, plus how much was saved relative to no-cache pricing
 
-If every paragraph hits the local cache (e.g., re-translating a page you just translated), the toast shows "All cache hits · no charge".
+If every paragraph hits the local cache (e.g., re-translating a page you just translated), the toast shows "All cache hits · nothing billed this run".
 
-Every translation's token usage, cost, and cache hit rate is logged and viewable in the "Usage" tab in settings.
+Every translation's token usage, cost, and cache hit rate is logged and viewable in the "Usage history" tab in settings.
 
 ## Custom glossary
 
@@ -278,7 +286,7 @@ The glossary has two layers: "Global" applies to all sites; "Domain-specific" on
 
 The custom glossary takes priority over auto glossary consistency. During translation, glossary instructions are placed at the very end of the system prompt — the position the LLM weights most heavily. After editing the glossary, no need to manually clear the cache; Shinkansen invalidates old entries automatically.
 
-The custom glossary and the term blacklist are stored locally in your browser (not subject to the browser sync quota of 8KB per item, so hundreds of entries fit) and are not synced across devices; to move them to another device use "Export / Import settings" on the options page — the backup file includes both lists.
+The custom glossary and the blocked-word list are stored locally in your browser (not subject to the browser sync quota of 8KB per item, so hundreds of entries fit) and are not synced across devices; to move them to another device use "Import / Export settings" on the settings page — the backup file includes both lists.
 
 ## Custom models (OpenAI-compatible endpoints)
 
@@ -291,14 +299,14 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
 
 ### Setup steps
 
-1. Go to the "Custom models" tab in settings
+1. Go to the "Custom model" tab in settings
 2. Fill the three required fields:
    - **Base URL**: e.g., `https://openrouter.ai/api/v1` (Shinkansen automatically appends `/chat/completions`, or `/responses` when the API format is set to Responses)
    - **Model ID**: e.g., `anthropic/claude-sonnet-4-5` (OpenRouter format is `provider/model`)
    - **API Key**: the Bearer token for that provider; click "Test" to verify connectivity instantly (~1 token cost)
 3. Optional: translation prompt (leave blank = use the built-in compact default, identical to Gemini's) / temperature (leave blank = omit the parameter entirely, for reasoning models that only accept their own default) / thinking level and advanced JSON parameter pass-through / API format (Chat Completions by default; choose Responses when the endpoint or model only offers the Responses API, and requests go to `/responses` instead) / custom request headers (JSON, for endpoints that require extra headers besides the API Key, such as a session id or `api-key`) / model pricing input & output rates and cache-hit discount (USD per 1M tokens; 0 = don't display cost)
 4. Save
-5. In the "General settings" tab → "Translation shortcuts", change any preset's engine to "Custom model"
+5. In the "General" tab → "Translation shortcuts", change any preset's engine to "Custom model"
 6. Triggering that preset's shortcut now routes through your custom endpoint
 
 ### Design notes
@@ -326,15 +334,15 @@ Firefox's **HTTPS-Only Mode** (`about:preferences#privacy`, scroll to the bottom
 
 AI models occasionally produce wording you'd rather avoid in the translation — for example, when translating to British English you may want "colour" instead of "color"; when translating to European Portuguese you may want "telemóvel" instead of "celular"; or your in-house style guide may forbid certain words entirely ("utilize" should always be "use", "leverage" should always be "use", etc.). The blocked-word list lets you give the model an explicit rule per word: never use the left column; always use the right column.
 
-The list works for any target language. Each entry has three columns — blocked word (required), replacement (optional), and a free-text note (optional, useful for documenting why an entry exists). Only the blocked word is required: fill in a replacement to force a specific word, or leave it blank to simply forbid the word and let the model rephrase naturally on its own — handy when you just dislike a word but can't pin down a fixed replacement (e.g. a cliché). You can edit, add to, or fully replace the list in the "Blocked-word list" settings tab, or click "Restore defaults" to revert. By default the list is empty; some targets ship with prepopulated defaults curated for that language's typical AI failure modes. Switching between targets only auto-resets the list if your current entries still match the previous target's defaults — your hand-edited entries are preserved.
+The list works for any target language. Each entry has three columns — blocked word (required), replacement (optional), and a free-text note (optional, useful for documenting why an entry exists). Only the blocked word is required: fill in a replacement to force a specific word, or leave it blank to simply forbid the word and let the model rephrase naturally on its own — handy when you just dislike a word but can't pin down a fixed replacement (e.g. a cliché). You can edit, add to, or fully replace the list in the "Forbidden terms" settings tab, or click "Restore default list" to revert. By default the list is empty; only the Traditional Chinese (Taiwan) target ships with 26 prepopulated entries. Switching between targets only auto-resets the list if your current entries still match the previous target's defaults — your hand-edited entries are preserved.
 
 After every translation response, Shinkansen scans the output and logs a `forbidden-term-leak` warning in the Debug tab (with original and translation snippets) for any blocked words that slipped through — letting you investigate model leakage without **automatically rewriting the translation**, following the design principle "language preferences belong in the prompt, not in post-hoc regex replace", which avoids damaging legitimate quoted uses in the translation.
 
 ## Translate opening only
 
-For users sensitive to token usage who want to preview before committing to a full read, the Gemini tab has a "Saving mode" section with a "Translate opening only" toggle. When enabled, only the first N paragraphs (in DOM order, default 25, range 5–50) are translated; the rest are skipped. Significantly reduces token usage.
+For users sensitive to token usage who want to preview before committing to a full read, the Gemini tab has a "Save mode" section with a "Translate only article opening" toggle. When enabled, only the first N paragraphs (in DOM order, default 25, range 5–50) are translated; the rest are skipped. Significantly reduces token usage.
 
-**Progressive experience**: translate the opening → if you decide to keep reading → a "Translate remaining paragraphs" button appears in the bottom-right toast → click to run the full translation. Already-translated paragraphs hit the local cache fast path (0 tokens / ~9 ms); only the remainder hits the API. The toggle setting itself isn't modified, so the next page you open also runs in saving mode.
+**Progressive experience**: translate the opening → if you decide to keep reading → a "Translate the rest" button appears in the bottom-right toast → click to run the full translation. Already-translated paragraphs hit the local cache fast path (0 tokens / ~9 ms); only the remainder hits the API. The toggle setting itself isn't modified, so the next page you open also runs in saving mode.
 
 Off by default. Especially useful for blogs / news / Substack — most articles can be evaluated within the first 5–10 paragraphs. Less useful for sites like Wikipedia / GitHub where the DOM front-matter is nav / chrome rather than main content (you'd end up translating the navigation instead of the article).
 
@@ -361,9 +369,9 @@ licenses, and license file locations are listed in
 [THIRD-PARTY-NOTICES.md](shinkansen/THIRD-PARTY-NOTICES.md):
 
 - **PDF.js** (Mozilla, Apache 2.0) — PDF parsing / page rendering for the document translation feature
-- **pdf-lib** (@cantoo/pdf-lib, MIT) — bilingual PDF reconstruction on download
+- **pdf-lib** (@cantoo/pdf-lib, MIT) — translated PDF reconstruction on download
 - **fontkit** (pdf-fontkit, MIT) — font parsing / subsetting backend used by pdf-lib
-- **Chart.js** (Chart.js Contributors, MIT) — charts on the usage breakdown tab
+- **Chart.js** (Chart.js Contributors, MIT) — charts on the usage history tab
 - **fflate** (Arjun Barrett, MIT) — EPUB unzip / repack for the translated book
 - **@mozilla/readability** (Mozilla / Arc90, Apache 2.0) — article extraction before sending to Instapaper
 - **opencc-js / OpenCC dictionaries** (nk2028 / BYVoid, MIT / Apache 2.0) — local Simplified ↔ Traditional Chinese conversion

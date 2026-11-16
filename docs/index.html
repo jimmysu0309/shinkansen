@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Shinkansen｜極速、私密、高品質的網頁翻譯體驗</title>
-  <meta name="description" content="快速、私密的網頁、文件與 YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。">
+  <meta name="description" content="快速、私密的網頁、文件與 YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器">
 
   <!-- Open Graph / Social Preview -->
   <meta property="og:type" content="website">
@@ -377,7 +377,7 @@
     <div class="container">
       <img src="logo-full.svg" alt="Shinkansen" class="hero-icon">
       <h1>Shinkansen<span class="hero-sep">｜</span><span class="hero-subtitle" data-i18n="hero.subtitle">極速、私密、高品質的網頁翻譯體驗</span></h1>
-      <p class="tagline" data-i18n="hero.tagline">你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的電腦直接呼叫 Google Gemini 翻譯，不經過任何第三方</p>
+      <p class="tagline" data-i18n="hero.tagline">你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的瀏覽器直接呼叫 Google Gemini 翻譯，不經過任何第三方</p>
       <div class="btn-row">
         <a href="https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg" class="btn-download">
           <span data-i18n="btn.cws.text">從 Chrome Web Store 安裝</span>
@@ -409,6 +409,8 @@
     <div class="container">
       <h2 data-i18n="recent.heading">近期重大更新</h2>
       <ul class="recent-updates">
+        <li data-i18n="recent.xSubtitle"><strong>X（Twitter）影片字幕翻譯</strong>，帶自動產生字幕的影片開聲音播放時自動翻成目標語言，樣式與位置同 X 原生字幕；時間軸上靜音自動播放的影片不翻、不花費用</li>
+        <li data-i18n="recent.customEndpoints"><strong>自訂模型相容更多端點</strong>，API 格式可選 Chat Completions 或 Responses，並可加自訂 request headers，給除了 API Key 還要求額外 header 的服務使用</li>
         <li data-i18n="recent.hover"><strong>懸停翻譯</strong>，按住修飾鍵、游標停在段落上即只翻譯那一段，譯文原地注入；設定頁「翻譯快速鍵」區塊可選修飾鍵與雙語 / 單語顯示，預設關閉</li>
         <li data-i18n="recent.glossaryPath"><strong>網域術語表可限定網站路徑</strong>，輸入「網域/路徑」只對該路徑之下的頁面生效，同一網站不同專欄或作品可各用一份，路徑規則覆蓋整站規則</li>
         <li data-i18n="recent.ios"><strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配多指觸控翻譯與懸浮按鈕，開箱即用</li>
@@ -417,8 +419,6 @@
         <li data-i18n="recent.pdf"><strong>PDF 翻譯放寬上限並修正版面</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，修正雙欄短行、彩色底、旋轉頁、段落溢出等版面問題，簡體 / 日文 / 韓文譯文字型用到才下載</li>
         <li data-i18n="recent.epub">新增 <strong>EPUB 電子書翻譯</strong>，全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版</li>
         <li data-i18n="recent.docfiles">新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）</li>
-        <li data-i18n="recent.tokens"><strong>網頁翻譯更省</strong>，每批容量翻倍，同一頁的 API 請求數減半、input token 省約三成，速度不變；YouTube 自動字幕的 AI 分句改用精簡傳輸格式，費用約減半</li>
-        <li data-i18n="recent.opencc"><strong>簡繁自動互轉預設開啟</strong>，簡體（或繁體）網頁載入即走內建字典本地轉換，不需 API Key、離線可用；不需要可在工具列圖示選單關閉</li>
         <li data-i18n="recent.notranslate"><strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字</li>
       </ul>
     </div>
@@ -427,9 +427,9 @@
   <!-- Privacy -->
   <div class="container">
     <div class="privacy-hero">
-      <h2 data-i18n="privacy.heading">為什麼做 Shinkansen?</h2>
+      <h2 data-i18n="privacy.heading">為什麼做 Shinkansen？</h2>
       <p data-i18n="privacy.intro1">既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光</p>
-      <p data-i18n="privacy.intro2">Shinkansen 的出發點就是保護您的隱私：</p>
+      <p data-i18n="privacy.intro2">Shinkansen 的出發點就是保護你的隱私：</p>
       <div class="privacy-points">
         <div class="privacy-point" data-i18n="privacy.point1">
           <strong>資料不外傳</strong>：翻譯請求直連 Google Gemini（選 Google Translate 或自訂模型時則直連你選的服務端點），不經過任何第三方伺服器
@@ -476,7 +476,7 @@
         </div>
         <div class="feature">
           <h3 data-i18n="feature.hover.title">懸停翻譯</h3>
-          <p data-i18n="feature.hover.body">按住修飾鍵（Shift / Option / Control 任選）、游標停在段落上就只翻那一段，譯文原地顯示；想先自己讀、只看部分內容時不用翻整頁。預設關閉，設定頁一鍵開啟</p>
+          <p data-i18n="feature.hover.body">按住修飾鍵（Shift / Option（Alt）/ Control 任選）、游標停在段落上就只翻那一段，譯文原地顯示；想先自己讀、只看部分內容時不用翻整頁。預設關閉，設定頁一鍵開啟</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.dual.title">雙語對照</h3>
@@ -492,7 +492,7 @@
         </div>
         <div class="feature">
           <h3 data-i18n="feature.gdocs.title">Google Docs 翻譯</h3>
-          <p data-i18n="feature.gdocs.body">打開 Google 文件按翻譯，自動切到可翻譯的閱讀版並翻譯整份，編輯模式下的動態畫面也能讀</p>
+          <p data-i18n="feature.gdocs.body">在 Google 文件按翻譯，自動在新分頁開啟可翻譯的閱讀版並翻譯整份；編輯畫面以 Canvas 繪製、一般翻譯工具讀不到的文件也能翻</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.youtube.title">YouTube 字幕翻譯</h3>
@@ -528,7 +528,7 @@
         </div>
         <div class="feature">
           <h3 data-i18n="feature.blocklist.title">禁用詞清單</h3>
-          <p data-i18n="feature.blocklist.body">可編輯的禁用詞清單（預設 26 條，例如視頻 / 軟件 / 數據），可只填禁用詞、或一併指定替換詞，明確要求 LLM 不要使用</p>
+          <p data-i18n="feature.blocklist.body">可編輯的禁用詞清單（目標為繁體中文時預設 26 條，例如視頻 / 軟件 / 數據），可只填禁用詞、或一併指定替換詞，明確要求 LLM 不要使用</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.preview.title">只翻文章開頭</h3>
@@ -613,12 +613,12 @@
       var I18N = {
         'zh-TW': {
           'meta.title': 'Shinkansen｜極速、私密、高品質的網頁翻譯體驗',
-          'meta.description': '快速、私密的網頁、文件與 YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。',
+          'meta.description': '快速、私密的網頁、文件與 YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器',
           'og.title': 'Shinkansen — 網頁翻譯擴充功能',
           'og.description': '用 AI 翻譯網頁、文件與 YouTube 字幕，保留原始排版，瀏覽資料不經過第三方伺服器',
 
           'hero.subtitle': '極速、私密、高品質的網頁翻譯體驗',
-          'hero.tagline': '你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的電腦直接呼叫 Google Gemini 翻譯，不經過任何第三方',
+          'hero.tagline': '你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的瀏覽器直接呼叫 Google Gemini 翻譯，不經過任何第三方',
           'btn.cws.text': '從 Chrome Web Store 安裝',
           'btn.cws.status': '已上架',
           'btn.amo.text': '從 Firefox Add-ons 安裝',
@@ -631,6 +631,8 @@
           'hero.sub': '開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="release-notes.html">更新紀錄</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
 
           'recent.heading': '近期重大更新',
+          'recent.xSubtitle': '<strong>X（Twitter）影片字幕翻譯</strong>，帶自動產生字幕的影片開聲音播放時自動翻成目標語言，樣式與位置同 X 原生字幕；時間軸上靜音自動播放的影片不翻、不花費用',
+          'recent.customEndpoints': '<strong>自訂模型相容更多端點</strong>，API 格式可選 Chat Completions 或 Responses，並可加自訂 request headers，給除了 API Key 還要求額外 header 的服務使用',
           'recent.hover': '<strong>懸停翻譯</strong>，按住修飾鍵、游標停在段落上即只翻譯那一段，譯文原地注入；設定頁「翻譯快速鍵」區塊可選修飾鍵與雙語 / 單語顯示，預設關閉',
           'recent.glossaryPath': '<strong>網域術語表可限定網站路徑</strong>，輸入「網域/路徑」只對該路徑之下的頁面生效，同一網站不同專欄或作品可各用一份，路徑規則覆蓋整站規則',
           'recent.ios': '<strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配多指觸控翻譯與懸浮按鈕，開箱即用',
@@ -639,13 +641,11 @@
           'recent.pdf': '<strong>PDF 翻譯放寬上限並修正版面</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，修正雙欄短行、彩色底、旋轉頁、段落溢出等版面問題，簡體 / 日文 / 韓文譯文字型用到才下載',
           'recent.epub': '新增 <strong>EPUB 電子書翻譯</strong>，全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版',
           'recent.docfiles': '新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）',
-          'recent.tokens': '<strong>網頁翻譯更省</strong>，每批容量翻倍，同一頁的 API 請求數減半、input token 省約三成，速度不變；YouTube 自動字幕的 AI 分句改用精簡傳輸格式，費用約減半',
-          'recent.opencc': '<strong>簡繁自動互轉預設開啟</strong>，簡體（或繁體）網頁載入即走內建字典本地轉換，不需 API Key、離線可用；不需要可在工具列圖示選單關閉',
           'recent.notranslate': '<strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字',
 
-          'privacy.heading': '為什麼做 Shinkansen?',
+          'privacy.heading': '為什麼做 Shinkansen？',
           'privacy.intro1': '既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光',
-          'privacy.intro2': 'Shinkansen 的出發點就是保護您的隱私：',
+          'privacy.intro2': 'Shinkansen 的出發點就是保護你的隱私：',
           'privacy.point1': '<strong>資料不外傳</strong>：翻譯請求直連 Google Gemini（選 Google Translate 或自訂模型時則直連你選的服務端點），不經過任何第三方伺服器',
           'privacy.point2': '<strong>設定留在本地</strong>：設定與快取只留在你的瀏覽器（設定可隨瀏覽器帳號同步），不會送到 Shinkansen 的伺服器——因為根本沒有伺服器',
           'privacy.point3': '<strong>原始碼完全公開</strong>：任何人都可以檢視程式碼，確認沒有後門',
@@ -662,7 +662,7 @@
           'feature.layout.title': '保留網頁排版',
           'feature.layout.body': '原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生頁面',
           'feature.hover.title': '懸停翻譯',
-          'feature.hover.body': '按住修飾鍵（Shift / Option / Control 任選）、游標停在段落上就只翻那一段，譯文原地顯示；想先自己讀、只看部分內容時不用翻整頁。預設關閉，設定頁一鍵開啟',
+          'feature.hover.body': '按住修飾鍵（Shift / Option（Alt）/ Control 任選）、游標停在段落上就只翻那一段，譯文原地顯示；想先自己讀、只看部分內容時不用翻整頁。預設關閉，設定頁一鍵開啟',
           'feature.dual.title': '雙語對照',
           'feature.dual.body': '原文與譯文並列顯示，一眼對照學語言或核對譯文；單語覆蓋與雙語對照可隨時切換',
           'feature.multilang.title': '多語翻譯 + 多語介面',
@@ -670,7 +670,7 @@
           'feature.docs.title': '文件翻譯',
           'feature.docs.body': 'PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔整份翻譯，全部在瀏覽器本機解析；PDF 保留原版面、Word 譯文寫回原檔、EPUB 與字幕可輸出雙語版',
           'feature.gdocs.title': 'Google Docs 翻譯',
-          'feature.gdocs.body': '打開 Google 文件按翻譯，自動切到可翻譯的閱讀版並翻譯整份，編輯模式下的動態畫面也能讀',
+          'feature.gdocs.body': '在 Google 文件按翻譯，自動在新分頁開啟可翻譯的閱讀版並翻譯整份；編輯畫面以 Canvas 繪製、一般翻譯工具讀不到的文件也能翻',
           'feature.youtube.title': 'YouTube 字幕翻譯',
           'feature.youtube.body': '看影片時字幕即時翻譯成你的目標語言，樣式跟原生字幕一致；自動產生的字幕先經 AI 依語意重新分句，從破碎的詞變完整句子。可選雙語對照、可放大字幕，直播連結、Google Drive 與 X（Twitter）影片也適用',
           'feature.spa.title': '跨頁自動延續翻譯',
@@ -688,7 +688,7 @@
           'feature.termconsist.title': '全文術語一致化',
           'feature.termconsist.body': '翻譯前先掃全文擷取人名與專有名詞對照表，同一個名字從頭到尾翻法一致，長篇報導、小說、人名多的文章最有感。預設關閉，設定頁開啟',
           'feature.blocklist.title': '禁用詞清單',
-          'feature.blocklist.body': '可編輯的禁用詞清單（預設 26 條，例如視頻 / 軟件 / 數據），可只填禁用詞、或一併指定替換詞，明確要求 LLM 不要使用',
+          'feature.blocklist.body': '可編輯的禁用詞清單（目標為繁體中文時預設 26 條，例如視頻 / 軟件 / 數據），可只填禁用詞、或一併指定替換詞，明確要求 LLM 不要使用',
           'feature.preview.title': '只翻文章開頭',
           'feature.preview.body': '先翻前幾段預覽再決定是否讀完整篇，大幅節省 token',
           'feature.cache.title': '翻譯快取',
@@ -737,6 +737,8 @@
           'hero.sub': 'Open source · <a href="https://github.com/jimmysu0309/shinkansen#readme">Documentation</a> · <a href="release-notes.en.html">Release notes</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
 
           'recent.heading': 'Recent major updates',
+          'recent.xSubtitle': '<strong>X (Twitter) video subtitles</strong> — videos with auto-generated captions are translated into your target language when played with sound, styled and positioned like X\'s native captions; muted autoplay videos in the timeline are skipped and cost nothing.',
+          'recent.customEndpoints': '<strong>Custom models work with more endpoints</strong> — choose Chat Completions or Responses as the API format, and add custom request headers for services that need more than an API key.',
           'recent.hover': '<strong>Hover translation</strong> — hold a modifier key and rest the cursor on a paragraph to translate just that one, in place; pick the modifier and bilingual / monolingual display under "Translation shortcuts" in Settings (off by default).',
           'recent.glossaryPath': '<strong>Glossary scoped to a site path</strong> — enter "domain/path" to apply a domain glossary only under that path, so sections or series on one site can each have their own; path rules override site-wide rules.',
           'recent.ios': '<strong>iOS / iPadOS version</strong> is now on the <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a> — Safari extension with multi-finger touch translate and the floating button, ready out of the box.',
@@ -745,8 +747,6 @@
           'recent.pdf': '<strong>PDF translation: higher limits and layout fixes</strong> — limits raised to 50 MB / 300 pages, translate a chosen page range, fixes for two-column short lines, colored backgrounds, rotated pages and overflowing paragraphs, and on-demand fonts for Simplified Chinese / Japanese / Korean output.',
           'recent.epub': 'Added <strong>EPUB book translation</strong> — a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters; download the translated book in monolingual or bilingual format.',
           'recent.docfiles': 'Added <strong>TXT / Markdown / HTML file</strong> translation — the translated file keeps the same format as the original; glossary import also accepts <strong>CSV</strong> (two columns: source,translation).',
-          'recent.tokens': '<strong>Cheaper web translation</strong> — batches are twice as large, so each page needs half the API requests and about a third fewer input tokens at the same speed; YouTube auto-caption AI segmentation uses a compact transport format, roughly halving its cost.',
-          'recent.opencc': '<strong>Automatic Simplified ↔ Traditional Chinese conversion is on by default</strong> — pages in the opposite variant convert locally on load with built-in dictionaries: no API key, works offline; turn it off in the toolbar icon menu.',
           'recent.notranslate': '<strong>Respects pages\' do-not-translate markup</strong> — text marked <code>translate="no"</code> / <code>notranslate</code> stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.',
 
           'privacy.heading': 'Why Shinkansen?',
@@ -768,7 +768,7 @@
           'feature.layout.title': 'Preserves page layout',
           'feature.layout.body': 'In-place text replacement keeps fonts, sizes, colors, and links intact — it looks like a native page in your language.',
           'feature.hover.title': 'Hover translation',
-          'feature.hover.body': 'Hold a modifier key (Shift, Option or Control) and rest the cursor on a paragraph to translate just that one, in place — read ahead or sample a page without translating all of it. Off by default; enable it in Settings.',
+          'feature.hover.body': 'Hold a modifier key (Shift, Option / Alt or Control) and rest the cursor on a paragraph to translate just that one, in place — read ahead or sample a page without translating all of it. Off by default; enable it in Settings.',
           'feature.dual.title': 'Bilingual side-by-side',
           'feature.dual.body': 'Original and translation shown together for language learning or proofreading. Switch between overlay and bilingual modes anytime.',
           'feature.multilang.title': 'Multi-language translation + UI',
@@ -776,7 +776,7 @@
           'feature.docs.title': 'Document translation',
           'feature.docs.body': 'PDF / EPUB / Word / TXT / Markdown / HTML / subtitle files, parsed entirely in your browser — PDFs keep their layout, Word output is written back into the original file, EPUB and subtitles can be exported bilingual.',
           'feature.gdocs.title': 'Google Docs translation',
-          'feature.gdocs.body': 'Press translate on a Google Doc and it switches to the readable view and translates the whole document — even docs that are otherwise locked in the dynamic editor canvas.',
+          'feature.gdocs.body': 'Press translate on a Google Doc and it opens the readable view in a new tab and translates the whole document — including docs whose canvas-rendered editor other translators cannot read.',
           'feature.youtube.title': 'YouTube subtitle translation',
           'feature.youtube.body': 'Captions are translated live into your target language, styled like native captions; auto-generated captions are first re-segmented by AI from broken fragments into full sentences. Optional bilingual display and larger subtitle size; live-stream links, Google Drive and X (Twitter) videos work too.',
           'feature.spa.title': 'Auto-translate across pages',
@@ -794,7 +794,7 @@
           'feature.termconsist.title': 'Document-wide term consistency',
           'feature.termconsist.body': 'Before translating, the whole article is scanned for names and proper nouns so each one is rendered the same way from start to finish — most noticeable in long reports, fiction and name-heavy pieces. Off by default; enable it in Settings.',
           'feature.blocklist.title': 'Blocked-word list',
-          'feature.blocklist.body': 'An editable list of words you don\'t want in the translation (26 defaults). Block a word on its own, or pair it with a required replacement — the LLM is explicitly instructed to comply.',
+          'feature.blocklist.body': 'An editable list of words you don\'t want in the translation (26 defaults when the target is Traditional Chinese). Block a word on its own, or pair it with a required replacement — the LLM is explicitly instructed to comply.',
           'feature.preview.title': 'Translate opening only',
           'feature.preview.body': 'Preview the first few paragraphs before deciding whether to translate the whole article — saves tokens.',
           'feature.cache.title': 'Translation cache',

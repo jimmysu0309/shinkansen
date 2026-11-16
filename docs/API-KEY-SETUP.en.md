@@ -30,7 +30,7 @@ The key appears immediately, in the form `AIzaSy...` (around 39 characters). Cli
 
 1. Click the Shinkansen toolbar icon → "Settings" (the settings page opens automatically right after installation)
 2. Paste the key into the "**Gemini API Key**" field. It is checked automatically as soon as you paste (you can also click "Test" to re-check), and settings save automatically
-3. Open any English web page and press Option+S (Mac) or Alt+S (Windows) to try a translation. On Firefox, Alt+S is taken by the browser itself — use "Translate this page" in the toolbar icon menu, or rebind the shortcut in about:addons
+3. Open any English web page and press Option+S (Mac) or Alt+S (Windows) to try a translation. On Firefox, Alt+S is taken by the browser itself — use "Translate page" in the toolbar icon menu, or rebind the shortcut in about:addons
 
 **iPhone / iPad**
 
@@ -44,7 +44,7 @@ The free tier has **RPD** (requests per day), **RPM** (requests per minute) and 
 1. Open [Google AI Studio](https://aistudio.google.com/)
 2. Click "**Billing**" in the left menu → "**Set up billing**"
 3. Enter your payment info (name, address, credit card)
-4. After submission, AI Studio automatically upgrades your project to Tier 1, raising RPD / RPM limits and unlocking advanced models like Pro
+4. After submission, AI Studio automatically upgrades your project to Tier 1, raising RPD / RPM limits and unlocking higher-tier models
 
 **Monthly spending cap**: Google enforces a $250 USD per-month cap on Tier 1 accounts. This is a safety mechanism to prevent unexpected runaway bills
 

@@ -1,12 +1,11 @@
 # Shinkansen — 規格文件（SPEC）
 
-> 一款專注於隱私的網頁翻譯 Chrome Extension。
+> 一款專注於隱私的網頁、文件與字幕翻譯瀏覽器擴充功能。
 
 - 文件版本：v2.0
 - 建立日期：2026-04-08
-- 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
-- 目標平台：Chrome（Manifest V3）
-- 作業系統：macOS 26
+- 最後更新：2026-11-16（v2.6.11，對照程式碼校正）
+- 目標平台：Chrome / Firefox / Safari（macOS）/ Safari（iOS・iPadOS），四平台共用同一份 source（Manifest V3）
 - 目前 Extension 版本：2.6.11
 
 ---
@@ -24,7 +23,7 @@
 
 ## 1. 專案目標
 
-Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁翻譯成台灣繁體中文，協助使用者流暢閱讀外語內容。名稱「新幹線」象徵快速、平穩、流暢的閱讀體驗。
+Shinkansen 是一款瀏覽器擴充功能（Chrome / Firefox / Safari），將外語網頁、文件與影片字幕翻譯成使用者選定的目標語言（八種，預設依瀏覽器語言推導，見 §3.9），協助使用者流暢閱讀外語內容。名稱「新幹線」象徵快速、平穩、流暢的閱讀體驗。
 
 授權：Elastic License 2.0 (ELv2)。允許查看、學習、修改與個人使用；禁止將本軟體（含改寫版本）作為託管或受管理的服務提供給第三方。完整條款見專案根目錄 `LICENSE`。
 
@@ -42,6 +41,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 雙語對照模式 | ✅ | 譯文以 wrapper 形式附在原段落後；4 種視覺標記；顯示模式同時決定字幕雙語與否 |
 | YouTube 字幕翻譯 | ✅ | 自動偵測字幕即時翻譯；自動以影片原始語言的字幕為翻譯來源（依自動字幕、原音音軌、影片標題判斷，避開 YouTube 自動翻譯與配音語言的字幕）；ASR（自動字幕）AI 分句，譯文字幕統一比語音提前 1 秒出現；時間視窗批次；雙語 overlay；字幕大小與顏色跟隨原生設定；行動版 `m.youtube.com` 支援；`/watch` 與 `/live/<id>`（直播 / 直播存檔分享連結）路徑皆支援 |
 | X（Twitter）影片字幕翻譯 | ✅ | X 自動產生字幕（auto-generated）的影片，開聲音播放時自動翻譯（時間軸上自動靜音播放不翻）；只翻播放位置往後約三分鐘的字幕，隨播放逐段補上，暫停 / 靜音 / 滑走即停；失敗的段落稍後自動重試（最多三次）；AI 分句後以譯文字幕軌顯示，外觀同 X 原生字幕；X 的 CC 鈕兼當譯文字幕開關；雙語跟隨顯示模式；引擎 / 模型沿用 YouTube 字幕設定；沒有字幕軌的影片不支援 |
+| Google Drive 影片字幕翻譯 | ✅ | Google Drive 影片播放頁的字幕翻譯；雙語跟隨顯示模式；工具列圖示選單有開關 |
 | SPA 支援 | ✅ | 站內導航自動偵測；動態載入內容補翻；譯文防覆蓋保護；續翻模式 |
 | 段落偵測 | ✅ | 結構化 DOM walker；技術性排除（code / 表單 / 站底 footer）；尊重頁面宣告的 `translate="no"` / `notranslate` 與 icon 字型；內容品味判斷交給 system prompt |
 | 佔位符序列化 | ✅ | 行內元素（連結 / 粗斜體等）與媒體在譯文中完整保留 |
@@ -50,14 +50,17 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 固定術語表 | ✅ | 全域 + 網域兩層（網域可加路徑前綴限定範圍，路徑規則覆蓋整站；設定頁清單對含路徑的網域標「（路徑範圍）」）；設定頁編輯；優先覆蓋 LLM 自動術語 |
 | 翻譯快取 | ✅ | `chrome.storage.local`；SHA-1 key；v1.8.45 起版本變更不清快取 |
 | 設定頁 | ✅ | 8 Tab：一般設定 / YouTube 字幕 / Gemini / 自訂模型 / 術語表 / 禁用詞清單 / 用量紀錄 / Debug；匯入匯出 |
-| Popup 面板 | ✅ | 翻譯/還原；快取/費用統計；自動翻譯開關；YouTube 字幕 toggle |
+| Popup 面板 | ✅ | 翻譯 / 還原；顯示模式與目標語言切換；編輯譯文；簡繁自動互轉、術語表一致化、自動翻譯與字幕翻譯開關；快取 / 費用統計；翻譯文件入口；詳見 §13 |
+| 編輯譯文 | ✅ | 翻譯完成後可直接在頁面上修改譯文，逐段復原；入口在工具列圖示選單（§13.1） |
 | Toast 提示 | ✅ | 進度條 + 計時器；可調透明度與位置；`toastAutoHide` 自動關閉選項 |
 | 懸浮按鈕 | ✅ | 頁面邊緣可拖移「新」icon；短按翻譯、長按選引擎或功能選單；可調透明度與大小；全平台預設開 |
+| 懸停翻譯 | ✅ | 按住修飾鍵、游標停在段落上只翻該段；修飾鍵與雙語 / 單語可選，預設關閉；詳見 §10.2.5 |
 | 用量紀錄 | ✅ | IndexedDB + 折線圖 + CSV 匯出；日期/模型/網域/文字搜尋篩選 |
 | Debug 工具 | ✅ | Log buffer 1000 筆 + 持久化 100 筆（跨 SW 重啟）；設定頁 Debug 分頁瀏覽 |
 | Google Docs 支援 | ✅ | 偵測編輯頁自動導向 `/mobilebasic` 閱讀版再翻譯 |
 | 自動語言偵測 | ✅ | 跳過已是目標語言的頁面；target-aware（各 target 跳對應源語言） |
 | 翻譯目標語言 | ✅ | 8 語：zh-TW / zh-CN / en / ja / ko / es / fr / de；詳見 §3.9 |
+| 自訂模型 | ✅ | OpenAI 相容端點（Chat Completions / Responses 兩種 API 格式、自訂 request headers）；可綁到任一組翻譯預設；詳見 §3.8 |
 | 自動翻譯網站 | ✅ | 網域白名單（支援萬用字元）；`autoTranslate` 總開關 |
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
@@ -66,7 +69,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ### 2.3 明確不做
 
-滑鼠懸停顯示、原文樣式客製、輸入框翻譯、劃詞翻譯、DeepL / Yandex 等第三方付費翻譯服務、影片字幕（YouTube / Google Drive / X 除外，已支援）、延遲載入、淺色/深色主題切換。
+不按修飾鍵的純滑鼠懸停即彈出譯文（按住修飾鍵的懸停翻譯已支援，見 §10.2.5）、原文樣式客製、輸入框翻譯、劃詞翻譯、DeepL / Yandex 等第三方付費翻譯服務、影片字幕（YouTube / Google Drive / X 除外，已支援）、延遲載入、淺色/深色主題切換。
 
 > 備注：v1.4.0 起已加入 Google Translate 非官方免費端點（Opt+D，不需 API Key），同時保留 Gemini（Opt+S）。Google 官方 Cloud Translation v2 API（付費）不在支援範圍內。
 
@@ -195,7 +198,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 擴充功能 UI 字串支援 8 語（與翻譯目標語種對齊）。UI 語言由獨立的 `settings.uiLanguage` 偏好控制，**跟翻譯目標解耦**——可以「英文介面 + 翻譯目標繁中」等任意組合。
 
 - `uiLanguage = 'auto'`（預設）：依 `navigator.language` 推導；或強制鎖任一語言
-- 自製 dict（`lib/i18n.js`，約 950 條 entry × 8 語，zh-TW 為 source of truth）而非 `chrome.i18n`（後者綁瀏覽器 locale 無法獨立切換）；缺 key 三層 fallback 保證不顯示空字串
+- 自製 dict（`lib/i18n.js`，約 1,000 條 entry × 8 語，zh-TW 為 source of truth）而非 `chrome.i18n`（後者綁瀏覽器 locale 無法獨立切換）；缺 key 三層 fallback 保證不顯示空字串
 - `_locales/` 8 語 `messages.json`（`extName` / `extDescription`）：manifest 的 `name` / `description` 以 `__MSG_*__` 引用，瀏覽器擴充功能管理頁、Safari 設定頁與商店 listing 短描述隨系統 / 瀏覽器語言顯示；`default_locale: zh_TW` 為 fallback。`extDescription` 每語 ≤ 112 字元（各平台取最嚴：Apple 驗 112、Chrome 為 132）
 - popup / options / content toast / 文件翻譯頁全面走 dict；regression 由 `test/regression/i18n-*.spec.js` 8 檔覆蓋
 
@@ -314,7 +317,7 @@ shinkansen/
 ├── content.js                # 主協調層（translatePage、Debug API、初始化）
 ├── content-shortcuts.js      # 自訂快速鍵 keydown capture 比對 → 本地 dispatch（§10.1）
 ├── content-hover.js          # 懸停翻譯：修飾鍵 + 游標停留只翻該段（§10.2.5）
-├── content-floating-icon.js  # 懸浮翻譯控制按鈕
+├── content-floating-icon.js  # 懸浮按鈕
 ├── content.css
 ├── background.js             # Service Worker（ES module）
 ├── LICENSE                   # ELv2
@@ -358,7 +361,7 @@ shinkansen/
 │   ├── welcome-notice.js     # 自動更新後「歡迎升級」提示寫入邏輯
 │   ├── zh-convert.js         # 簡繁本地互轉（§3.12）
 │   └── vendor/               # 第三方程式庫（pdfjs／pdf-lib + fontkit／chart.min.js／fflate／Noto Sans TC 字型／opencc 簡繁字典）
-├── translate-doc/            # 文件翻譯：PDF + EPUB + TXT / MD / HTML + 字幕檔（§17，web_accessible_resources）
+├── translate-doc/            # 文件翻譯：PDF + EPUB + Word + TXT / MD / HTML + 字幕檔（§17，web_accessible_resources）
 │   ├── index.html / index.js / index.css
 │   ├── settings.html / settings.js
 │   ├── block-types.js        # block type 共用常數
@@ -497,6 +500,8 @@ shinkansen/
   "floatingIconPos": { "edge": "right", "offsetY": 1 },
   "fourFingerGesture": true,
   "touchGestureFingers": 4,
+  "hoverTranslateModifier": "off",
+  "hoverTranslateMode": "dual",
   "iosPromoDismissed": false,
   "autoTranslateSlot": 2,
   "modelPricingOverrides": {},
@@ -520,7 +525,7 @@ shinkansen/
 註：`customProvider.apiKey` **不存** sync，存 `chrome.storage.local`（key `customProviderApiKey`），與主 Gemini `apiKey` 設計一致；自訂 request headers 同樣只存 local（key `customProviderHeaders`，JSON 字串）。`customProvider.temperature` 可為 `null`（options 欄位留空）＝ 請求不送 `temperature`，見 §3.8。`ytSubtitle.bilingualMode` 已於 v2.0.85 移除——字幕雙語跟隨 `displayMode === 'dual'`（§4.1），舊版寫入的殘留 key 讀取時忽略、匯入時 sanitize 丟棄。
 
 - **API Key** 存 `chrome.storage.local`（key `apiKey`），不跨裝置同步。舊版（≤v0.61）存在 sync 的 Key 會自動遷移至 local
-- manifest `commands` 預設快捷鍵由 Chrome 原生管理不存設定；三組 preset 的**自訂**鍵位存 `customShortcuts`（in-page recorder，§10.1）
+- manifest `commands` 預設快速鍵由 Chrome 原生管理不存設定；三組 preset 的**自訂**鍵位存 `customShortcuts`（in-page recorder，§10.1）
 - `maxTranslateUnits`：單頁翻譯段落數上限，超過截斷（0 = 不限制）
 - **Legacy key sweep**：已移除的設定欄位一次性從 sync 刪除，避免長期佔 quota
 
@@ -570,11 +575,11 @@ shinkansen/
 
 ---
 
-## 10. 快捷鍵
+## 10. 快速鍵
 
 三組 preset 快速鍵（v1.4.12 起），每組對應 options「翻譯快速鍵」一張 preset card（slot 1／2／3，可自訂 label／engine／model）：
 
-| 快捷鍵 | command id | slot | 預設 engine / model |
+| 快速鍵 | command id | slot | 預設 engine / model |
 |---|---|---|---|
 | Alt+S（Opt+S） | `translate-preset-0` | 2 | Gemini Flash Lite（主要預設） |
 | Alt+A（Opt+A） | `translate-preset-1` | 1 | Gemini 3.8 Flash（次要預設，多指長按亦走此組） |
@@ -679,7 +684,7 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - 快取統計 + 清除快取按鈕
 - 累計費用 / token 顯示 +「清除」按鈕（只重設顯示基準點，不刪用量紀錄）
 - 狀態列（未設 Gemini API Key 且有 preset 用 Gemini 時顯示提示，該列可點，點了直接開設定頁）
-- Footer：設定按鈕 +「翻譯文件」按鈕（§17）+ 快捷鍵提示（動態讀取）
+- Footer：設定按鈕 +「翻譯文件」按鈕（§17）+ 快速鍵提示（動態讀取）
 
 ### 13.2 版本顯示
 
