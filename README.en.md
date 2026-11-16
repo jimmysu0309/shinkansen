@@ -38,7 +38,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Respects the page's "do not translate" markup**: names, codes, and snippets that site authors mark with the standard HTML `translate="no"` or `notranslate` are preserved as-is and never sent to the API; icons drawn with icon fonts (words like `star` or `menu` in the HTML) are not translated into text, so they don't disappear.
 - **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the toolbar icon menu. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
 - **Three translation engines**: Gemini (AI translation, best quality, requires API key) + Google Translate (unofficial free endpoint, no API key, faster) + Custom model — switch freely depending on what you're reading.
-- **Free Chinese variant conversion**: when your target language is Traditional or Simplified Chinese, content in the opposite variant is converted locally with built-in OpenCC dictionaries — no API key, no API calls, works offline, with phrase-level Taiwan-convention mapping (软件→軟體, 视频→影片, 内存→記憶體). "Auto-convert Chinese variants" is on by default — pages in the opposite variant convert automatically on load, no manual trigger needed; you can turn it off in the toolbar icon menu (unchecking reverts the current page immediately); on mixed-language pages only the Chinese paragraphs use the free conversion while the rest go through your chosen engine.
+- **Free Chinese variant conversion**: when your target language is Traditional or Simplified Chinese, content in the opposite variant is converted locally with built-in OpenCC dictionaries — no API key, no API calls, works offline, with phrase-level Taiwan-convention mapping (软件→軟體, 视频→影片, 内存→記憶體). "Auto-convert Chinese variants" is on by default — pages in the opposite variant convert automatically on load, no manual trigger needed; you can turn it off in the toolbar icon menu (unchecking reverts the current page immediately); on mixed-language pages only the Chinese paragraphs use the free conversion while the rest go through your chosen engine. Variant conversion always replaces the original text in place — even in bilingual mode you never get the Simplified and Traditional versions stacked; bilingual display applies only to paragraphs that are actually translated.
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **Hover translate**: pick a modifier key (Shift / Option / Control) in settings, then hold it and rest the pointer on a paragraph to translate just that paragraph in place — handy when you want to read the original first or only need part of a page. Pressing a shortcut afterwards translates the rest of the page; press again to restore. Hover translations are bilingual by default (original stays, translation appended below) and can be switched to replace-original in the same place, independently of the full-page display mode.
@@ -293,10 +293,10 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
 
 1. Go to the "Custom models" tab in settings
 2. Fill the three required fields:
-   - **Base URL**: e.g., `https://openrouter.ai/api/v1` (Shinkansen automatically appends `/chat/completions`)
+   - **Base URL**: e.g., `https://openrouter.ai/api/v1` (Shinkansen automatically appends `/chat/completions`, or `/responses` when the API format is set to Responses)
    - **Model ID**: e.g., `anthropic/claude-sonnet-4-5` (OpenRouter format is `provider/model`)
    - **API Key**: the Bearer token for that provider; click "Test" to verify connectivity instantly (~1 token cost)
-3. Optional: translation prompt (leave blank = use the built-in compact default, identical to Gemini's) / temperature (leave blank = omit the parameter entirely, for reasoning models that only accept their own default) / thinking level and advanced JSON parameter pass-through / custom request headers (JSON, for endpoints that require extra headers besides the API Key, such as a session id or `api-key`) / model pricing input & output rates and cache-hit discount (USD per 1M tokens; 0 = don't display cost)
+3. Optional: translation prompt (leave blank = use the built-in compact default, identical to Gemini's) / temperature (leave blank = omit the parameter entirely, for reasoning models that only accept their own default) / thinking level and advanced JSON parameter pass-through / API format (Chat Completions by default; choose Responses when the endpoint or model only offers the Responses API, and requests go to `/responses` instead) / custom request headers (JSON, for endpoints that require extra headers besides the API Key, such as a session id or `api-key`) / model pricing input & output rates and cache-hit discount (USD per 1M tokens; 0 = don't display cost)
 4. Save
 5. In the "General settings" tab → "Translation shortcuts", change any preset's engine to "Custom model"
 6. Triggering that preset's shortcut now routes through your custom endpoint
@@ -313,7 +313,7 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
 ### Limitations
 
 - Only **one** custom model can be configured
-- Must be genuinely OpenAI-compatible (`POST /chat/completions` + `Bearer` Authorization + standard `messages` structure + `usage.prompt_tokens` / `completion_tokens` fields). Anthropic's and Gemini's **native** APIs cannot be connected directly, but you can route them through OpenRouter
+- Must be genuinely OpenAI-compatible (`POST /chat/completions` + `Bearer` Authorization + standard `messages` structure + `usage.prompt_tokens` / `completion_tokens` fields; or, with the API format set to Responses, `POST /responses` + the `instructions` / `input` structure). Anthropic's and Gemini's **native** APIs cannot be connected directly, but you can route them through OpenRouter
 - Pricing must be entered manually; token counts depend on the provider returning a correct `usage` object in responses
 
 ### Firefox: connecting to a local server
@@ -346,7 +346,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.6.10 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.6.11 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

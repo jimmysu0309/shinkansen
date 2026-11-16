@@ -4,7 +4,7 @@
 import { browser } from './lib/compat.js';
 import { IS_IOS_BUILD } from './lib/distribution.js'; // Phase 2: host app 設定橋接只在 iOS build 走 native messaging
 import { modelDropsSamplingParams, translateBatch, extractGlossary, extractTermRenderings, translateBatchStream, summarizeArticle } from './lib/gemini.js';
-import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom, parseExtraHeaders, buildRequestHeaders } from './lib/openai-compat.js'; // v1.5.7
+import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom, parseExtraHeaders, buildRequestHeaders, resolveEndpointUrl, buildRequestBody, parseResponseBody } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt, LANG_LABELS, isPromptUnchangedFromAnyTargetDefault, DEFAULT_SETTINGS } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, getAnomalyLogs, clearPersistedLogs } from './lib/logger.js';
@@ -1095,7 +1095,7 @@ const messageHandlers = {
   },
   // v1.5.7: API Key 測試 — 設定頁「測試」按鈕觸發。
   // Gemini 走 GET models/<model>（key 走 x-goog-api-key header）不耗 token；
-  // OpenAI-compat 走 POST /chat/completions ping(v1.8.43 起不帶 max_tokens)，耗 ~1-3 token。
+  // OpenAI-compat 走 POST /chat/completions（或 /responses，依 API 格式）ping(v1.8.43 起不帶 max_tokens)，耗 ~1-3 token。
   TEST_GEMINI_KEY: {
     async: true,
     handler: (payload) => testGeminiKey(payload),
@@ -1951,8 +1951,9 @@ async function testGeminiKey(payload) {
 
 /**
  * 測試自訂 OpenAI-compatible Provider。
- * 走 `POST /chat/completions` + 「ping」訊息，同時驗證 baseUrl / model / apiKey
- * 三者皆正確。比 GET /models 通用（部分 provider 不支援 GET /models)。
+ * 走 `POST /chat/completions`（API 格式選 Responses 時為 `POST /responses`，issue #74）+
+ * 「ping」訊息，同時驗證 baseUrl / model / apiKey / API 格式皆正確。端點、body、回應解析
+ * 與正式翻譯共用 lib/openai-compat.js 同一組函式。比 GET /models 通用（部分 provider 不支援 GET /models)。
  *
  * v1.8.43：不送 max_tokens——GPT-5 / o1 / o3 系列拒收 max_tokens 改認
  * max_completion_tokens，而 OpenRouter / DeepSeek / 較舊 OpenAI-compat 後端
@@ -1979,14 +1980,12 @@ async function testCustomProvider(payload) {
     return { ok: false, ...errorFields(codedError('customHeadersInvalid', { msg }, `自訂 headers 格式有誤：${msg}`)) };
   }
 
-  const url = /\/chat\/completions$/.test(baseUrl) ? baseUrl : baseUrl + '/chat/completions';
+  const apiFormat = payload?.apiFormat;
+  const url = resolveEndpointUrl(baseUrl, apiFormat);
   try {
     // 與正式翻譯同一支 buildRequestHeaders（單一資料源）
     const headers = { 'Content-Type': 'application/json', ...buildRequestHeaders(apiKey, extraHeadersJson) };
-    const reqBody = {
-      messages: [{ role: 'user', content: 'ping' }],
-      stream: false,
-    };
+    const reqBody = buildRequestBody({ apiFormat, user: 'ping' });
     if (model) reqBody.model = model;
     const resp = await fetchWithTimeout(url, {
       method: 'POST',
@@ -2004,7 +2003,10 @@ async function testCustomProvider(payload) {
           ...errorFields(codedError('testNonJsonCustom', { status: resp.status }, `HTTP ${resp.status}，但 Provider 回應不是有效的 JSON。請確認 Base URL 是否為正確的 OpenAI-compatible API endpoint。`)),
         };
       }
-      const used = j?.usage?.total_tokens || j?.usage?.prompt_tokens || 0;
+      // Responses 格式：HTTP 200 但生成失敗（status: failed）不算測試通過
+      const parsedResp = parseResponseBody(j, apiFormat);
+      if (parsedResp.failure) return { ok: false, status: resp.status, message: parsedResp.failure };
+      const used = j?.usage?.total_tokens || parsedResp.usage.inputTokens || 0;
       const modelLabel = model || j?.model || 'server-default';
       return { ok: true, status: resp.status, code: 'okUsage', params: { model: modelLabel, tokens: used } };
     }

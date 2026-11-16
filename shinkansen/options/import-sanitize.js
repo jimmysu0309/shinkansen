@@ -254,6 +254,8 @@ export function sanitizeImport(raw, _t, SC = globalThis.__SKShortcuts) {
         && ['auto', 'off', 'low', 'medium', 'high'].includes(cp.thinkingLevel)) {
       cpClean.thinkingLevel = cp.thinkingLevel;
     }
+    // apiFormat:enum，非法值不收（維持現值）
+    if (cp.apiFormat === 'chat' || cp.apiFormat === 'responses') cpClean.apiFormat = cp.apiFormat;
     // extraBodyJson：自由字串（save 端只 trim，不在此驗 JSON 合法性，維持與 saveSettings 一致）
     if (typeof cp.extraBodyJson === 'string') cpClean.extraBodyJson = cp.extraBodyJson.trim();
     // useStrongSegMarker:boolean(預設 true，讀取走 !== false)

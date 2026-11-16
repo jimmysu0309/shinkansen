@@ -304,6 +304,8 @@ async function load() {
   const tl = validLevels.includes(cp.thinkingLevel) ? cp.thinkingLevel : 'auto';
   if ($('cp-thinking-level')) $('cp-thinking-level').value = tl;
   if ($('cp-extra-body-json')) $('cp-extra-body-json').value = (typeof cp.extraBodyJson === 'string') ? cp.extraBodyJson : '';
+  // API 格式（issue #74）。舊設定沒有這個欄位 = Chat Completions
+  if ($('cp-api-format')) $('cp-api-format').value = cp.apiFormat === 'responses' ? 'responses' : 'chat';
   // 強化段序號標記。舊使用者升級後 undefined,等同預設 true(對齊 storage.js DEFAULTS)
   if ($('cp-strong-seg-marker')) $('cp-strong-seg-marker').checked = cp.useStrongSegMarker !== false;
   // 從 storage.local 讀 customProviderApiKey
@@ -1334,6 +1336,7 @@ async function _saveImpl() {
         return ['auto', 'off', 'low', 'medium', 'high'].includes(v) ? v : 'auto';
       })(),
       extraBodyJson: ($('cp-extra-body-json')?.value || '').trim(),
+      apiFormat: $('cp-api-format')?.value === 'responses' ? 'responses' : 'chat',
       // 強化段序號標記(預設 true)。讀取走 cp.useStrongSegMarker !== false 等同預設開啟,
       // 對齊舊使用者升級後 undefined 也得到新行為。
       useStrongSegMarker: $('cp-strong-seg-marker')?.checked !== false,
@@ -1387,6 +1390,7 @@ $('cp-test-apiKey').addEventListener('click', async () => {
         baseUrl: ($('cp-baseUrl').value || '').trim(),
         model: ($('cp-model').value || '').trim(),
         apiKey: ($('cp-apiKey').value || '').trim(),
+        apiFormat: $('cp-api-format')?.value === 'responses' ? 'responses' : 'chat',
         extraHeadersJson: ($('cp-extra-headers-json')?.value || '').trim(),
       },
     }),

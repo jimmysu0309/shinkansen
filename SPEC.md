@@ -7,7 +7,7 @@
 - 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.6.10
+- 目前 Extension 版本：2.6.11
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.6.10 為止）
+### 2.1 已實作（v2.6.11 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -152,6 +152,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 
 - **設定欄位**：`baseUrl`（預設 OpenRouter）、`model`（預設 `openai/gpt-5.4-mini`；留空 = 不送 model 欄位，配合 Ollama / llama.cpp 單模型 server）、獨立 `systemPrompt`、`temperature`（留空 = 不送，配合只接受自家預設的 reasoning model）、計價（`inputPerMTok` / `outputPerMTok`，USD / 1M tokens，填 0 = 不顯示費用）
 - **Cache 命中折扣** `cachedDiscount`（0–1，預設 0.90）：空白時依 baseUrl 自動推導各家折扣（OpenAI / Anthropic 命中部分付 10%、DeepSeek 2%、xAI 20%、其他端點 50%）；填 0 才是「沒有折扣」
+- **API 格式** `apiFormat`（`chat` 預設 / `responses`）：決定請求的路徑與格式。`chat` = Chat Completions，送往 `<baseUrl>/chat/completions`，幾乎所有相容端點都支援；`responses` = Responses API，送往 `<baseUrl>/responses`，給只開放這種格式的端點或模型使用。翻譯、術語表抽取與設定頁「測試」按鈕都依這個設定；Base URL 若貼了完整端點（結尾已是 `/chat/completions` 或 `/responses`），路徑仍以這個設定為準。選 `responses` 時：請求一律帶 `store: false`（不讓供應商保存請求內容）、思考強度改以 `reasoning.effort` 送出、輸出上限的欄位名是 `max_output_tokens`（要調整時填在 `extraBodyJson`）；不走串流、不使用伺服器端對話狀態。端點或模型回 400 表示不接受自動帶上的 `reasoning` 或 `temperature` 時，會拿掉該參數自動重試一次
 - **Thinking 控制** `thinkingLevel`（auto / off / low / medium / high，預設 off）：自動翻譯成各家 provider 的對應參數；`extraBodyJson` 供進階使用者透傳自訂欄位
 - **自訂 request headers**（選填，JSON 物件）：給「除了 API Key 還要求額外 header」的端點使用（session id、`api-key`、gateway 路由標記等），翻譯、術語表抽取與設定頁「測試」按鈕的每個請求都會帶上。自行填了 `Authorization` 時取代 API Key 產生的那一個；`Content-Type` / `Content-Length` 不可覆寫。格式有誤時：「測試」按鈕直接回報且不送出請求，正式翻譯則略過有問題的項目並在 Debug 分頁記一條 warn。值可能含憑證，保存方式比照 API Key（見 §5 機密）
 - **強化段序號標記** `useStrongSegMarker`（預設開）：防本機量化模型把段落標記誤譯進譯文；商用 LLM 使用者可關閉省 token
@@ -222,6 +223,7 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 | 其他 | 不分流，全走 LLM |
 
 - 混合頁兩路並存：可轉段落走本地轉換、其餘照走 LLM；轉換結果不寫翻譯快取、不記用量（零 API）
+- **一律原地取代，不跟雙語對照設定**：本地轉換的段落不論整頁 `displayMode` 或懸停翻譯的 `hoverTranslateMode` 設成什麼，都直接取代原文、不產生譯文 wrapper（字形與用詞調整後原文沒有對照價值）。顯示模式設雙語對照的混合頁上，轉換段原地取代、其餘語言的段落照雙語對照顯示。走 Google Translate 引擎時不經本地轉換，照顯示模式設定
 - **日文 / 韓文不做簡繁轉換**：頁面宣告為日文或韓文、或整頁以假名 / 諺文為主時，自動模式不改動任何文字；含假名 / 諺文的段落一律不走本地轉換（手動翻譯時照常送 LLM）。日文漢字與簡體字、繁體字大量同形，只看字形會把日文當成中文變體改字
 - **自動模式**（`settings.autoConvertZh`，預設開）：頁面載入 / SPA 導航自動轉換（只跑本地轉換、絕不打 API）；popup toggle「簡繁自動互轉（免費）」只在 target 為中文變體時顯示，切換即時生效（取消時僅還原本地轉換結果，LLM 翻譯成果不受影響）
 - toast 文案與 LLM 翻譯完全分開：進行中「簡繁本地轉換中⋯（不使用 AI 翻譯）」、完成「簡繁本地轉換完成」+「只做字典簡繁轉換，未觸發 AI 翻譯 · 免費」、SPA 新內容「簡繁本地轉換新內容⋯」/「已本地轉換 N 段新內容（未使用 AI）」；混合頁完整翻譯時標示其中 N 段是字典轉換未經 AI。完成通知預設不顯示（`hideZhConvertToast: true`，設定頁可關閉此隱藏），進行中 toast 仍顯示
@@ -238,6 +240,8 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 
 - **`single`（預設，單語覆蓋）**：原文段落的文字節點替換成譯文，元素本身保留不動（字體 / 大小 / 顏色 / 排版全部沿用原文）
 - **`dual`（雙語對照）**：原文保留，譯文以 `<shinkansen-translation>` wrapper 附在原段落之後（列表 / 表格等特殊元素內嵌避免破版）。原段落內容完全不動
+
+例外：簡繁本地轉換的段落一律原地取代，不受 `displayMode` 影響（§3.12）。
 
 **視覺標記**（`translationMarkStyle`，dual 模式譯文標記）：
 
@@ -507,7 +511,8 @@ shinkansen/
     "thinkingLevel": "off",
     "extraBodyJson": "",
     "useStrongSegMarker": true,
-    "fetchTimeoutSec": 90
+    "fetchTimeoutSec": 90,
+    "apiFormat": "chat"
   }
 }
 ```

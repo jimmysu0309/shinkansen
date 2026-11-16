@@ -759,7 +759,7 @@
         <span data-i18n="options.cp.baseUrlLabel">Base URL</span>
         <input type="text" id="cp-baseUrl" data-i18n-attr-placeholder="options.cp.baseUrlPlaceholder" placeholder="例如：https://openrouter.ai/api/v1">
         <small class="muted" data-i18n-html="options.cp.baseUrlHint.html">
-          OpenAI 相容模型端點的根目錄。系統會自動接 <code>/chat/completions</code>。
+          OpenAI 相容模型端點的根目錄。系統會自動接 <code>/chat/completions</code>（進階的「API 格式」選 Responses 時改接 <code>/responses</code>）。
           常見：<code>https://openrouter.ai/api/v1</code>、<code>https://api.together.xyz/v1</code>、
           <code>http://localhost:11434/v1</code>（Ollama）
         </small>
@@ -834,7 +834,20 @@
       </label>
 
       <details>
-        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;" data-i18n="options.cp.advSummary">進階：思考強度 / 段序號 / 逾時 / 自訂 body / headers</summary>
+        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;" data-i18n="options.cp.advSummary">進階：API 格式 / 思考強度 / 段序號 / 逾時 / 自訂 body / headers</summary>
+
+        <label>
+          <span data-i18n="options.cp.apiFormatLabel">API 格式</span>
+          <select id="cp-api-format">
+            <option value="chat" data-i18n="options.cp.apiFormatChat">Chat Completions（預設）</option>
+            <option value="responses" data-i18n="options.cp.apiFormatResponses">Responses</option>
+          </select>
+          <small class="muted" data-i18n-html="options.cp.apiFormatHint.html">
+            決定請求送往哪個路徑、用哪種格式。Chat Completions 接 <code>/chat/completions</code>，幾乎所有相容端點都支援；
+            Responses 接 <code>/responses</code>，給只開放這種格式的端點或模型使用。不確定就維持預設。
+            選 Responses 時請求一律帶 <code>store: false</code>，不讓供應商保存請求內容；「思考強度」會改用 <code>reasoning.effort</code> 送出
+          </small>
+        </label>
 
         <label>
           <span data-i18n="options.cp.thinkingLabel">思考強度</span>
@@ -871,7 +884,7 @@
           <span data-i18n="options.cp.extraBodyLabel">自訂 request body 額外參數（JSON，覆蓋上方思考強度）</span>
           <textarea id="cp-extra-body-json" rows="4" placeholder='e.g. {"reasoning":{"max_tokens":4000},"top_k":40}' style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
           <small class="muted" data-i18n-html="options.cp.extraBodyHint.html">
-            內容會深層合併進 chat.completions request body，可用來：
+            內容會深層合併進 request body，可用來：
             （1）強制覆蓋上方「思考強度」自動產生的設定；
             （2）加 provider 專屬參數（例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、
             Anthropic 的 <code>metadata</code>）。

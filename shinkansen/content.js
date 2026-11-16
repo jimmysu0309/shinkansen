@@ -1188,6 +1188,9 @@
             const u = units[origIdx];
             if (u?.el && _convInjectedEls.has(u.el)) { injectedThisChunk++; continue; }
             if (u?.el) _convInjectedEls.add(u.el);
+            // 簡繁轉換一律原地取代、不跟整頁 / 懸停的雙語對照設定（issue #76）：字形與用詞
+            // 調整後原文沒有對照價值。掛在單元上，注入層以單元自帶的模式優先
+            if (u) u.injectMode = 'single';
             SK.injectTranslation(u, converted, slotsList[origIdx]);
             injectedThisChunk++;
           }
@@ -1487,6 +1490,10 @@
     const convertDirection = TARGET === 'zh-TW' ? 'cn2twp' : (TARGET === 'zh-CN' ? 'twp2cn' : null);
     // convertOnly(簡繁自動互轉 / rescan replay 路徑):只跑免費本地轉換,絕不打 API。
     const convertOnly = !!options.convertOnly;
+    // 純簡繁轉換 run 整輪都是原地取代（issue #76）：本輪模式鎖成 single，後面的 dual 專用
+    // 前處理（inline 單元合併）不跑。混合頁的整頁翻譯維持使用者設定，轉換段在
+    // translateUnits 的 runZhConvert 逐單元標 single
+    if (convertOnly) STATE.translatedMode = 'single';
     if (convertOnly && !convertDirection) {
       // 防禦:toggle 開著但 target 已切到非中文(popup 會藏 toggle,這裡擋 race)
       SK.sendLog('info', 'translate', 'convertOnly: target not Chinese, skip', { target: TARGET });

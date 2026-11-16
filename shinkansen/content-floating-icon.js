@@ -190,7 +190,7 @@
   }
   btn = shadow.getElementById('fab');
   menuEl = shadow.getElementById('menu');
-  document.documentElement.appendChild(host);
+  SK.mountPersistentHost(host);   // 掛在 <html>，被頁面移除會自動掛回（content-ns.js）
 
   // ─── 設定狀態 ───────────────────────────────────────────────────────────
   let pos = { ...DEFAULT_POS };   // offsetY = 0(頂)…1(底) 比例

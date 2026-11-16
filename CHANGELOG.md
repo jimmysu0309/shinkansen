@@ -7,6 +7,8 @@
 
 ## v2.6.x
 
+**v2.6.11**——**懸浮按鈕與翻譯進度提示被網頁移除後會自動回來、自訂模型可選 Responses API 格式、簡繁轉換一律直接取代原文**。①**懸浮按鈕 / 進度提示自動掛回**（GitHub issue #77）：懸浮按鈕與翻譯進度提示各是一個掛在 `<html>` 底下的獨立容器，過去只在頁面載入時掛一次；部分網站會在載入後重建整份文件、把 `<head>` / `<body>` 以外的節點清掉，結果按鈕消失、進度提示不出現，但翻譯本身照常。現在兩個容器走同一個掛載入口，被移出頁面就自動掛回（`<html>` 整個被換掉也跟得上）；為避免跟網頁無限互搶，每 10 秒最多掛回 20 次。回報的站點在桌面 Chromium 與 WebKit 模擬環境都重現不出移除動作，本版是對「容器被移除」這類情況的通則性補強，實際是否解決該站的 iOS 症狀待回報者確認。②**自訂模型 API 格式可選 Responses**（GitHub issue #74）：設定頁自訂模型新增「API 格式」下拉選單（預設 Chat Completions），端點或模型只開放 Responses API 時改選 Responses，請求改送 `<Base URL>/responses`；翻譯、術語表抽取與「測試」按鈕都依這個設定，匯入設定檔只收合法值。③**簡繁轉換一律原地取代**（GitHub issue #76）：本地簡繁轉換的段落不論顯示模式或懸停翻譯模式設成什麼，都直接取代原文、不再把簡繁兩版並列；雙語對照只用在真正需要翻譯的段落，混合語言頁上兩種注入並存時頁面重繪後的譯文保護也一併涵蓋。regression：`inject-ui-host-remount.spec.js`（3 條，SANITY 已驗）、`custom-provider-responses-api.spec.js`、`openai-compat-responses-api.spec.js`（unit）與簡繁轉換不跟雙語對照設定的 spec。**不需清快取**。
+
 **v2.6.10**——**自訂模型可以加上自訂 request headers**（GitHub issue #78）。部分 OpenAI 相容端點除了 API Key 之外，還要求每個請求帶額外的 header（例如 session id，或以 `api-key` header 驗證），以前沒有地方可以填，按「測試」就失敗。
 
 - **自訂模型——自訂 request headers**：設定頁「自訂模型」分頁的「進階」區塊新增選填欄位，填入 JSON 物件（例如 `{"x-session-id":"my-stable-id"}`），翻譯、術語表抽取與「測試」按鈕的每個請求都會帶上；在這裡自行填了 `Authorization` 時，會取代 API Key 產生的那一個

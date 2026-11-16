@@ -38,7 +38,7 @@
 - **尊重網頁的「不要翻譯」標記**：網站作者以 HTML 標準 `translate="no"` 或 `notranslate` 標成不翻譯的人名、代號、程式碼原樣保留、不送 API；用字型顯示的圖示（HTML 裡其實是 `star`、`menu` 這類字）也不會被翻成文字而消失
 - **單語覆蓋 / 雙語對照雙模式**：工具列圖示一鍵切換顯示模式——「單語覆蓋」原地替換、「雙語對照」原文保留 + 譯文以新段落 append。雙語模式提供 4 種視覺標記（淡底色 / 左邊細條 / 虛線底線 / 無）讓你選擇譯文段落的呈現風格
 - **三翻譯引擎**：Gemini（AI 翻譯、品質最佳、需 API Key）+ Google Translate（非官方免費端點、不需 API Key、速度更快）+ 自訂模型，依場景自由切換
-- **簡繁互轉完全免費**：翻譯目標是繁體或簡體中文時，相反變體的中文內容走內建 OpenCC 字典本地轉換——不需 API Key、不打任何 API、離線可用，詞組級對照涵蓋台灣慣用詞（軟件→軟體、視頻→影片、內存→記憶體）。「簡繁自動互轉」預設開啟——簡體（或繁體）網頁載入時自動轉換，不用手動觸發；可在工具列圖示選單關閉，取消勾選當下立即還原目前頁面；混合語言頁面也只有中文段落走免費轉換，其餘照走你選的翻譯引擎
+- **簡繁互轉完全免費**：翻譯目標是繁體或簡體中文時，相反變體的中文內容走內建 OpenCC 字典本地轉換——不需 API Key、不打任何 API、離線可用，詞組級對照涵蓋台灣慣用詞（軟件→軟體、視頻→影片、內存→記憶體）。「簡繁自動互轉」預設開啟——簡體（或繁體）網頁載入時自動轉換，不用手動觸發；可在工具列圖示選單關閉，取消勾選當下立即還原目前頁面；混合語言頁面也只有中文段落走免費轉換，其餘照走你選的翻譯引擎；簡繁轉換一律直接取代原文，顯示模式設成雙語對照時也不會把簡繁兩版並列，雙語對照只用在真正需要翻譯的外語段落
 - **自訂 AI 模型**：OpenAI 相容端點，可接 OpenRouter / Together / Groq / Ollama 本機等百種模型
 - **三組可自訂快速鍵**：`Alt+A` / `Alt+S` / `Alt+D` 各自綁一組翻譯預設（引擎 + 模型 + 標籤），依網頁內容重要性一鍵選擇不同引擎（例如閱讀材料用 Flash、隨手瀏覽用 Google MT）。詳見下方「翻譯快速鍵與預設」段落
 - **懸停翻譯**：在設定頁選一個修飾鍵（Shift / Option / Control）後，按住它把游標移到段落上停一下，只翻譯游標所在的那一段、譯文原地顯示，想先自己讀或只看部分內容時不用翻整頁；之後按快速鍵會補翻其餘段落，再按一次才還原。懸停譯文預設雙語對照（原文留著、譯文附在下方），可在同處改成單語覆蓋，與整頁翻譯的顯示模式各自獨立
@@ -293,10 +293,10 @@ Shinkansen 有兩層快取機制，各自在不同階段省錢：
 
 1. 到設定頁的「自訂模型」分頁
 2. 填三個必填欄位：
-   - **Base URL**：例如 `https://openrouter.ai/api/v1`（系統會自動接 `/chat/completions`）
+   - **Base URL**：例如 `https://openrouter.ai/api/v1`（系統會自動接 `/chat/completions`；API 格式選 Responses 時改接 `/responses`）
    - **模型 ID**：例如 `anthropic/claude-sonnet-4-5`（OpenRouter 的格式為 `provider/model`）
    - **API Key**：對應 provider 的 Bearer token，按右側「測試」按鈕可立即驗證連線（耗 ~1 token）
-3. 選填：翻譯 Prompt（留空 = 用內建簡短預設，預設值與 Gemini 相同）/ Temperature（留空 = 請求不送這個參數，給只接受自家預設值的推理模型用）/ 推理（thinking）等級與進階參數 JSON 透傳 / 自訂 request headers（JSON，給除了 API Key 還要求額外 header 的端點，例如 session id 或 `api-key`）/ 模型計價 input / output 單價與快取命中折扣（USD / 1M tokens；填 0 = 不顯示費用）
+3. 選填：翻譯 Prompt（留空 = 用內建簡短預設，預設值與 Gemini 相同）/ Temperature（留空 = 請求不送這個參數，給只接受自家預設值的推理模型用）/ 推理（thinking）等級與進階參數 JSON 透傳 / API 格式（預設 Chat Completions；端點或模型只開放 Responses API 時改選 Responses，請求會改送 `/responses`）/ 自訂 request headers（JSON，給除了 API Key 還要求額外 header 的端點，例如 session id 或 `api-key`）/ 模型計價 input / output 單價與快取命中折扣（USD / 1M tokens；填 0 = 不顯示費用）
 4. 儲存
 5. 到「一般設定」分頁的「翻譯快速鍵」，把任一組預設引擎改為「自訂模型」
 6. 對該 preset 的快速鍵翻譯時就會走自訂模型端點
@@ -313,7 +313,7 @@ Shinkansen 有兩層快取機制，各自在不同階段省錢：
 ### 限制
 
 - 目前只能設定**一組**自訂模型
-- 必須是真正 OpenAI 相容（`POST /chat/completions` + `Bearer` Authorization + 標準 `messages` 結構 + `usage.prompt_tokens` / `completion_tokens` 欄位）。Anthropic 與 Gemini 的**原生** API 不能直接接，但透過 OpenRouter 中轉就可以
+- 必須是真正 OpenAI 相容（`POST /chat/completions` + `Bearer` Authorization + 標準 `messages` 結構 + `usage.prompt_tokens` / `completion_tokens` 欄位；或 API 格式選 Responses 時的 `POST /responses` + `instructions` / `input` 結構）。Anthropic 與 Gemini 的**原生** API 不能直接接，但透過 OpenRouter 中轉就可以
 - 計價必須自填，token 估算依賴 provider 在 response 的 `usage` 物件正確回傳
 
 ### Firefox 連本機 server 注意事項
@@ -350,7 +350,7 @@ LLM 在翻譯長文時，前後文的人名、地名翻譯容易出現不一致�
 
 ## 目前版本
 
-v2.6.10 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
+v2.6.11 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 
 ## 授權
 

@@ -25,6 +25,11 @@
 //      最大公約數，vendor 不支援也只會被忽略不會 4xx；比寫死 aggregator 名單更穩健，
 //      自動涵蓋未來新冒出的 aggregator 與所有自架 proxy 場景）
 //   5. user 的 extraBodyJson(進階)→ deep merge 到結果,可覆蓋 1-4 步的自動 mapping
+//
+// Responses API 格式（customProvider.apiFormat === 'responses'，issue #74）：
+//   思考強度的標準寫法是 `reasoning: { effort }`（Chat Completions 的頂層 `reasoning_effort`
+//   在這個格式下不存在），各家 vendor 的原生欄位（thinking / enable_thinking）也不屬於這個格式，
+//   所以除了 'auto' 不送之外一律走 `reasoning.effort`，見 buildResponsesThinking。
 
 /**
  * 偵測 baseUrl + model name 屬於哪個 provider。
@@ -68,8 +73,9 @@ export function detectProvider(baseUrl, model) {
  *     Qwen enable_thinking=false
  *     OpenAI-compat 通用 reasoning_effort='none'(OpenAI 標準 disable 寫法)
  */
-export function buildNativeThinking(provider, level) {
+export function buildNativeThinking(provider, level, apiFormat) {
   if (!level || level === 'auto') return {};
+  if (apiFormat === 'responses') return buildResponsesThinking(provider, level);
 
   switch (provider) {
     case 'openrouter':
@@ -104,6 +110,27 @@ export function buildNativeThinking(provider, level) {
       // 'off' → 'none'；'low' / 'medium' / 'high' 直送。
       // vendor 不支援會被當未知欄位忽略，不會 4xx。
       return { reasoning_effort: level === 'off' ? 'none' : level };
+  }
+}
+
+/**
+ * Responses API 格式的思考強度 payload：`reasoning: { effort }`。
+ * 'off' 的寫法依端點而定：
+ *   - OpenRouter / OpenAI o 系列：effort 沒有 'none'，最低是 'minimal'
+ *   - Grok：多數 model 不收 reasoning 參數，off 索性不送（同 Chat Completions 路徑）
+ *   - 其他：'none'（OpenAI 的標準關閉寫法）
+ * 端點或 model 不收這個值時回 400——lib/openai-compat.js 會拿掉 reasoning 後重打一次。
+ */
+function buildResponsesThinking(provider, level) {
+  if (level !== 'off') return { reasoning: { effort: level } };
+  switch (provider) {
+    case 'grok':
+      return {};
+    case 'openrouter':
+    case 'openai-o':
+      return { reasoning: { effort: 'minimal' } };
+    default:
+      return { reasoning: { effort: 'none' } };
   }
 }
 
@@ -149,7 +176,7 @@ function isPlainObject(v) {
 }
 
 /**
- * 主入口:組合最終要 merge 進 chat.completions request body 的 thinking-related payload。
+ * 主入口:組合最終要 merge 進 request body 的 thinking-related payload。
  *
  * @param {object} opts
  * @param {string} opts.baseUrl
@@ -157,11 +184,12 @@ function isPlainObject(v) {
  * @param {string} opts.level - 'auto' | 'off' | 'low' | 'medium' | 'high'
  * @param {string} opts.extraBodyRaw - user 自訂 JSON 字串(可空)
  * @param {Function} [opts.onWarn] - JSON 解析失敗時的 callback,接 message 字串
+ * @param {string} [opts.apiFormat] - 'chat'（預設）| 'responses'
  * @returns {object} 可直接 spread 進 request body 的物件
  */
-export function buildThinkingPayload({ baseUrl, model, level, extraBodyRaw, onWarn }) {
+export function buildThinkingPayload({ baseUrl, model, level, extraBodyRaw, onWarn, apiFormat }) {
   const provider = detectProvider(baseUrl, model);
-  const native = buildNativeThinking(provider, level);
+  const native = buildNativeThinking(provider, level, apiFormat);
   const extra = safeParseJson(extraBodyRaw, onWarn);
   return deepMerge(native, extra);
 }

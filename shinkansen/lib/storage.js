@@ -903,6 +903,10 @@ export const DEFAULT_SETTINGS = {
     // API 請求逾時（秒）。預設 15 對齊 Gemini 路徑;本機 LLM(Ollama 等)冷啟動
     // 載入模型到 VRAM 可能需 60-300 秒,使用者可自行調高
     fetchTimeoutSec: 90,
+    // API 格式（issue #74）：'chat' = Chat Completions（POST /chat/completions，各家相容端點的
+    // 最大公約數）；'responses' = Responses API（POST /responses）。既有使用者升級後 undefined，
+    // lib/openai-compat.js normalizeApiFormat 視為 'chat'。
+    apiFormat: 'chat',
   },
 };
 

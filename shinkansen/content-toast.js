@@ -214,7 +214,7 @@
     styleEl.textContent = TOAST_CSS;
     shadow.prepend(styleEl);
   }
-  document.documentElement.appendChild(toastHost);
+  SK.mountPersistentHost(toastHost);   // 掛在 <html>，被頁面移除會自動掛回（content-ns.js）
 
   // Toast 透明度
   function applyToastOpacity(opacity) {
