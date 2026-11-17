@@ -135,14 +135,14 @@
     .hero .tagline {
       font-size: 1.15rem;
       color: #555;
-      max-width: 520px;
+      max-width: 640px;
       margin: 0 auto 32px;
     }
     .btn-row {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 12px;
-      max-width: 600px;
+      max-width: 720px;
       margin: 0 auto;
     }
     .btn-download {
@@ -154,7 +154,7 @@
       color: #fff;
       font-size: 1.05rem;
       font-weight: 600;
-      padding: 14px 24px;
+      padding: 14px 16px;
       border-radius: 10px;
       text-decoration: none;
       transition: background 0.2s;
@@ -164,6 +164,7 @@
     }
     .btn-download:hover { background: #1d4ed8; }
     .btn-download.secondary {
+      grid-column: 1 / -1; /* 第五顆單獨一列時橫跨兩欄，不留半邊空格 */
       background: #fff;
       color: #2563eb;
       border: 1.5px solid #2563eb;
@@ -411,15 +412,10 @@
       <ul class="recent-updates">
         <li data-i18n="recent.xSubtitle"><strong>X（Twitter）影片字幕翻譯</strong>，帶自動產生字幕的影片開聲音播放時自動翻成目標語言，樣式與位置同 X 原生字幕；時間軸上靜音自動播放的影片不翻、不花費用</li>
         <li data-i18n="recent.customEndpoints"><strong>自訂模型相容更多端點</strong>，API 格式可選 Chat Completions 或 Responses，並可加自訂 request headers，給除了 API Key 還要求額外 header 的服務使用</li>
+        <li data-i18n="recent.pdf"><strong>PDF 翻譯版面與穩定性改善</strong>，表格、目錄與圖文頁的版面大幅修正；檔案上限 50 MB / 300 頁，可指定翻譯頁數範圍</li>
         <li data-i18n="recent.hover"><strong>懸停翻譯</strong>，按住修飾鍵、游標停在段落上即只翻譯那一段，譯文原地注入；設定頁「翻譯快速鍵」區塊可選修飾鍵與雙語 / 單語顯示，預設關閉</li>
         <li data-i18n="recent.glossaryPath"><strong>網域術語表可限定網站路徑</strong>，輸入「網域/路徑」只對該路徑之下的頁面生效，同一網站不同專欄或作品可各用一份，路徑規則覆蓋整站規則</li>
         <li data-i18n="recent.ios"><strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配多指觸控翻譯與懸浮按鈕，開箱即用</li>
-        <li data-i18n="recent.word">新增 <strong>Word（.docx）文件翻譯</strong>，譯文寫回原檔，版面、樣式、表格、註解全保留，可輸出雙語對照版</li>
-        <li data-i18n="recent.subtitles">新增<strong>字幕檔翻譯</strong>，SRT / WebVTT / ASS 字幕檔逐則翻譯，時間軸與樣式標記原樣保留，可輸出單語或雙語字幕</li>
-        <li data-i18n="recent.pdf"><strong>PDF 翻譯放寬上限並修正版面</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，修正雙欄短行、彩色底、旋轉頁、段落溢出等版面問題，簡體 / 日文 / 韓文譯文字型用到才下載</li>
-        <li data-i18n="recent.epub">新增 <strong>EPUB 電子書翻譯</strong>，全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版</li>
-        <li data-i18n="recent.docfiles">新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）</li>
-        <li data-i18n="recent.notranslate"><strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字</li>
       </ul>
     </div>
   </section>
@@ -544,7 +540,7 @@
         </div>
         <div class="feature">
           <h3 data-i18n="feature.engines.title">三翻譯引擎</h3>
-          <p data-i18n="feature.engines.body">Gemini + Google Translate + <strong>自訂模型</strong>（OpenAI 相容端點，可接 OpenRouter / Together / Ollama 本機等百種模型）並存，依場景自由切換</p>
+          <p data-i18n="feature.engines.body">Gemini + Google Translate + <strong>自訂模型</strong>（OpenAI 相容端點，API 格式可選 Chat Completions 或 Responses，可接 OpenRouter / Together / Ollama 本機等百種模型）並存，依場景自由切換</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.zhconvert.title">簡繁互轉完全免費</h3>
@@ -585,7 +581,7 @@
           <div class="step-num">3</div>
           <div class="step-body">
             <h3 data-i18n="install.step3.title">設定 API Key</h3>
-            <p data-i18n="install.step3.body">點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 Gemini API Key（到 <a href="https://aistudio.google.com/api-keys" style="color:#2563eb;">aistudio.google.com/api-keys</a> 免費建立，<a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" style="color:#2563eb;">詳細教學</a>）完成！按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）</p>
+            <p data-i18n="install.step3.body">點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 Gemini API Key（到 <a href="https://aistudio.google.com/api-keys" style="color:#2563eb;">aistudio.google.com/api-keys</a> 免費建立，<a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" style="color:#2563eb;">詳細教學</a>）。設定完成後按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）</p>
           </div>
         </div>
       </div>
@@ -633,15 +629,10 @@
           'recent.heading': '近期重大更新',
           'recent.xSubtitle': '<strong>X（Twitter）影片字幕翻譯</strong>，帶自動產生字幕的影片開聲音播放時自動翻成目標語言，樣式與位置同 X 原生字幕；時間軸上靜音自動播放的影片不翻、不花費用',
           'recent.customEndpoints': '<strong>自訂模型相容更多端點</strong>，API 格式可選 Chat Completions 或 Responses，並可加自訂 request headers，給除了 API Key 還要求額外 header 的服務使用',
+          'recent.pdf': '<strong>PDF 翻譯版面與穩定性改善</strong>，表格、目錄與圖文頁的版面大幅修正；檔案上限 50 MB / 300 頁，可指定翻譯頁數範圍',
           'recent.hover': '<strong>懸停翻譯</strong>，按住修飾鍵、游標停在段落上即只翻譯那一段，譯文原地注入；設定頁「翻譯快速鍵」區塊可選修飾鍵與雙語 / 單語顯示，預設關閉',
           'recent.glossaryPath': '<strong>網域術語表可限定網站路徑</strong>，輸入「網域/路徑」只對該路徑之下的頁面生效，同一網站不同專欄或作品可各用一份，路徑規則覆蓋整站規則',
           'recent.ios': '<strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配多指觸控翻譯與懸浮按鈕，開箱即用',
-          'recent.word': '新增 <strong>Word（.docx）文件翻譯</strong>，譯文寫回原檔，版面、樣式、表格、註解全保留，可輸出雙語對照版',
-          'recent.subtitles': '新增<strong>字幕檔翻譯</strong>，SRT / WebVTT / ASS 字幕檔逐則翻譯，時間軸與樣式標記原樣保留，可輸出單語或雙語字幕',
-          'recent.pdf': '<strong>PDF 翻譯放寬上限並修正版面</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，修正雙欄短行、彩色底、旋轉頁、段落溢出等版面問題，簡體 / 日文 / 韓文譯文字型用到才下載',
-          'recent.epub': '新增 <strong>EPUB 電子書翻譯</strong>，全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版',
-          'recent.docfiles': '新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）',
-          'recent.notranslate': '<strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字',
 
           'privacy.heading': '為什麼做 Shinkansen？',
           'privacy.intro1': '既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光',
@@ -696,7 +687,7 @@
           'feature.cost.title': '費用透明',
           'feature.cost.body': '每次翻譯即時顯示花費多少錢，設定頁可回查過去每一筆翻譯紀錄的 token 用量與費用，支援圖表與 CSV 匯出',
           'feature.engines.title': '三翻譯引擎',
-          'feature.engines.body': 'Gemini + Google Translate + <strong>自訂模型</strong>（OpenAI 相容端點，可接 OpenRouter / Together / Ollama 本機等百種模型）並存，依場景自由切換',
+          'feature.engines.body': 'Gemini + Google Translate + <strong>自訂模型</strong>（OpenAI 相容端點，API 格式可選 Chat Completions 或 Responses，可接 OpenRouter / Together / Ollama 本機等百種模型）並存，依場景自由切換',
           'feature.zhconvert.title': '簡繁互轉完全免費',
           'feature.zhconvert.body': '內建 OpenCC 字典本地轉換——<strong>不需 API Key、不打 API、離線可用</strong>，詞組級涵蓋台灣慣用詞（軟件→軟體、視頻→影片）。自動互轉預設開啟，目標是繁體時簡體網頁載入即轉繁體，目標是簡體時反向轉換',
           'feature.shortcuts.title': '自訂快速鍵',
@@ -710,7 +701,7 @@
           'install.step2.title': '載入擴充功能',
           'install.step2.body': '開啟 Chrome，前往 <code>chrome://extensions/</code>，打開右上角「開發人員模式」，點「載入未封裝項目」，選擇解壓縮後的 <code>shinkansen</code> 資料夾',
           'install.step3.title': '設定 API Key',
-          'install.step3.body': '點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 Gemini API Key（到 <a href="https://aistudio.google.com/api-keys" style="color:#2563eb;">aistudio.google.com/api-keys</a> 免費建立，<a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" style="color:#2563eb;">詳細教學</a>）完成！按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）',
+          'install.step3.body': '點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 Gemini API Key（到 <a href="https://aistudio.google.com/api-keys" style="color:#2563eb;">aistudio.google.com/api-keys</a> 免費建立，<a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" style="color:#2563eb;">詳細教學</a>）。設定完成後按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）',
 
           'report.heading': '回報問題',
           'report.body': '遇到 bug 或有功能建議？歡迎到 <a href="https://github.com/jimmysu0309/shinkansen/issues" style="color:#2563eb;">GitHub Issues</a> 或 <a href="https://x.com/jimmy_su" style="color:#2563eb;">X（Twitter）</a> 回報',
@@ -724,7 +715,7 @@
           'og.description': 'AI translation for web pages, documents and YouTube subtitles. Original layout preserved. Browsing data never touches a third-party server.',
 
           'hero.subtitle': 'Fast, private, high-quality web translation',
-          'hero.tagline': 'Your browsing should not pass through someone else\'s server.<br>Shinkansen calls Google Gemini directly from your browser — no third party in between.',
+          'hero.tagline': 'Your browsing should not pass through someone else\'s server.<br>Shinkansen calls Google Gemini directly from your browser — no&nbsp;third&nbsp;party&nbsp;in&nbsp;between.',
           'btn.cws.text': 'Install from Chrome Web Store',
           'btn.cws.status': 'published',
           'btn.amo.text': 'Install from Firefox Add-ons',
@@ -739,15 +730,10 @@
           'recent.heading': 'Recent major updates',
           'recent.xSubtitle': '<strong>X (Twitter) video subtitles</strong> — videos with auto-generated captions are translated into your target language when played with sound, styled and positioned like X\'s native captions; muted autoplay videos in the timeline are skipped and cost nothing.',
           'recent.customEndpoints': '<strong>Custom models work with more endpoints</strong> — choose Chat Completions or Responses as the API format, and add custom request headers for services that need more than an API key.',
+          'recent.pdf': '<strong>PDF translation: better layout and stability</strong> — major layout fixes for tables, tables of contents and pages that mix figures with text; files up to 50 MB / 300 pages, with an optional page range.',
           'recent.hover': '<strong>Hover translation</strong> — hold a modifier key and rest the cursor on a paragraph to translate just that one, in place; pick the modifier and bilingual / monolingual display under "Translation shortcuts" in Settings (off by default).',
           'recent.glossaryPath': '<strong>Glossary scoped to a site path</strong> — enter "domain/path" to apply a domain glossary only under that path, so sections or series on one site can each have their own; path rules override site-wide rules.',
           'recent.ios': '<strong>iOS / iPadOS version</strong> is now on the <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a> — Safari extension with multi-finger touch translate and the floating button, ready out of the box.',
-          'recent.word': 'Added <strong>Word (.docx) document translation</strong> — the translation is written back into the original file with layout, styles, tables, and comments fully preserved; bilingual output available.',
-          'recent.subtitles': 'Added <strong>subtitle file translation</strong> — SRT / WebVTT / ASS files are translated cue by cue with timing and style tags preserved; download monolingual or bilingual subtitles.',
-          'recent.pdf': '<strong>PDF translation: higher limits and layout fixes</strong> — limits raised to 50 MB / 300 pages, translate a chosen page range, fixes for two-column short lines, colored backgrounds, rotated pages and overflowing paragraphs, and on-demand fonts for Simplified Chinese / Japanese / Korean output.',
-          'recent.epub': 'Added <strong>EPUB book translation</strong> — a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters; download the translated book in monolingual or bilingual format.',
-          'recent.docfiles': 'Added <strong>TXT / Markdown / HTML file</strong> translation — the translated file keeps the same format as the original; glossary import also accepts <strong>CSV</strong> (two columns: source,translation).',
-          'recent.notranslate': '<strong>Respects pages\' do-not-translate markup</strong> — text marked <code>translate="no"</code> / <code>notranslate</code> stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.',
 
           'privacy.heading': 'Why Shinkansen?',
           'privacy.intro1': 'Existing immersive web-translation tools forward every page you read to a third-party server — every article, every email, all of it potentially visible to someone else.',
@@ -802,7 +788,7 @@
           'feature.cost.title': 'Transparent pricing',
           'feature.cost.body': 'Cost is shown live during translation. The settings page tracks token usage and cost for every past run, with charts and CSV export.',
           'feature.engines.title': 'Three translation engines',
-          'feature.engines.body': 'Gemini + Google Translate + <strong>custom models</strong> (any OpenAI-compatible endpoint — OpenRouter / Together / local Ollama, etc.) coexist. Switch freely depending on context.',
+          'feature.engines.body': 'Gemini + Google Translate + <strong>custom models</strong> (any OpenAI-compatible endpoint, Chat Completions or Responses format — OpenRouter / Together / local Ollama, etc.) coexist. Switch freely depending on context.',
           'feature.zhconvert.title': 'Free Chinese variant conversion',
           'feature.zhconvert.body': 'Built-in OpenCC dictionaries convert between Simplified and Traditional Chinese locally — <strong>no API key, no API calls, works offline</strong> — with phrase-level Taiwan-convention mapping. Auto-convert is on by default: Simplified pages convert to Traditional when that is your target, and the other way round when Simplified is.',
           'feature.shortcuts.title': 'Custom shortcuts',

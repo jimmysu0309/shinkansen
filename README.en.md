@@ -12,15 +12,10 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 - **X (Twitter) video subtitles** — videos with auto-generated captions are translated into your target language when played with sound, styled and positioned like X's native captions; muted autoplay videos in the timeline are skipped and cost nothing.
 - **Custom models work with more endpoints** — choose Chat Completions or Responses as the API format, and add custom request headers for services that need more than an API key.
+- **PDF translation: better layout and stability** — major layout fixes for tables, tables of contents and pages that mix figures with text; files up to 50 MB / 300 pages, with an optional page range.
 - **Hover translation** — hold a modifier key and rest the cursor on a paragraph to translate just that one, in place; pick the modifier and bilingual / monolingual display under "Translation shortcuts" in Settings (off by default).
 - **Glossary scoped to a site path** — enter "domain/path" to apply a domain glossary only under that path, so sections or series on one site can each have their own; path rules override site-wide rules.
 - **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with multi-finger touch translate and the floating button, ready out of the box.
-- Added **Word (.docx) document translation** — the translation is written back into the original file with layout, styles, tables, and comments fully preserved; bilingual output available.
-- Added **subtitle file translation** — SRT / WebVTT / ASS files are translated cue by cue with timing and style tags preserved; download monolingual or bilingual subtitles.
-- **PDF translation: higher limits and layout fixes** — limits raised to 50 MB / 300 pages, translate a chosen page range, fixes for two-column short lines, colored backgrounds, rotated pages and overflowing paragraphs, and on-demand fonts for Simplified Chinese / Japanese / Korean output.
-- Added **EPUB book translation** — a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters; download the translated book in monolingual or bilingual format.
-- Added **TXT / Markdown / HTML file** translation — the translated file keeps the same format as the original; glossary import also accepts **CSV** (two columns: source,translation).
-- **Respects pages' do-not-translate markup** — text marked `translate="no"` / `notranslate` stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.
 
 ## Why Shinkansen
 
