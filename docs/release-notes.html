@@ -97,7 +97,38 @@
   <p class="lang-switch"><strong>繁體中文</strong> | <a href="release-notes.en.html">English</a></p>
 
   <h1>商店上架版本更新紀錄</h1>
-  <p class="subtitle">給 Chrome Web Store、Firefox Add-ons 與 App Store（iOS / iPadOS Safari）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
+  <p class="subtitle">給 Chrome Web Store、Firefox Add-ons、Mac App Store 與 App Store（iOS / iPadOS）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a></p>
+
+  <h2>v2.7.0 <span class="release-date">2026-11-17 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.6.0</p>
+
+  <p class="lead">新增 X（Twitter）影片字幕翻譯；自訂模型可選 Responses API 格式並可加自訂 request headers；PDF 的表格、目錄與圖文頁版面大幅修正；另完成一輪全面檢修，涵蓋網頁翻譯、影片字幕、費用顯示與文件翻譯。<strong>升級後會自動清除一次網頁與影片字幕的翻譯快取</strong>（部分修正會改變譯文），不需要手動操作</p>
+
+  <ul>
+    <li><strong>X（Twitter）影片字幕翻譯</strong>：X 上帶自動產生字幕的影片，取消靜音播放時自動把字幕翻成目標語言——先由 AI 依語意重新分句再翻譯，譯文顯示在影片底部，全螢幕也有；時間軸上自動靜音播放的影片不翻，滑過去不花 API 費用。X 的 CC 鈕兼當譯文字幕開關，雙語對照跟隨顯示模式，引擎與模型沿用 YouTube 字幕設定；工具列圖示選單在 X 頁面新增「X 影片字幕翻譯」開關</li>
+
+    <li><strong>自訂模型：Responses API 格式與自訂 request headers</strong>：設定頁自訂模型新增「API 格式」下拉選單（預設 Chat Completions），端點或模型只開放 Responses API 時改選 Responses；「進階」區塊新增自訂 request headers 欄位，給除了 API Key 還要求額外 header 的端點使用。自訂 headers 比照 API Key 只存在本機，不同步、不寫進匯出的設定檔</li>
+
+    <li><strong>匯入設定檔更安全</strong>：匯入的設定檔若會把自訂模型的 API 端點換到別的網域，會先顯示新網址請你確認，原本存的 API Key 一併清除——避免來路不明的設定檔把金鑰連同網頁內容導到陌生伺服器。同一服務只改路徑時金鑰保留</li>
+
+    <li><strong>網頁翻譯修正</strong>：表格儲存格、清單項目、引文內的多段文字不再整格重複送翻（每段只翻一次，更省 token）；部分網站的圖說不再漏翻；行內圖示翻譯後不再爆成整欄寬；首字放大的段落翻譯後不再整段變大字；日文短句不再被誤判成簡體中文而只做簡繁轉換；模型漏寫標記時，連結、按鈕、圖片與註腳標記不再消失或接錯網址</li>
+
+    <li><strong>懸浮按鈕與翻譯進度提示更穩定</strong>：部分網站載入後會重建整份頁面，把懸浮按鈕與進度提示清掉；現在被移除後會自動回來</li>
+
+    <li><strong>簡繁轉換一律直接取代原文</strong>：本地簡繁轉換的段落不論顯示模式設成什麼都直接取代原文，不再把簡繁兩版並列；雙語對照只用在真正需要翻譯的段落</li>
+
+    <li><strong>YouTube / Google Drive 字幕</strong>：創作者自己上傳字幕的自動配音影片不再選錯語言來翻譯，改依自動字幕、原音音軌與影片標題判斷原始語言；YouTube 廣告播放期間不顯示正片的譯文字幕；字幕含「&lt;」或「&amp;」時顯示正確；Google Drive 影片字幕已是目標語言的不再送翻，部分批次失敗時可補翻</li>
+
+    <li><strong>PDF 翻譯版面</strong>：表格頁不再被當成多欄文字，各列內容不再併在一起；目錄頁每一列各自成列；編號清單逐項分開；行內引用編號不再把段落切開造成重疊；文字繞圖的頁面，譯文與圖說不再壓到圖片或彼此重疊；含空白頁的 PDF 不再整份無法產生譯文檔；產生譯文 PDF 的速度約快四成</li>
+
+    <li><strong>PDF 譯文內容</strong>：譯文不再出現「⟦*162⟧」這類標記殘留，原文的方括號引用編號（例如 [12]）保留在對應位置；連結文字不再被包上書名號，也不再因此失去可點的連結。升級後會自動清除一次文件翻譯的快取，已翻過的文件重新翻譯即可套用</li>
+
+    <li><strong>Word / EPUB / Markdown 翻譯</strong>：Word 文字方塊所在段落的文字（常見於文件標題）現在會翻譯，雙語對照輸出不再重複編號；EPUB 段落內的圖片與影音翻譯後不再消失；Markdown 的 front matter、縮排程式碼與連結參照定義原樣保留不送翻；開啟 HTML 或 EPUB 檔時不再載入檔案內指向外部網站的圖片、影音與字型</li>
+
+    <li><strong>費用與用量</strong>：費用估算納入 Gemini 的服務層級（Flex / Priority）；非繁體中文介面預設以美元顯示金額，並可在設定頁切換幣別；用量紀錄補上說明——紀錄只包含這台裝置，同一把 API Key 用在多台裝置時總額請以 Gemini 後台為準</li>
+
+    <li><strong>設定頁與多語介面</strong>：介面語言與瀏覽器語言不同時，部分文字不再停留在瀏覽器語言；英文、日文、西班牙文、德文介面下按鈕文字不再被截斷；Temperature 欄位對不支援調整的模型會停用並註記；數值欄位超出範圍時存檔與畫面顯示一致；按「回復預設」或匯入設定後不再被稍早的自動存檔蓋回舊值</li>
+  </ul>
 
   <h2>v2.6.0 <span class="release-date">2026-10-07 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v2.5.1</p>
@@ -246,7 +277,7 @@
   <ul>
     <li><strong>新增「懸浮按鈕」</strong>：頁面邊緣常駐一顆可拖移的懸浮按鈕，點選即翻譯本頁、長按可切換翻譯引擎或叫出功能選單；全平台預設開啟，按鈕大小（小 / 中 / 大）與透明度可調</li>
 
-    <li><strong>新增「送到 Instapaper」</strong>：連結 Instapaper 帳號後，用工具列視窗按鈕或快速鍵即可把翻譯後的整篇文章一鍵存進你自己的 Instapaper（存的是中文譯文版，可附 AI 自動摘要），日後可重讀。不像一般稍後再讀工具只存網址、由伺服器重新抓取原文，Shinkansen 直接上傳翻譯後的內容</li>
+    <li><strong>新增「送到 Instapaper」</strong>：連結 Instapaper 帳號後，用工具列圖示選單的按鈕或快速鍵即可把翻譯後的整篇文章一鍵存進你自己的 Instapaper（存的是中文譯文版，可附 AI 自動摘要），日後可重讀。不像一般稍後再讀工具只存網址、由伺服器重新抓取原文，Shinkansen 直接上傳翻譯後的內容</li>
 
     <li><strong>iOS / iPadOS Safari 版即將登陸 App Store</strong>：iPhone / iPad 也能用 Shinkansen 整頁翻譯，目前送審中，敬請期待。提供「四指輕點」整頁翻譯手勢；App 首次開啟有引導流程可填 Gemini API Key、選預設翻譯方式（iOS 版不含 PDF 文件翻譯）</li>
 
@@ -301,17 +332,17 @@
   <ul>
     <li><strong>X 推文翻譯品質大幅提升（單語 + 雙語）</strong>：修復 11 個版本累積的結構性問題——推文內含 URL 連結、@mention、#hashtag、emoji 圖片、換行段落的複雜推文，譯文不再出現中間段落消失、文字黏在一起、引用推文多出灰底框等問題。點「顯示更多」展開截斷推文後，展開部分也會自動重翻。雙語對照模式下，整則推文現在只產生一個完整的翻譯區塊（之前會碎成 5-7 個小區塊且順序反轉）</li>
 
-    <li><strong>Google 翻譯引擎品質修正</strong>：兩項 Google MT 專屬修正——(1) Amazon 等網站的評論標題（含星星 icon + 文字的連結結構）不再被跳過；(2) CJK 翻譯結果跟 URL / @mention 之間不再黏在一起（自動補空格）；(3) emoji 圖片不再翻譯後重複出現兩張</li>
+    <li><strong>Google 翻譯引擎品質修正</strong>：三項 Google MT 專屬修正——（1）Amazon 等網站的評論標題（含星星 icon + 文字的連結結構）不再被跳過；（2）CJK 翻譯結果跟 URL / @mention 之間不再黏在一起（自動補空格）；（3）emoji 圖片不再翻譯後重複出現兩張</li>
 
-    <li><strong>Amazon 等外語購物網站翻譯涵蓋率提升</strong>：(1) 產品推薦 carousel 卡片翻譯後，星等、徽章、價格不再消失；(2) 按鈕文字（「カートに入れる」「参考になった」等）現在也會翻譯；(3) 外語頁面的短文字 anchor、mixed-content label、比較表格按鈕等過去被偵測管線擋掉的 UI 元素，這版全面放寬</li>
+    <li><strong>Amazon 等外語購物網站翻譯涵蓋率提升</strong>：（1）產品推薦 carousel 卡片翻譯後，星等、徽章、價格不再消失；（2）按鈕文字（「カートに入れる」「参考になった」等）現在也會翻譯；（3）外語頁面的短文字 anchor、mixed-content label、比較表格按鈕等過去被偵測管線擋掉的 UI 元素，這版全面放寬</li>
 
-    <li><strong>YouTube 字幕三項修正</strong>：(1) 關閉 YouTube 翻譯功能後，原生字幕不再被隱藏（fix #51）；(2) API key 無效或額度用完時，字幕區會顯示錯誤提示（之前只停在「翻譯中⋯」）；(3) 工具列圖示的翻譯 badge 改為啟動翻譯時立即顯示，不再等翻譯完成後才出現</li>
+    <li><strong>YouTube 字幕三項修正</strong>：（1）關閉 YouTube 翻譯功能後，原生字幕不再被隱藏（fix #51）；（2）API key 無效或額度用完時，字幕區會顯示錯誤提示（之前只停在「翻譯中⋯」）；（3）工具列圖示的翻譯 badge 改為啟動翻譯時立即顯示，不再等翻譯完成後才出現</li>
   </ul>
 
   <h2>v1.10.0 <span class="release-date">2026-05-20 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.9.24</p>
 
-  <p class="lead">這版以 X（Twitter）與 Instagram 留言翻譯結構性修補為主軸，並更新 Gemini 模型清單與價格。</p>
+  <p class="lead">這版以 X（Twitter）與 Instagram 留言翻譯結構性修補為主軸，並更新 Gemini 模型清單與價格</p>
 
   <ul>
     <li><strong>X / Twitter 推文翻譯結構性修補</strong>：含 URL 連結、@mention、#hashtag、emoji 圖片、換行段落的推文，譯文現在會以單語覆蓋方式直接塞回原推文，不再多出灰底框的雙語並列。具體 case 包含：URL 連結內部結構（網址前綴 / 主網域 / 截斷省略號）完整保留、@mention 跟 #hashtag 連結點擊行為不變、emoji 圖片仍出現在文字原位、原推文段落空行（雙換行）保留、「by @username」這類連接詞翻譯後語意合進主文不殘留英文殘渣</li>
@@ -324,7 +355,7 @@
 
     <li><strong>Gemini 模型清單更新</strong>：原本的 Gemini 3.1 Pro Preview 已退役，改成 Gemini 3.5 Flash（$1.50 / $9.00 per 1M tokens），既有使用 3.1 Pro 的使用者升級後選單會自動換成 3.5 Flash。Gemini 3.1 Flash Lite 價格從 $0.10 / $0.30 調整為 $0.25 / $1.50（Google 公布新價）。價格校準日期更新到 2026-05</li>
 
-    <li><strong>macOS Safari 版正式公開下載</strong>：之前只能透過 GitHub Release 手動找的 macOS Safari `.pkg` 安裝包，這版開始 landing page 也有直接下載按鈕（Developer ID 簽章 + Apple notarize），雙擊 `.pkg` 就能裝。App Store 上架版本仍在審核中，過審後會同步公告</li>
+    <li><strong>macOS Safari 版正式公開下載</strong>：之前只能透過 GitHub Release 手動找的 macOS Safari <code>.pkg</code> 安裝包，這版開始 landing page 也有直接下載按鈕（Developer ID 簽章 + Apple notarize），雙擊 <code>.pkg</code> 就能裝。App Store 上架版本仍在審核中，過審後會同步公告</li>
   </ul>
 
   <h2>v1.9.24 <span class="release-date">2026-05-18 上架</span></h2>
@@ -351,88 +382,88 @@
   <h2>v1.9.8 <span class="release-date">2026-05-12 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.9.0</p>
 
-  <p class="lead">這版以 X（Twitter）、Threads、Reddit、Mastodon 等社群網站的翻譯體驗修補為主軸，並修正過去高估的費用顯示與用量紀錄對不起來的問題。</p>
+  <p class="lead">這版以 X（Twitter）、Threads、Reddit、Mastodon 等社群網站的翻譯體驗修補為主軸，並修正過去高估的費用顯示與用量紀錄對不起來的問題</p>
 
   <ul>
-    <li><strong>社群網站（X、Threads、Reddit、Mastodon）翻譯體驗大幅修補</strong>：這些「滑動才載入新內容」的網站累積了多項修補——連續滑動時譯文不再要等使用者停手才出現（實測 5.1 秒降到 3.2 秒）；滑離畫面後再滑回去不再重複付費翻譯，也不再產生跟先前不一樣的譯文；含換行的推文翻完維持多行（原本被壓成一行）；推文中夾表情符號圖片把文字切成多區塊時，譯文不再吃掉前半段；X 連結卡片預覽翻完，後面才載入進來的大圖不再消失；短的簡中內容（社群網站只標「中文」沒分繁簡的、或文章卡片標題太短的）不再被誤判為已是繁中而跳過翻譯。</li>
-    <li><strong>Google Translate 在中英混排頁面譯出亂碼的問題修復</strong>：用 Google Translate 翻 X、Threads、Reddit 等中英混排頁面時，英文段不再被當成簡中變體而攪成亂碼（像「No API billing, no latingle m...」這類英文殘渣夾雜漢字碎片）。升級後會自動清掉一次本版以前 Google Translate 留下的亂碼譯文紀錄；Gemini 與自訂模型的翻譯記憶不動，使用者過去付費翻譯過的內容不會被連帶清掉。</li>
-    <li><strong>滑動補翻不再跳重複通知</strong>：會即時載入新內容的網站，滑到已經翻譯過的段落時不再彈「已翻譯 N 段新內容」通知。滑動補翻是被動行為（使用者沒按按鈕），跳通知就只是干擾。</li>
-    <li><strong>選 Google Translate 或自訂模型翻動態網站不再偷偷換成 Gemini</strong>：過去使用者選 Google Translate 或自訂模型翻 X 等會即時載入新內容的網站，第一次翻譯成功後，滑動載入的新內容會偷偷改走 Gemini（沒設 Gemini 金鑰就全部失敗，使用者體感「只翻到一半就停了」）。本版整個翻譯過程都按使用者選的引擎一致到底。</li>
-    <li><strong>PDF 文件翻譯支援自訂 OpenAI 相容服務</strong>：選自訂模型的預設組翻 PDF 不再偷偷退回用 Gemini，本機 Ollama、llama.cpp 或 OpenRouter 等服務都能拿來翻 PDF。選 Google Translate 預設組翻 PDF 改顯示明確錯誤訊息，引導使用者改用 Gemini 或自訂模型（Google Translate 本身沒文件翻譯能力）。</li>
-    <li><strong>Google Drive 影片字幕翻譯支援自訂 OpenAI 相容服務</strong>：過去只支援 Gemini 與 Google Translate，這版補上。</li>
-    <li><strong>YouTube「明明是中文還被翻一次」修復</strong>：YouTube 部分人工字幕的語系標籤只標「中文」（沒分繁中或簡中）。原本系統因為對不上具體繁中或簡中標籤，即使影片字幕已是繁中還是會被送去翻譯。本版改用實際內容判斷，字幕已是目標語系（繁中或簡中）就不再多翻一次。</li>
-    <li><strong>費用顯示修正 + 重複命中折扣可自訂</strong>：過去用量明細與通知顯示的「實付費用」對重複命中部分固定算 25%（Gemini 2.0 時代的折扣值）。Gemini 2.5+ 起改為重複部分只付 10%，本版同步更新，並開放自訂模型的重複命中折扣設定（各家服務差異大，從 2% 到 50% 不等）。<strong>對既有使用者影響：升級後 Gemini 費用顯示降為原本約 0.4×，自訂模型 OpenRouter 路徑降為約 0.2×——這是修正過去高估，不是倒退。</strong></li>
-    <li><strong>用量紀錄統一資料來源</strong>：過去工具列圖示顯示的累計費用走一條來源、設定頁用量明細走另一條，兩邊會對不起來；設定頁「清除紀錄」只清明細，工具列圖示仍顯示舊累計值。本版兩邊統一到同一份紀錄。術語表抽取消耗的 token 與費用也納入用量明細（前綴「[術語表]」）。</li>
-    <li><strong>自訂模型「思考模式關閉」真的有效</strong>：過去接 Fireworks、Together、Groq、DeepInfra 等服務跑 Qwen、DeepSeek 等思考型模型時，「思考模式」選「關閉」會被默默忽略，使用者明明設「關閉」模型還是花長時間思考。本版改送標準參數，選「關閉」實測從 56 秒降到 1.2 秒。</li>
-    <li><strong>自訂模型預設改為 OpenRouter GPT-5.4 Mini</strong>：新使用者打開「自訂模型」分頁只需填 OpenRouter API 金鑰就能用，不必自填 API 網址、模型名稱與兩個價格欄位。</li>
+    <li><strong>社群網站（X、Threads、Reddit、Mastodon）翻譯體驗大幅修補</strong>：這些「滑動才載入新內容」的網站累積了多項修補——連續滑動時譯文不再要等使用者停手才出現（實測 5.1 秒降到 3.2 秒）；滑離畫面後再滑回去不再重複付費翻譯，也不再產生跟先前不一樣的譯文；含換行的推文翻完維持多行（原本被壓成一行）；推文中夾表情符號圖片把文字切成多區塊時，譯文不再吃掉前半段；X 連結卡片預覽翻完，後面才載入進來的大圖不再消失；短的簡中內容（社群網站只標「中文」沒分繁簡的、或文章卡片標題太短的）不再被誤判為已是繁中而跳過翻譯</li>
+    <li><strong>Google Translate 在中英混排頁面譯出亂碼的問題修復</strong>：用 Google Translate 翻 X、Threads、Reddit 等中英混排頁面時，英文段不再被當成簡中變體而攪成亂碼（像「No API billing, no latingle m...」這類英文殘渣夾雜漢字碎片）。升級後會自動清掉一次本版以前 Google Translate 留下的亂碼譯文紀錄；Gemini 與自訂模型的翻譯記憶不動，使用者過去付費翻譯過的內容不會被連帶清掉</li>
+    <li><strong>滑動補翻不再跳重複通知</strong>：會即時載入新內容的網站，滑到已經翻譯過的段落時不再彈「已翻譯 N 段新內容」通知。滑動補翻是被動行為（使用者沒按按鈕），跳通知就只是干擾</li>
+    <li><strong>選 Google Translate 或自訂模型翻動態網站不再偷偷換成 Gemini</strong>：過去使用者選 Google Translate 或自訂模型翻 X 等會即時載入新內容的網站，第一次翻譯成功後，滑動載入的新內容會偷偷改走 Gemini（沒設 Gemini 金鑰就全部失敗，使用者體感「只翻到一半就停了」）。本版整個翻譯過程都按使用者選的引擎一致到底</li>
+    <li><strong>PDF 文件翻譯支援自訂 OpenAI 相容服務</strong>：選自訂模型的預設組翻 PDF 不再偷偷退回用 Gemini，本機 Ollama、llama.cpp 或 OpenRouter 等服務都能拿來翻 PDF。選 Google Translate 預設組翻 PDF 改顯示明確錯誤訊息，引導使用者改用 Gemini 或自訂模型（Google Translate 本身沒文件翻譯能力）</li>
+    <li><strong>Google Drive 影片字幕翻譯支援自訂 OpenAI 相容服務</strong>：過去只支援 Gemini 與 Google Translate，這版補上</li>
+    <li><strong>YouTube「明明是中文還被翻一次」修復</strong>：YouTube 部分人工字幕的語系標籤只標「中文」（沒分繁中或簡中）。原本系統因為對不上具體繁中或簡中標籤，即使影片字幕已是繁中還是會被送去翻譯。本版改用實際內容判斷，字幕已是目標語系（繁中或簡中）就不再多翻一次</li>
+    <li><strong>費用顯示修正 + 重複命中折扣可自訂</strong>：過去用量明細與通知顯示的「實付費用」對重複命中部分固定算 25%（Gemini 2.0 時代的折扣值）。Gemini 2.5+ 起改為重複部分只付 10%，本版同步更新，並開放自訂模型的重複命中折扣設定（各家服務差異大，從 2% 到 50% 不等）。<strong>對既有使用者影響：升級後 Gemini 費用顯示降為原本約 0.4×，自訂模型 OpenRouter 路徑降為約 0.2×——這是修正過去高估，不是倒退</strong></li>
+    <li><strong>用量紀錄統一資料來源</strong>：過去工具列圖示顯示的累計費用走一條來源、設定頁用量明細走另一條，兩邊會對不起來；設定頁「清除紀錄」只清明細，工具列圖示仍顯示舊累計值。本版兩邊統一到同一份紀錄。術語表抽取消耗的 token 與費用也納入用量明細（前綴「[術語表]」）</li>
+    <li><strong>自訂模型「思考模式關閉」真的有效</strong>：過去接 Fireworks、Together、Groq、DeepInfra 等服務跑 Qwen、DeepSeek 等思考型模型時，「思考模式」選「關閉」會被默默忽略，使用者明明設「關閉」模型還是花長時間思考。本版改送標準參數，選「關閉」實測從 56 秒降到 1.2 秒</li>
+    <li><strong>自訂模型預設改為 OpenRouter GPT-5.4 Mini</strong>：新使用者打開「自訂模型」分頁只需填 OpenRouter API 金鑰就能用，不必自填 API 網址、模型名稱與兩個價格欄位</li>
   </ul>
 
   <h2>v1.9.0 <span class="release-date">2026-05-09 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.8.55</p>
 
-  <p class="lead">這版的兩大主軸：翻譯目標與介面雙雙擴充為 8 種語言、複雜頁面雙語對照模式大幅收斂。</p>
+  <p class="lead">這版的兩大主軸：翻譯目標與介面雙雙擴充為 8 種語言、複雜頁面雙語對照模式大幅收斂</p>
 
   <ul>
-    <li><strong>多語翻譯目標</strong>：翻譯目標從繁體中文擴充為 8 種語言（繁體中文、簡體中文、英文、日文、韓文、西班牙文、法文、德文）。在設定頁的「翻譯目標語言」分頁切換，所有翻譯模式（網頁、PDF、YouTube 字幕、自訂模型）共用此設定；預設依瀏覽器語言自動推導。</li>
-    <li><strong>多語介面</strong>：工具列圖示、設定頁、網頁翻譯進度通知、PDF 文件翻譯閱讀器全部 i18n 化，同樣支援 8 種語言。介面語系可以跟翻譯目標語言獨立設定（例如「英文介面 + 翻成繁中」）。</li>
-    <li><strong>CJK 譯文字形變體正確</strong>：翻成日文 / 韓文時，譯文採用對應 locale 的字體 stack，避免站點原本鎖死繁中字體時譯文出現字形錯位（例如日文「査」字身仍是中文版）。</li>
-    <li><strong>GitHub / Medium 等複雜頁面雙語對照大幅修補</strong>：雙語對照模式累積 15+ 條結構性修補，例如 GitHub 程式碼區塊不再被翻譯蓋掉、檔名欄位不亂翻、表格 cell 跟譯文之間有像樣呼吸空間、commit 日期不再觸發 LLM 幻想長文、Medium 引用文字譯文不衝出 column、按讚 / 留言計數不被誤翻等。</li>
-    <li><strong>自訂 Provider 強化段序號標記（預設開啟）</strong>：自訂 OpenAI 相容 Provider 連本機量化模型（Ollama / llama.cpp 跑 gemma-4 / Qwen 量化版等）時，改用更穩固的段序號標記，避免被誤翻成「N1、N2」等殘留洩漏到譯文。商用 API 使用者（OpenRouter / DeepSeek / Groq 等）可在「自訂模型」分頁關掉省 token。</li>
-    <li><strong>隱私政策完整更新 + 英文版</strong>：隱私政策補上 8 語 target、3 引擎（Gemini / Google Translate / OpenAI 相容）、5 條對外連線（含匯率 API / GitHub release check）的最新狀態，並新增英文版。</li>
-    <li><strong>YouTube 字幕「中文閃一下變回英文」修復</strong>：YouTube 在某些情境（切畫質、廣告結束、播放器重新載入、theatre 切換等）會發出假性導航事件，原本 Shinkansen 一律重置字幕翻譯狀態 + 重抓字幕（約 10 秒），使用者看到中文字幕閃一下變回英文一段時間才回到中文。這版加判斷：同一影片頁且翻譯仍在進行中時跳過重置，閃爍消失。</li>
-    <li><strong>Log 系統修補</strong>：設定頁 Log 分頁打開後能看到背景 service worker 重啟前的歷史紀錄、清除按鈕真的清乾淨（原本 SW 重啟後舊紀錄又會冒出來）。</li>
+    <li><strong>多語翻譯目標</strong>：翻譯目標從繁體中文擴充為 8 種語言（繁體中文、簡體中文、英文、日文、韓文、西班牙文、法文、德文）。在設定頁的「翻譯目標語言」分頁切換，所有翻譯模式（網頁、PDF、YouTube 字幕、自訂模型）共用此設定；預設依瀏覽器語言自動推導</li>
+    <li><strong>多語介面</strong>：工具列圖示、設定頁、網頁翻譯進度通知、PDF 文件翻譯閱讀器全部 i18n 化，同樣支援 8 種語言。介面語系可以跟翻譯目標語言獨立設定（例如「英文介面 + 翻成繁中」）</li>
+    <li><strong>CJK 譯文字形變體正確</strong>：翻成日文 / 韓文時，譯文採用對應 locale 的字體 stack，避免站點原本鎖死繁中字體時譯文出現字形錯位（例如日文「査」字身仍是中文版）</li>
+    <li><strong>GitHub / Medium 等複雜頁面雙語對照大幅修補</strong>：雙語對照模式累積 15+ 條結構性修補，例如 GitHub 程式碼區塊不再被翻譯蓋掉、檔名欄位不亂翻、表格 cell 跟譯文之間有像樣呼吸空間、commit 日期不再觸發 LLM 幻想長文、Medium 引用文字譯文不衝出 column、按讚 / 留言計數不被誤翻等</li>
+    <li><strong>自訂 Provider 強化段序號標記（預設開啟）</strong>：自訂 OpenAI 相容 Provider 連本機量化模型（Ollama / llama.cpp 跑 gemma-4 / Qwen 量化版等）時，改用更穩固的段序號標記，避免被誤翻成「N1、N2」等殘留洩漏到譯文。商用 API 使用者（OpenRouter / DeepSeek / Groq 等）可在「自訂模型」分頁關掉省 token</li>
+    <li><strong>隱私政策完整更新 + 英文版</strong>：隱私政策補上 8 語 target、3 引擎（Gemini / Google Translate / OpenAI 相容）、5 條對外連線（含匯率 API / GitHub release check）的最新狀態，並新增英文版</li>
+    <li><strong>YouTube 字幕「中文閃一下變回英文」修復</strong>：YouTube 在某些情境（切畫質、廣告結束、播放器重新載入、theatre 切換等）會發出假性導航事件，原本 Shinkansen 一律重置字幕翻譯狀態 + 重抓字幕（約 10 秒），使用者看到中文字幕閃一下變回英文一段時間才回到中文。這版加判斷：同一影片頁且翻譯仍在進行中時跳過重置，閃爍消失</li>
+    <li><strong>Log 系統修補</strong>：設定頁 Log 分頁打開後能看到背景 service worker 重啟前的歷史紀錄、清除按鈕真的清乾淨（原本 SW 重啟後舊紀錄又會冒出來）</li>
   </ul>
 
   <h2>v1.8.55 <span class="release-date">2026-05-05 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.8.38</p>
 
-  <p class="lead">這版以 PDF 文件翻譯與雙語體驗為主軸。</p>
+  <p class="lead">這版以 PDF 文件翻譯與雙語體驗為主軸</p>
 
   <ul>
-    <li><strong>PDF 文件翻譯（beta）</strong>：把 PDF 拖到「翻譯文件」分頁，Shinkansen 會在本機解析版面、送翻譯，並以左右並排的雙頁對照模式呈現，供使用者閱讀。可下載成雙語對照 PDF。整份文件全程在瀏覽器內處理，不會上傳到任何伺服器，只有抽取出來的純文字會送到使用者自己設定的翻譯端點。</li>
-    <li><strong>PDF 譯文編輯</strong>：閱讀器內可逐段編輯譯文，支援基本的 markdown 格式（粗體、斜體、連結），內建找/取代功能。儲存後重新生成雙頁預覽。</li>
-    <li><strong>文章術語表</strong>：翻譯前可請 AI 從文章內抽取人名、專有名詞對照表，確認或編輯後再翻譯，確保整份文件的譯名前後一致。對照表可匯入或匯出 JSON。</li>
-    <li><strong>Google Drive 影片字幕翻譯</strong>：YouTube 字幕翻譯機制延伸到 Drive 上的影片，字幕樣式與雙語對照行為一致。</li>
-    <li><strong>YouTube 雙語字幕視覺整合</strong>：雙語模式下中英文字幕共用一塊黑底，徹底解決原本「兩行英文擠掉譯文」與「視覺三塊黑底污染」的問題。</li>
-    <li><strong>雙語對照譯文強調色自訂</strong>：雙語對照模式提供 8 種強調色與深色模式自動配色，深色頁面下對比加強。</li>
-    <li><strong>翻譯記憶不再隨版本更新清除</strong>：擴充功能版本變更時不再自動清除翻譯快取，避免使用者每次升級都掉資料。如需清除，可在工具列圖示或設定頁手動清。</li>
-    <li><strong>顯示貨幣切換</strong>（限繁中介面）：設定頁費用統計可在 USD 與 TWD 之間切換，自動換算。</li>
+    <li><strong>PDF 文件翻譯（beta）</strong>：把 PDF 拖到「翻譯文件」分頁，Shinkansen 會在本機解析版面、送翻譯，並以左右並排的雙頁對照模式呈現，供使用者閱讀。可下載成雙語對照 PDF。整份文件全程在瀏覽器內處理，不會上傳到任何伺服器，只有抽取出來的純文字會送到使用者自己設定的翻譯端點</li>
+    <li><strong>PDF 譯文編輯</strong>：閱讀器內可逐段編輯譯文，支援基本的 markdown 格式（粗體、斜體、連結），內建找/取代功能。儲存後重新生成雙頁預覽</li>
+    <li><strong>文章術語表</strong>：翻譯前可請 AI 從文章內抽取人名、專有名詞對照表，確認或編輯後再翻譯，確保整份文件的譯名前後一致。對照表可匯入或匯出 JSON</li>
+    <li><strong>Google Drive 影片字幕翻譯</strong>：YouTube 字幕翻譯機制延伸到 Drive 上的影片，字幕樣式與雙語對照行為一致</li>
+    <li><strong>YouTube 雙語字幕視覺整合</strong>：雙語模式下中英文字幕共用一塊黑底，徹底解決原本「兩行英文擠掉譯文」與「視覺三塊黑底污染」的問題</li>
+    <li><strong>雙語對照譯文強調色自訂</strong>：雙語對照模式提供 8 種強調色與深色模式自動配色，深色頁面下對比加強</li>
+    <li><strong>翻譯記憶不再隨版本更新清除</strong>：擴充功能版本變更時不再自動清除翻譯快取，避免使用者每次升級都掉資料。如需清除，可在工具列圖示或設定頁手動清</li>
+    <li><strong>顯示貨幣切換</strong>（限繁中介面）：設定頁費用統計可在 USD 與 TWD 之間切換，自動換算</li>
   </ul>
 
   <h2>v1.8.38 <span class="release-date">2026-05-01 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.8.30</p>
 
-  <p class="lead">這版以 UX 與跨瀏覽器相容性修補為主。</p>
+  <p class="lead">這版以 UX 與跨瀏覽器相容性修補為主</p>
 
   <ul>
-    <li><strong>本機 Ollama / llama.cpp 連線解法說明</strong>：設定頁的自訂 Provider 分頁加入「連本機 Ollama / llama.cpp 收到 403？」展開區，內含可行的兩種解法（Ollama 設定 OLLAMA_ORIGINS、或用 hosts 檔指 fake domain）。</li>
-    <li><strong>Arc 等不支援 openOptionsPage 的瀏覽器支援</strong>：在 Arc 上點工具列圖示的「設定」按鈕現在會正常開啟設定頁。</li>
-    <li><strong>YouTube 關閉 CC 後不再持續送翻譯請求</strong>：使用者按 YouTube 字幕按鈕關閉 CC 時，Shinkansen 會立即暫停字幕翻譯，並隱藏畫面上殘留的中文字幕，避免在使用者已關掉字幕的情況下繼續耗用 token。</li>
-    <li><strong>雙語對照在深色背景頁面對比改善</strong>：雙語對照 wrapper 現在會自動偵測頁面實際背景亮度，深色頁面採用對比加強的配色，避免原本米色底跟父層淺灰文字對比破裂。同時加入圓角、padding 微調、與下一段間距處理。</li>
-    <li><strong>論壇 / 訂閱中 thread 標題偵測修復</strong>：vBulletin 等論壇上「已訂閱中」的 thread（會多包一層 wrapper 與小圖示）標題現在能正確被翻譯。</li>
+    <li><strong>本機 Ollama / llama.cpp 連線解法說明</strong>：設定頁的自訂 Provider 分頁加入「連本機 Ollama / llama.cpp 收到 403？」展開區，內含可行的兩種解法（Ollama 設定 OLLAMA_ORIGINS、或用 hosts 檔指 fake domain）</li>
+    <li><strong>Arc 等不支援 openOptionsPage 的瀏覽器支援</strong>：在 Arc 上點工具列圖示的「設定」按鈕現在會正常開啟設定頁</li>
+    <li><strong>YouTube 關閉 CC 後不再持續送翻譯請求</strong>：使用者按 YouTube 字幕按鈕關閉 CC 時，Shinkansen 會立即暫停字幕翻譯，並隱藏畫面上殘留的中文字幕，避免在使用者已關掉字幕的情況下繼續耗用 token</li>
+    <li><strong>雙語對照在深色背景頁面對比改善</strong>：雙語對照 wrapper 現在會自動偵測頁面實際背景亮度，深色頁面採用對比加強的配色，避免原本米色底跟父層淺灰文字對比破裂。同時加入圓角、padding 微調、與下一段間距處理</li>
+    <li><strong>論壇 / 訂閱中 thread 標題偵測修復</strong>：vBulletin 等論壇上「已訂閱中」的 thread（會多包一層 wrapper 與小圖示）標題現在能正確被翻譯</li>
   </ul>
 
   <h2>v1.8.30 <span class="release-date">2026-04-30 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.4.22</p>
 
-  <p class="lead">這版距離 v1.4.22 累積了大量功能。以下是對使用者影響最大的更新。</p>
+  <p class="lead">這版距離 v1.4.22 累積了大量功能。以下是對使用者影響最大的更新</p>
 
   <ul>
-    <li><strong>極速秒翻</strong>：按下翻譯後 1 秒就看到頁面開始變中文，不必等整批 API 回完才一次塞回頁面（限 Gemini 引擎）。文章前段段落改走 streaming，首字延遲從 2.5–4.4 秒大幅縮短到 1.0–1.2 秒。</li>
-    <li><strong>雙語對照模式</strong>：工具列圖示一鍵切換顯示模式。「單語覆蓋」原地替換、「雙語對照」原文保留，譯文以新段落附加。雙語模式提供 4 種視覺標記（淡底色、左邊細條、波浪底線、無）讓使用者選擇譯文呈現風格。</li>
-    <li><strong>自訂 AI 模型</strong>：除了既有的 Google Gemini 與 Google Translate，新增「自訂 OpenAI 相容端點」分頁，可接 OpenRouter、Together、DeepSeek、Groq、Fireworks、Anthropic Claude、本機 Ollama / llama.cpp 等任何 OpenAI 相容服務，使用百種以上模型。</li>
-    <li><strong>YouTube 自動字幕智慧分句</strong>：YouTube 自動產生的字幕（沒有人工字幕的影片，CC 標記為 auto-generated）原本是按時間切割，每條只有 1–3 個英文字、沒有標點，逐條翻譯失去語意上下文。現在會由 AI 重新依語意分句、補上標點再翻譯，中文字幕從「破碎的詞」變「完整的句子」。預設走「混合模式」，先用本地分句快速顯示，背景同時跑 AI 分句，完成後用更精緻版本替換。</li>
-    <li><strong>只翻文章開頭（節省費用）</strong>：翻譯只跑頁面前幾段（範圍 5-50，預設 25 段），大幅節省 token 用量，適合先預覽再決定是否要看完整篇。翻譯完成後右下角會出現「翻譯剩餘段落」按鈕，點按可繼續翻完整篇，前面已翻好的段落會從本地快取載入，不重複收費。</li>
-    <li><strong>禁用詞清單</strong>：可由使用者編輯的禁用詞對照表（預設 25 條，例如「視頻、軟件、數據、網絡、用戶」），明確要求 AI 不要使用左欄詞彙。</li>
-    <li><strong>翻譯快速鍵與三組預設</strong>：三組可自訂的翻譯預設，每組各綁一個快速鍵（macOS Option+A/S/D、Windows Alt+A/S/D），引擎、模型、標籤都可在設定頁「翻譯快速鍵」自訂。已翻譯狀態下按任一快速鍵還原，翻譯中按任一快速鍵取消。</li>
-    <li><strong>跨 tab 延續翻譯</strong>：在分頁 A 翻譯後，從 A 點連結開新分頁 B（含 Cmd / Ctrl+點連結、target="_blank"、JavaScript 開啟），分頁 B 會自動翻譯並繼承同一組預設。多層延續（B 開 C 也會繼續）。</li>
-    <li><strong>翻譯啟動更快</strong>：長網頁（Wikipedia、論壇、長 Medium）翻譯啟動明顯變快。長頁的首字延遲在多個典型網站平均減少 29%（NPR 從 11.7 秒降到 5.1 秒）。</li>
-    <li><strong>看到譯文順序更直覺</strong>：長網頁翻譯時最先看到的譯文從「導覽列、cookie 同意書、目錄」改為「文章標題與第一段內文」（先翻 main / article 內的段落）。</li>
-    <li><strong>商店升級提示</strong>：Chrome Web Store / Firefox Add-ons 自動更新到新版時，工具列圖示與 toast 會顯示「歡迎升級」提示，列出本版重點功能。Patch 級的小更新不會打擾。</li>
-    <li><strong>「翻譯本頁」工具列按鈕</strong>：工具列圖示現在可以直接觸發翻譯，並可在設定頁指定使用哪一組預設。</li>
-    <li><strong>背景分頁 CPU 與電量降耗</strong>：當分頁切到背景時，Shinkansen 會暫停內容偵測與 SPA 網址輪詢，減少背景分頁的耗電。</li>
-    <li><strong>用量紀錄可即時重新載入</strong>：設定頁的用量紀錄分頁加入「重新載入」按鈕，不必關閉設定頁就能看到最新紀錄。</li>
-    <li><strong>多項 YouTube 字幕體驗改善</strong>：字幕完全旁路 YouTube 原生「一字一字跳」的問題、字幕樣式自動對齊原生 YouTube 字幕、字幕分頁重整（自動翻譯、引擎、進階、視窗、Prompt）、字幕也可套用固定術語表與禁用詞清單（預設關）。</li>
+    <li><strong>極速秒翻</strong>：按下翻譯後 1 秒就看到頁面開始變中文，不必等整批 API 回完才一次塞回頁面（限 Gemini 引擎）。文章前段段落改走 streaming，首字延遲從 2.5–4.4 秒大幅縮短到 1.0–1.2 秒</li>
+    <li><strong>雙語對照模式</strong>：工具列圖示一鍵切換顯示模式。「單語覆蓋」原地替換、「雙語對照」原文保留，譯文以新段落附加。雙語模式提供 4 種視覺標記（淡底色、左邊細條、波浪底線、無）讓使用者選擇譯文呈現風格</li>
+    <li><strong>自訂 AI 模型</strong>：除了既有的 Google Gemini 與 Google Translate，新增「自訂 OpenAI 相容端點」分頁，可接 OpenRouter、Together、DeepSeek、Groq、Fireworks、Anthropic Claude、本機 Ollama / llama.cpp 等任何 OpenAI 相容服務，使用百種以上模型</li>
+    <li><strong>YouTube 自動字幕智慧分句</strong>：YouTube 自動產生的字幕（沒有人工字幕的影片，CC 標記為 auto-generated）原本是按時間切割，每條只有 1–3 個英文字、沒有標點，逐條翻譯失去語意上下文。現在會由 AI 重新依語意分句、補上標點再翻譯，中文字幕從「破碎的詞」變「完整的句子」。預設走「混合模式」，先用本地分句快速顯示，背景同時跑 AI 分句，完成後用更精緻版本替換</li>
+    <li><strong>只翻文章開頭（節省費用）</strong>：翻譯只跑頁面前幾段（範圍 5-50，預設 25 段），大幅節省 token 用量，適合先預覽再決定是否要看完整篇。翻譯完成後右下角會出現「翻譯剩餘段落」按鈕，點按可繼續翻完整篇，前面已翻好的段落會從本地快取載入，不重複收費</li>
+    <li><strong>禁用詞清單</strong>：可由使用者編輯的禁用詞對照表（預設 25 條，例如「視頻、軟件、數據、網絡、用戶」），明確要求 AI 不要使用左欄詞彙</li>
+    <li><strong>翻譯快速鍵與三組預設</strong>：三組可自訂的翻譯預設，每組各綁一個快速鍵（macOS Option+A/S/D、Windows Alt+A/S/D），引擎、模型、標籤都可在設定頁「翻譯快速鍵」自訂。已翻譯狀態下按任一快速鍵還原，翻譯中按任一快速鍵取消</li>
+    <li><strong>跨 tab 延續翻譯</strong>：在分頁 A 翻譯後，從 A 點連結開新分頁 B（含 Cmd / Ctrl+點連結、target="_blank"、JavaScript 開啟），分頁 B 會自動翻譯並繼承同一組預設。多層延續（B 開 C 也會繼續）</li>
+    <li><strong>翻譯啟動更快</strong>：長網頁（Wikipedia、論壇、長 Medium）翻譯啟動明顯變快。長頁的首字延遲在多個典型網站平均減少 29%（NPR 從 11.7 秒降到 5.1 秒）</li>
+    <li><strong>看到譯文順序更直覺</strong>：長網頁翻譯時最先看到的譯文從「導覽列、cookie 同意書、目錄」改為「文章標題與第一段內文」（先翻 main / article 內的段落）</li>
+    <li><strong>商店升級提示</strong>：Chrome Web Store / Firefox Add-ons 自動更新到新版時，工具列圖示與 toast 會顯示「歡迎升級」提示，列出本版重點功能。Patch 級的小更新不會打擾</li>
+    <li><strong>「翻譯本頁」工具列按鈕</strong>：工具列圖示現在可以直接觸發翻譯，並可在設定頁指定使用哪一組預設</li>
+    <li><strong>背景分頁 CPU 與電量降耗</strong>：當分頁切到背景時，Shinkansen 會暫停內容偵測與 SPA 網址輪詢，減少背景分頁的耗電</li>
+    <li><strong>用量紀錄可即時重新載入</strong>：設定頁的用量紀錄分頁加入「重新載入」按鈕，不必關閉設定頁就能看到最新紀錄</li>
+    <li><strong>多項 YouTube 字幕體驗改善</strong>：字幕完全旁路 YouTube 原生「一字一字跳」的問題、字幕樣式自動對齊原生 YouTube 字幕、字幕分頁重整（自動翻譯、引擎、進階、視窗、Prompt）、字幕也可套用固定術語表與禁用詞清單（預設關）</li>
   </ul>
 
   <footer>

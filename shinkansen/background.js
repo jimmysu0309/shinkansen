@@ -2674,6 +2674,24 @@ async function runV269DocCacheClear(triggerLabel) {
 browser.runtime.onStartup?.addListener(() => { runV269DocCacheClear('onStartup'); });
 runV269DocCacheClear('sw-init');
 
+// v2.7.0 一次性 migration：清掉網頁翻譯與影片字幕的翻譯快取。
+// v2.6.1–v2.6.12 累積了一批會改變譯文的修正（日文短句誤判成簡體、佔位符漏寫時的還原、
+// 巢狀版面重複送翻、字幕選錯基礎語言等），cache key 不含這些修正，不清的話升級後
+// 已翻過的網頁與影片仍吐舊譯文。文件翻譯（'_doc' / '_oc_doc'）與術語表不動。
+const V270_PAGE_SUBTITLE_CACHE_FLAG = '__shinkansen_v270_page_subtitle_cache_cleared';
+async function runV270PageSubtitleCacheClear(triggerLabel) {
+  try {
+    const r = await cache.migrateClearPageAndSubtitleCacheOnce(V270_PAGE_SUBTITLE_CACHE_FLAG);
+    if (r.ranMigration) {
+      debugLog('info', 'cache', `v2.7.0 page / subtitle cache cleared (${triggerLabel})`, { cleared: r.cleared });
+    }
+  } catch (err) {
+    debugLog('warn', 'cache', 'v2.7.0 page / subtitle cache clear failed', { error: err && err.message, trigger: triggerLabel });
+  }
+}
+browser.runtime.onStartup?.addListener(() => { runV270PageSubtitleCacheClear('onStartup'); });
+runV270PageSubtitleCacheClear('sw-init');
+
 // 累計用量 path 合一（IndexedDB 為單一資料源）後，storage.local['usageStats'] 殘餘清掉
 browser.storage.local.remove('usageStats').catch(() => {});
 
@@ -2690,6 +2708,7 @@ browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   await runV2065EchoCacheClear('onInstalled');
   await runV2075PromptCacheClear('onInstalled');
   await runV269DocCacheClear('onInstalled');
+  await runV270PageSubtitleCacheClear('onInstalled');
 
   // v1.6.5: CWS 自動更新到 major / minor 新版時，寫 welcomeNotice 讓使用者下次
   // 開 popup 或翻譯成功 toast 時看到「🎉 已升級至 vX.Y」+ 重大更新清單。

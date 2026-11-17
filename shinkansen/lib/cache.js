@@ -583,6 +583,31 @@ export async function migrateClearDocTranslationCacheOnce(flagKey) {
 }
 
 /**
+ * 一次性 migration：清掉網頁翻譯與影片字幕的翻譯 cache（tc_* 當中不屬於 LLM 文件翻譯的全部）。
+ * LLM 文件翻譯（cacheTag '_doc' / '_oc_doc'）、術語表（含 EPUB 全書術語表 bookgloss_）都不動——
+ * 整本書的譯文重翻成本高，文件翻譯的快取另由 migrateClearDocTranslationCacheOnce 視需要處理。
+ *
+ * 用在網頁 / 字幕路徑累積了一批會改變譯文的修正時：cache key 不含這些修正，舊譯文會一直
+ * cache hit，使用者升級後看不到修正。
+ * 「是不是文件翻譯」的比對方式與 clearDocTranslationCache 相同（cacheTag 緊接在 sha1 之後，錨定比對）。
+ *
+ * @param {string} flagKey 例 '__shinkansen_v270_page_subtitle_cache_cleared'
+ * @returns {Promise<{ cleared: number, ranMigration: boolean }>}
+ */
+export async function migrateClearPageAndSubtitleCacheOnce(flagKey) {
+  const flagged = await browser.storage.local.get(flagKey);
+  if (flagged[flagKey]) return { cleared: 0, ranMigration: false };
+  const all = await browser.storage.local.get(null);
+  const docRe = /^tc_[0-9a-f]{40}(?:_oc)?_doc(?:_|$)/;
+  const keys = Object.keys(all).filter((k) => k.startsWith(KEY_PREFIX) && !docRe.test(k));
+  if (keys.length > 0) {
+    await browser.storage.local.remove(keys);
+  }
+  await browser.storage.local.set({ [flagKey]: true });
+  return { cleared: keys.length, ranMigration: true };
+}
+
+/**
  * 比對 manifest 版本與儲存版本,版本變更時更新標記。
  *
  * v1.8.45 起改成「不清快取」:過去版本變更會 clearAll(),理由是 prompt / cache
