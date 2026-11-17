@@ -2,7 +2,7 @@
 
 # Shinkansen 🚄
 
-A fast, privacy-first translation extension for web pages and YouTube subtitles. Supports 8 target languages and multiple AI engines (Google Gemini, Google Translate, OpenAI-compatible custom models). In-place text replacement keeps the original layout; your browsing never touches a third-party server.
+A fast, privacy-first translation extension for web pages, documents and video subtitles. Supports 8 target languages and multiple AI engines (Google Gemini, Google Translate, OpenAI-compatible custom models). In-place text replacement keeps the original layout; your browsing never touches a third-party server.
 
 The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictionless reading experience.
 
@@ -19,7 +19,7 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Why Shinkansen
 
-Most web translation tools forward every page you read to a third-party server, putting your privacy out of your control. Shinkansen was designed privacy-first from day one: every setting and piece of data lives on your own computer; aside from your own Gemini API key talking directly to Google, nothing is forwarded to anyone else; the source is fully open, anyone can audit it.
+Most web translation tools forward every page you read to a third-party server, putting your privacy out of your control. Shinkansen was designed privacy-first from day one: settings and the translation cache stay in your browser (settings may sync with your browser account); translation requests go straight from your browser to the translation service you chose (by default Google Gemini, with your own API key), with no third-party server in between; the source is fully open, anyone can audit it.
 
 ## Performance
 
@@ -27,22 +27,22 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (nearl
 
 ## Features
 
-- **Multi-language target + multi-language UI**: translate into 8 languages — Traditional Chinese (Taiwan) / Simplified Chinese (China) / English / Japanese / Korean / Spanish / French / German. Pick in the "Translate to" dropdown inside the toolbar icon menu; all translation paths (web / PDF / YouTube subtitles) share this setting. The toolbar icon menu, settings page, web-translation progress toast, and PDF document reader UI are all available in all 8 UI languages — independent picker, defaults to your browser locale.
+- **Multi-language target + multi-language UI**: translate into 8 languages — Traditional Chinese (Taiwan) / Simplified Chinese (China) / English / Japanese / Korean / Spanish / French / German. Pick in the "Translate to" dropdown inside the toolbar icon menu; all translation paths (web / documents / video subtitles) share this setting. The toolbar icon menu, settings page, web-translation progress toast, and document translation page are all available in all 8 UI languages — independent picker, defaults to your browser locale.
 - **Instant Translation**: see the page start turning into your target language within 1 second of pressing translate — no waiting for the entire batch to come back before any text is updated (Gemini only).
 - **Preserves page layout**: text is replaced in place; fonts, sizes, colors, and links are kept; bold and italics survive untouched.
 - **Respects the page's "do not translate" markup**: names, codes, and snippets that site authors mark with the standard HTML `translate="no"` or `notranslate` are preserved as-is and never sent to the API; icons drawn with icon fonts (words like `star` or `menu` in the HTML) are not translated into text, so they don't disappear.
 - **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the toolbar icon menu. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / wavy underline / no mark) for the translated paragraphs.
 - **Three translation engines**: Gemini (AI translation, best quality, requires API key) + Google Translate (unofficial free endpoint, no API key, faster) + Custom model — switch freely depending on what you're reading.
 - **Free Chinese variant conversion**: when your target language is Traditional or Simplified Chinese, content in the opposite variant is converted locally with built-in OpenCC dictionaries — no API key, no API calls, works offline, with phrase-level Taiwan-convention mapping (软件→軟體, 视频→影片, 内存→記憶體). "Auto-convert Chinese variants" is on by default — pages in the opposite variant convert automatically on load, no manual trigger needed; you can turn it off in the toolbar icon menu (unchecking reverts the current page immediately); on mixed-language pages only the Chinese paragraphs use the free conversion while the rest go through your chosen engine. Variant conversion always replaces the original text in place — even in bilingual mode you never get the Simplified and Traditional versions stacked; bilingual display applies only to paragraphs that are actually translated.
-- **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
+- **Custom AI models**: any OpenAI-compatible endpoint, Chat Completions or Responses format — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **Hover translate**: pick a modifier key (Shift / Option / Control) in settings, then hold it and rest the pointer on a paragraph to translate just that paragraph in place — handy when you want to read the original first or only need part of a page. Pressing a shortcut afterwards translates the rest of the page; press again to restore. Hover translations are bilingual by default (original stays, translation appended below) and can be switched to replace-original in the same place, independently of the full-page display mode.
 - **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
 - **Document translation (PDF / EPUB / Word / TXT / Markdown / HTML / subtitles)**: upload a file and translate the whole thing — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output; Word (.docx) files get the translation written back into the original file with layout, styles, and tables fully preserved, with optional bilingual output; TXT / Markdown / HTML files reuse the same chapter pipeline, and the translated file keeps the same format as the original; SRT / WebVTT / ASS subtitle files are translated cue by cue with timing preserved, with optional bilingual output. Details in "Document translation" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with your target language (Traditional Chinese by default); styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
-- **Bilingual subtitles**: when the display mode is set to "Bilingual", subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. Applies to YouTube, Google Drive and X videos. Details in "Bilingual subtitles" below.
+- **Bilingual subtitles**: when the display mode is set to "Bilingual", subtitles show two lines simultaneously — original on top, translation below. Useful for listening practice or proofreading. Applies to YouTube, Google Drive and X videos. Details in "Bilingual subtitles" below.
 - **X (Twitter) video subtitle translation**: X videos with auto-generated captions are translated into your target language when played with sound, shown in X's native caption style. Details in "X video subtitle translation" below.
-- **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
+- **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — translated subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
 - **Custom glossary**: pin specific terms to your preferred translations so proper nouns are always rendered consistently. Two layers (global + domain-specific) where domain rules override global. Details in "Custom glossary" below.
 - **Blocked-word list**: an editable list of words you don't want in the translation. Works for any target language — write your own substitution pairs (defaults to empty for most targets; ships with 26 entries for Traditional Chinese targets). Injected as a high-prominence block at the end of the system prompt. Details in "Blocked-word list" below.
 - **Translate opening only**: preview the first few paragraphs before deciding whether to translate the whole article. Saves tokens. Details in "Translate opening only" below.
@@ -214,7 +214,7 @@ YouTube auto-generated captions (videos without human captions; CC labeled "auto
 
 Shinkansen has a dedicated pipeline for ASR captions:
 
-- **AI-driven re-segmentation**: the entire batch of ASR fragments is sent to Gemini, which re-segments by meaning (merges short fragments into full sentences, adds punctuation), then translates. Chinese subtitles go from "shattered words" to "complete sentences".
+- **AI-driven re-segmentation**: the entire batch of ASR fragments is sent to Gemini, which re-segments by meaning (merges short fragments into full sentences, adds punctuation), then translates. Translated subtitles go from "shattered words" to "complete sentences".
 - **Default "hybrid mode"**: a fast local heuristic shows segmented captions immediately (subsecond, no waiting), while AI segmentation runs in the background and replaces them with the polished version when ready — best of both worlds.
 - **Stable subtitle overlay**: Shinkansen's own overlay completely bypasses YouTube's native caption-segment rendering (which causes "word-by-word popup" behavior); whole sentences appear and disappear cleanly. Auto-shifts up to avoid the progress bar when the controls appear.
 - **Toggleable**: if you only want minimum latency with YouTube's original segmentation, uncheck "AI segmentation mode" in the "YouTube subtitles" tab.
@@ -231,19 +231,23 @@ For X (Twitter) videos that have auto-generated captions, Shinkansen translates 
 - **Engine and model** follow the YouTube subtitle settings; bilingual display follows the display mode
 - Captions already in the target language are not sent for translation; videos for which X provides no captions cannot be translated
 
+### Google Drive video subtitles
+
+Captions on Google Drive video pages are translated into your target language too. Click the Shinkansen toolbar icon on that page to find the "Drive video subtitle translation" toggle; bilingual display follows the display mode, and captions already in the target language are not sent for translation.
+
 ### Bilingual subtitles
 
-Subtitle bilingual display follows the display mode setting: click the Shinkansen toolbar icon and pick the "Bilingual" display mode — subtitles will then show both original and translation simultaneously (English on top, Chinese below). The "Replace" mode (default) shows Chinese only. Page translation and subtitles share the same display mode, no separate setting needed.
+Subtitle bilingual display follows the display mode setting: click the Shinkansen toolbar icon and pick the "Bilingual" display mode — subtitles will then show both original and translation simultaneously (original on top, translation below). The "Replace" mode (default) shows the translation only. Page translation and subtitles share the same display mode, no separate setting needed.
 
 Best for:
 - **Listening practice**: glance at the original when you can't catch a word
-- **Proofreading**: when translation quality is in doubt, see the English directly without switching modes
+- **Proofreading**: when translation quality is in doubt, see the original directly without switching modes
 - **Language learning**: use subtitles as bilingual study material
 
 Implementation notes:
 - **YouTube, Google Drive and X videos share the same display mode** (switching to Bilingual affects all of them)
 - **Live switch**: changing the mode during playback takes effect immediately, no reload
-- **Compatible with AI segmentation**: bilingual subtitles work cleanly on AI-segmented full sentences — full English sentence + full Chinese sentence on two lines
+- **Compatible with AI segmentation**: bilingual subtitles work cleanly on AI-segmented full sentences — full original sentence + full translated sentence on two lines
 
 ### Cost
 
@@ -260,7 +264,7 @@ Subtitle translation shares the same billing logic and usage tracking as web tra
 
 Shinkansen has two layers of caching, each saving you money at a different stage:
 
-**Layer 1: Local translation cache** — translated paragraphs are stored in `chrome.storage.local`, keyed by SHA-1 hash of the original text. Next time the same text is encountered (even on a different page), the translation is served directly — no API call, no cost. The key also includes the target language, model, glossary and blocked-word lists, and custom prompt, so changed settings never hit stale translations. Extension updates do **not** clear the cache; when an update changes translation output, the release notes say so and recommend clearing it once with "Clear cache" in the toolbar icon menu. The cache evicts least-recently-used entries when it fills up (LRU).
+**Layer 1: Local translation cache** — translated paragraphs are stored in `chrome.storage.local`, keyed by SHA-1 hash of the original text. Next time the same text is encountered (even on a different page), the translation is served directly — no API call, no cost. The key also includes the target language, model, glossary and blocked-word lists, and custom prompt, so changed settings never hit stale translations. Ordinary extension updates do **not** clear the cache. The few updates that change translation output either clear the web page and video subtitle caches once automatically after upgrading (the document translation cache is left alone), or say so in the release notes and recommend clearing manually. To clear it yourself, use "Clear cache" in the toolbar icon menu. The cache evicts least-recently-used entries when it fills up (LRU).
 
 **Layer 2: Gemini implicit context cache** — done server-side by Google. When consecutive requests share a common prompt prefix (e.g., system prompt + glossary), Gemini caches that prefix; cached input tokens are billed at a discount (90% off for the Gemini 3 series, i.e. 10% of the normal rate; per-model discounts are shown in the settings pricing table). In practice Gemini 3 only caches complete prefix blocks of roughly 4,096 tokens or more; a web-translation batch carries a fixed prefix of about 2,400 tokens, so the hit rate shown for ordinary web pages is usually 0% — large glossaries or document translation are more likely to hit. No setup needed — Shinkansen automatically reads the cache hit data from API responses.
 
