@@ -36,6 +36,7 @@
 		9E22C7752FD2A78F00CDA923 /* content-youtube.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75D2FD2A78F00CDA923 /* content-youtube.js */; };
 		9E22C7762FD2A78F00CDA923 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75E2FD2A78F00CDA923 /* manifest.json */; };
 		9E22C7772FD2A78F00CDA923 /* lib in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75F2FD2A78F00CDA923 /* lib */; };
+		9EFFFD012FD2A78F00CDA923 /* translate-doc in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFD022FD2A78F00CDA923 /* translate-doc */; };
 		9E22C7782FD2A78F00CDA923 /* content-ns.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7602FD2A78F00CDA923 /* content-ns.js */; };
 		9E22C7792FD2A78F00CDA923 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7612FD2A78F00CDA923 /* _locales */; };
 		9E22C77A2FD2A78F00CDA923 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7622FD2A78F00CDA923 /* content.js */; };
@@ -104,6 +105,7 @@
 		9E22C75D2FD2A78F00CDA923 /* content-youtube.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-youtube.js"; path = "Resources/content-youtube.js"; sourceTree = "<group>"; };
 		9E22C75E2FD2A78F00CDA923 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = Resources/manifest.json; sourceTree = "<group>"; };
 		9E22C75F2FD2A78F00CDA923 /* lib */ = {isa = PBXFileReference; lastKnownFileType = folder; name = lib; path = Resources/lib; sourceTree = "<group>"; };
+		9EFFFD022FD2A78F00CDA923 /* translate-doc */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "translate-doc"; path = "Resources/translate-doc"; sourceTree = "<group>"; };
 		9E22C7602FD2A78F00CDA923 /* content-ns.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-ns.js"; path = "Resources/content-ns.js"; sourceTree = "<group>"; };
 		9E22C7612FD2A78F00CDA923 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = Resources/_locales; sourceTree = "<group>"; };
 		9E22C7622FD2A78F00CDA923 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
@@ -211,6 +213,7 @@
 				9E22C75D2FD2A78F00CDA923 /* content-youtube.js */,
 				9E22C75E2FD2A78F00CDA923 /* manifest.json */,
 				9E22C75F2FD2A78F00CDA923 /* lib */,
+				9EFFFD022FD2A78F00CDA923 /* translate-doc */,
 				9E22C7602FD2A78F00CDA923 /* content-ns.js */,
 				9E22C7612FD2A78F00CDA923 /* _locales */,
 				9E22C7622FD2A78F00CDA923 /* content.js */,
@@ -325,6 +328,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9E22C7772FD2A78F00CDA923 /* lib in Resources */,
+				9EFFFD012FD2A78F00CDA923 /* translate-doc in Resources */,
 				9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */,
 				9E22C7782FD2A78F00CDA923 /* content-ns.js in Resources */,
 				9E22C76D2FD2A78F00CDA923 /* background.js in Resources */,

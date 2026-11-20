@@ -7,7 +7,7 @@ import { RELEASE_HIGHLIGHT_KEYS } from '../lib/release-highlights.js';
 import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
 import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js';
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
-import { isTouchScreenDevice } from '../lib/platform.js';
+import { isTouchScreenDevice, isPhoneDevice } from '../lib/platform.js';
 import { pickPopupSlot, presetsRequireGemini, TARGET_LANGUAGES, DEFAULT_SETTINGS } from '../lib/storage.js';
 import { saveToInstapaper, buildInstapaperPayload } from '../lib/instapaper.js'; // 送到 Instapaper
 
@@ -47,13 +47,15 @@ if (IS_PANEL) {
 }
 
 // iOS build（SPEC-PRIVATE §26）。build 屬性 vs 平台屬性分離見 lib/platform.js：
-//   - body.runtime-ios（build 屬性，不論 host OS）：CSS 隱藏「翻譯文件」入口
-//     （iOS build 已 strip translate-doc/，留著是死按鈕）
+//   - body.runtime-ios（build 屬性，不論 host OS）：iOS 專屬版面
+//   - body.runtime-no-doc（平台屬性，只在 iPhone）：CSS 隱藏「翻譯文件」入口——
+//     文件翻譯頁是大版面工作頁，手機放不下；iPad 與 iOS build 跑在 Mac 上照常提供
 //   - body.runtime-ios-touch（平台屬性，只在真觸控裝置）：popup 撐滿放大。
 //     iOS build 可透過「iPhone 與 iPad App 在 Mac 上執行」裝在 macOS，此時要
-//     尊重 macOS popover 尺寸 → 不放大，只保留 runtime-ios 的死按鈕隱藏。
+//     尊重 macOS popover 尺寸 → 不放大。
 if (IS_IOS_BUILD) {
   document.body.classList.add('runtime-ios');
+  if (isPhoneDevice()) document.body.classList.add('runtime-no-doc');
   if (isTouchScreenDevice()) {
     document.body.classList.add('runtime-ios-touch');
     // 箱子尺寸（zoom）與寬度撐滿改由 popup.css 全權處理（固定放大檔 zoom 1.35 + 觸控且

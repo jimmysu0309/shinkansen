@@ -48,6 +48,7 @@ import {
   translatedDocxFilename, DocxParseError, DOCX_MIME,
 } from './docx-engine.js';
 import { getSettings } from '../lib/storage.js';
+import { saveBlob } from '../lib/download.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEBUG_RENDER_SCALE = 1.5;
@@ -2356,14 +2357,8 @@ function exportGlossaryJSON() {
     return;
   }
   const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
   const baseName = (currentDoc?.meta?.filename || 'glossary').replace(/\.(pdf|epub|txt|md|markdown|html?)$/i, '');
-  a.download = `${baseName}-glossary.json`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  saveBlob(blob, `${baseName}-glossary.json`, { t });
 }
 
 // 匯入模式三選 dialog（現有表非空時）：resolve 'merge' / 'overwrite' / null（取消）。
@@ -3158,13 +3153,7 @@ async function downloadTranslatedEpub() {
       bilingual,
     });
     const blob = new Blob([bytes], { type: 'application/epub+zip' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = translatedEpubFilename(currentDoc.meta.filename, { bilingual });
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+    await saveBlob(blob, translatedEpubFilename(currentDoc.meta.filename, { bilingual }), { t });
   } catch (err) {
     console.error('[Shinkansen] 譯本 EPUB 產出失敗', err);
     showChaptersError(t('doc.epub.error.build-failed', { error: (err && err.message) || String(err) }));
@@ -3188,13 +3177,7 @@ async function downloadTranslatedDocFile() {
       const bilingual = !$('epub-dual-wrap').hidden && $('epub-dual-mode').value === 'dual';
       const { bytes } = buildTranslatedDocx(currentDoc, settings.targetLanguage || 'zh-TW', { bilingual, dedupe });
       const blob = new Blob([bytes], { type: DOCX_MIME });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = translatedDocxFilename(currentDoc.meta.filename, { bilingual });
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+      await saveBlob(blob, translatedDocxFilename(currentDoc.meta.filename, { bilingual }), { t });
       return;
     }
     let text;
@@ -3215,13 +3198,7 @@ async function downloadTranslatedDocFile() {
       filename = translatedDocFilename(currentDoc.meta.filename, kind);
     }
     const blob = new Blob([text], { type: `${mime};charset=utf-8` });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+    await saveBlob(blob, filename, { t });
   } catch (err) {
     console.error('[Shinkansen] 譯文檔產出失敗', err);
     showChaptersError(t('doc.book.error.build-failed', { error: (err && err.message) || String(err) }));
@@ -4816,14 +4793,8 @@ function exportEpubSession() {
     failures: collectSessionFailures(currentDoc),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
   const baseName = (currentDoc.meta.filename || 'book').replace(/\.(epub|txt|md|markdown|html?)$/i, '');
-  a.download = `${baseName}-session.json`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  saveBlob(blob, `${baseName}-session.json`, { t });
 }
 
 // 匯入 = 以檔案內容整包取代目前進度（先重置再 hydrate）。

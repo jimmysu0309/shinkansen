@@ -116,11 +116,10 @@ footer > * {
   min-width: 0; /* 允許長 label 在欄內 wrap,不撐爆 grid */
 }
 
-/* iOS build（SPEC-PRIVATE §26）：translate-doc/ 已 build-time strip，
-   PDF 翻譯入口在 iOS 是死按鈕 → 隱藏。body.runtime-ios 由 popup.js 依
-   IS_IOS_BUILD（lib/distribution.js，iOS build script override 為 true）加上。
-   build 屬性 → 不論 host OS（含 iOS build 跑在 Mac）都隱藏，掛 runtime-ios。 */
-body.runtime-ios #translate-doc-btn {
+/* iOS build 跑在 iPhone：文件翻譯頁是大版面工作頁，手機放不下 → 隱藏入口。
+   body.runtime-no-doc 由 popup.js 依 IS_IOS_BUILD && isPhoneDevice()（lib/platform.js）
+   加上。平台屬性 → iPad 與 iOS build 跑在 Mac 上不加，照常顯示。 */
+body.runtime-no-doc #translate-doc-btn {
   display: none;
 }
 

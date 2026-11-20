@@ -49,6 +49,7 @@ import { TRANSLATABLE_TYPES } from './block-types.js';
 import { pageMayHaveColoredBackground } from './pdf-oplist.js';
 import { loadRemoteFontForLanguage, remoteFontKeyFor } from '../lib/font-loader.js';
 import { getSettings } from '../lib/storage.js';
+import { saveBlob } from '../lib/download.js';
 
 const FONT_PATH_REGULAR = 'lib/vendor/fonts/NotoSansTC-Regular.ttf';
 const FONT_PATH_BOLD = 'lib/vendor/fonts/NotoSansTC-Bold.ttf';
@@ -329,14 +330,7 @@ export async function downloadBilingualPdf(originalArrayBuffer, layoutDoc, optio
   }
   const fontFallback = !!result.fontFallback;
   const blob = new Blob([result.bytes], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = result.filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  await saveBlob(blob, result.filename);
   return { filename: result.filename, byteLength: result.byteLength, fontFallback, fontSource: result.fontSource || null };
 }
 

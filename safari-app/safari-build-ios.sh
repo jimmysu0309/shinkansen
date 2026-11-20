@@ -2,7 +2,7 @@
 # safari-build-ios.sh — Build & archive iOS Safari Web Extension(App Store 軌)
 #
 # 用途:
-#   把 shinkansen/(排除 translate-doc/)同步進 iOS project Resources/、
+#   把 shinkansen/ 同步進 iOS project Resources/、
 #   patch manifest、bump pbxproj 版本、跑 xcodebuild archive,export 出
 #   App Store 上傳用的 .ipa。
 #
@@ -11,7 +11,9 @@
 #           --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER_ID
 #
 # iOS 跟 macOS build 的差異(SPEC-PRIVATE §26):
-#   1. 排除 translate-doc/(iOS 不做 PDF 翻譯)+ manifest 同步 patch
+#   1. manifest patch(event page + nativeMessaging)。translate-doc/ 照常打包——
+#      文件翻譯在 iPad / iOS app 跑在 Mac 上提供,只在 iPhone 隱藏入口(lib/platform.js
+#      isDocTranslateAvailable;2026-11-20 起,之前整組 strip)
 #   2. 簽名走手動 App Store profiles(SPEC-PRIVATE §26.5 第 4 條)
 #   3. 產 .ipa 不產 .pkg
 #
@@ -52,13 +54,10 @@ if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
 fi
 echo "Building iOS Safari Extension for version: $VERSION(App Store 軌)"
 
-# 1. staging:排除 translate-doc/ + manifest patch
-echo "==> Staging iOS source(exclude translate-doc/)..."
+# 1. staging + manifest patch
+echo "==> Staging iOS source..."
 rm -rf "$STAGING"; mkdir -p "$STAGING"
-rsync -a --exclude 'translate-doc/' shinkansen/ "$STAGING/"
-jq '(.web_accessible_resources[]?.resources) |= map(select(. != "translate-doc/*"))' \
-  "$STAGING/manifest.json" > "$STAGING/manifest.json.tmp"
-mv "$STAGING/manifest.json.tmp" "$STAGING/manifest.json"
+rsync -a shinkansen/ "$STAGING/"
 # 1.5 background → event page(scripts + persistent: false,保留 type: module)。
 #     iOS Safari 的 MV3 SW 被系統回收後不再喚醒(Apple Forums thread 758346),
 #     「用一段時間後四指 / popup 失效」根因;event page 卸載後可正常重生。
@@ -87,8 +86,8 @@ echo "==> Override distribution{,-cs}.js → IS_MAS_BUILD=true + IS_IOS_BUILD=tr
 cat > "$EXTENSION_RESOURCES/lib/distribution.js" <<'EOF'
 // distribution.js — iOS App Store build override（由 safari-app/safari-build-ios.sh 寫入，不要編輯）
 // 原檔見 shinkansen/lib/distribution.js,預設 false。
-// IS_IOS_BUILD=true：popup / options 加 body.runtime-ios（隱藏 PDF 翻譯入口、
-// 顯示 iOS 專屬說明）；content-touch.js 四指 tap 啟用。
+// IS_IOS_BUILD=true：popup / options 加 body.runtime-ios（iOS 專屬版面與說明；
+// iPhone 再加 runtime-no-doc 隱藏文件翻譯入口）；content-touch.js 多指 tap 啟用。
 // 注意：兩個 export 都必須寫出（popup / options import 兩者，少一個 import 直接炸）。
 export const IS_MAS_BUILD = true;
 export const IS_IOS_BUILD = true;

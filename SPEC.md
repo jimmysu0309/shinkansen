@@ -6,7 +6,7 @@
 - 建立日期：2026-04-08
 - 最後更新：2026-11-17（v2.7.0）
 - 目標平台：Chrome / Firefox / Safari（macOS）/ Safari（iOS・iPadOS），四平台共用同一份 source（Manifest V3）
-- 目前 Extension 版本：2.7.1
+- 目前 Extension 版本：2.7.2
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款瀏覽器擴充功能（Chrome / Firefox / Safari），將�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.7.1 為止）
+### 2.1 已實作（v2.7.2 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -65,7 +65,7 @@ Shinkansen 是一款瀏覽器擴充功能（Chrome / Firefox / Safari），將�
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
 | 文件翻譯（PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；Word（.docx）譯文寫回原檔格式與版面全保留、可輸出雙語對照；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；字幕檔（SRT / WebVTT / ASS）每則字幕為翻譯單位、時間軸原樣保留、可輸出雙語字幕；詳見 §17 |
-| iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；多指輕點觸發（預設四指，可改三指）；popup／options 觸控調整；不含文件翻譯（§17 整組功能不打包進 iOS 版） |
+| iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；多指輕點觸發（預設四指，可改三指）；popup／options 觸控調整；文件翻譯（§17）在 iPad 與 iOS 版裝在 Mac 上提供，iPhone 不提供（手機螢幕放不下雙欄閱讀器與編輯頁，工具列圖示選單不顯示入口） |
 
 ### 2.3 明確不做
 
@@ -351,7 +351,8 @@ shinkansen/
 │   ├── i18n.js               # Extension UI 字串 i18n 字典（8 語，§3.10；popup / options / translate-doc 載入）
 │   ├── i18n-content.js       # content script 專用子集（GENERATED，tools/build/generate-i18n-content.mjs 從 i18n.js 產出，只含 content 用到的 key）
 │   ├── compat.js             # Safari／Firefox 相容性 shim
-│   ├── platform.js           # runtime 平台偵測
+│   ├── platform.js           # runtime 平台偵測（觸控裝置 / 手機尺寸）
+│   ├── download.js           # 擴充功能頁存檔單一入口（iOS 觸控裝置走分享面板）
 │   ├── distribution.js       # 編譯期注入的 MAS build flag（ES module 版）
 │   ├── distribution-cs.js    # 同上的 content script 版（與 distribution.js 同步）
 │   ├── edit-link-repair.js   # contenteditable 連結邊界補位（編輯模式共用）
@@ -759,7 +760,7 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 
 ### 17.3 入口 UI
 
-- popup footer「翻譯文件」→ 開啟 `translate-doc/index.html` 獨立分頁
+- popup footer「翻譯文件」→ 開啟 `translate-doc/index.html` 獨立分頁（iOS 版在 iPhone 上不顯示此入口；iPad 與 iOS 版裝在 Mac 上照常顯示）
 - 單頁 SPA：上傳（拖放 / 選檔）→ 解析 → 選 preset 開始翻譯 → 進度視圖（進度條 + 段落數 + 預估剩餘時間 + 累計費用 + 取消）→ 閱讀器。另有譯文編輯頁（支援 `**粗體**` / `[連結](url)` markdown 與搜尋取代）、文章術語表、版面 debug 檢視等支線頁
 - **不載入檔案內的外部資源**：上傳的 HTML / EPUB 檔內指向外部主機的圖片、影音、樣式表與內嵌框架一律不載入（頁面層 Content Security Policy）
 - 檔案結構見 §6 `translate-doc/`；PDF 版面分析與 IR 結構見 SPEC-PRIVATE §32
@@ -794,6 +795,8 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 ### 17.8 譯文 PDF 下載
 
 原頁嵌為底層（向量 / 點陣 / 文字原樣保留），可翻譯段落以白底遮罩蓋住原文位置後寫入譯文；不可翻譯與失敗段落露出底層原文；原 PDF 的連結 annotation 重建。中文字型內嵌 Noto Sans TC（TTF，subset 後每檔約 100-300KB，授權標示於 `lib/vendor/fonts/`）。目標語言為簡體中文 / 日文 / 韓文時，譯文 PDF 改用對應的 Noto Sans SC / JP / KR：安裝包不內建，**只在第一次翻譯該語言的 PDF 時**從專案的 GitHub Pages 下載（Regular + Bold 約 10–21 MB（簡中最大），SHA-256 驗證後存瀏覽器快取，之後離線可用）；下載失敗退回內建 TC 並提示，翻譯不中斷。其他目標語言與網頁 / EPUB / 字幕翻譯不會觸發下載。譯文自動換行與 fit-to-box 縮排；塞不下的段落末行補「…」且不畫到段落框外；頁面旋轉（/Rotate）或裁切（CropBox）的頁譯文座標一律正確，即使連結 / 底色資訊抽取失敗也只少連結與底色不錯位；閱讀器內重試 / 下載沿用解析階段已開的 PDF，不重新解析整份文件。排版細節見 SPEC-PRIVATE §32。
+
+**存檔方式**：文件翻譯頁與設定頁的所有下載（譯文 PDF / EPUB / Word / 文字檔 / 字幕、術語表與進度匯出、設定匯出、用量 CSV、log 匯出）共用同一個存檔入口（`lib/download.js`）。一般瀏覽器直接下載；iPad（iOS 版）改開系統分享面板，選「儲存到檔案」存檔——iOS Safari 從擴充功能頁直接下載會失敗。檔案產生較久時，頁面底部會出現「儲存檔案」按鈕，點一下再開分享面板。
 
 ### 17.10 EPUB 電子書翻譯
 

@@ -24,14 +24,14 @@ export const IS_MAS_BUILD = false;
 
 // IS_IOS_BUILD — 是否為 iOS / iPadOS build（SPEC-PRIVATE §26）。
 //
-// iOS build（safari-app/safari-build-ios.sh）在 build 期 strip `translate-doc/`
-// （不做 PDF 翻譯），本 flag 讓 UI 層把 PDF 入口藏起來而不是留死按鈕：
+// 讀者：
 //   - `popup/popup.js` / `options/options.js`：true 時 body 加 `runtime-ios` class，
-//     CSS 據此隱藏「翻譯文件」按鈕、顯示 iOS 專屬說明（四指 tap 等）
-//   - `content-touch.js`（透過 distribution-cs.js 的同名 flag）：四指 tap 手勢
+//     CSS 據此套 iOS 專屬版面 / 說明；再疊 lib/platform.js 的平台判斷（觸控放大、
+//     iPhone 隱藏文件翻譯入口）
+//   - `background.js`：host app 設定橋接（native messaging）只在 iOS build 走
+//   - `content-touch.js`（透過 distribution-cs.js 的同名 flag）：多指 tap 手勢
 //     只在 iOS build 啟用
-// 用 build flag 而非 UA / 觸控偵測：隱藏 PDF UI 的根因是「這個 build 沒打包
-// translate-doc/」——build 屬性，不是裝置屬性。
+// iOS build 照常打包 translate-doc/（2026-11-20 起；之前整組 strip）。
 //   - safari-build-ios.sh override 為 true；safari-build.sh（macOS MAS）與其他
 //     通路維持 false。兩支 build script 的 override heredoc 都必須完整寫出
 //     IS_MAS_BUILD + IS_IOS_BUILD 兩個 export（少一個會讓 import 直接炸）。

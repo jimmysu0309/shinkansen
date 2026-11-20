@@ -8,6 +8,7 @@ import { sanitizeImport as sanitizeImportImpl, importChangesCustomProviderOrigin
 import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 import { isTouchScreenDevice } from '../lib/platform.js';
+import { saveBlob } from '../lib/download.js';
 import { instapaperXAuth, hasInstapaperConsumerKeys } from '../lib/instapaper.js'; // 送到 Instapaper
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
@@ -2030,14 +2031,9 @@ $('export-settings').addEventListener('click', async () => {
   // email）不進備份檔——備份檔常被貼到 issue / 分享，帳號憑證不該跟著走；匯入端本來就不還原它們
   for (const k of RESET_PRESERVE_KEYS) delete all[k];
   const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   // 檔名含時間到秒，避免同一天多次匯出檔名重複
   const ts = formatYmdHms(Date.now());
-  a.href = url;
-  a.download = `shinkansen-settings-${ts}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await saveBlob(blob, `shinkansen-settings-${ts}.json`, { t: _t });
 });
 
 // ─── 匯入驗證 ────────────────────────────────────────
@@ -2121,7 +2117,7 @@ else if (_extUrl.startsWith('moz-extension://')) _shortcutsPlatform = 'firefox';
 document.body.classList.add(`runtime-${_shortcutsPlatform}`);
 // iOS build（SPEC-PRIVATE §26）再疊一層（與 runtime-safari 並存）。build 屬性 vs
 // 平台屬性分離見 lib/platform.js：
-//   - runtime-ios（build 屬性，不論 host OS）：PDF 入口隱藏等 build-strip 相關
+//   - runtime-ios（build 屬性，不論 host OS）：iOS 專屬版面（表單字級等）
 //   - runtime-ios-touch（平台屬性，只在真觸控裝置）：快速鍵 section 的四指 tap
 //     說明（.ios-only）。iOS build 跑在 macOS（無觸控）時不加 → 不顯示四指 tap
 //     說明，尊重 macOS 特性（intro-safari 的 ⌃ Control 說明照常顯示）。
@@ -2993,12 +2989,7 @@ $('usage-export-csv').addEventListener('click', async () => {
   const res = await browser.runtime.sendMessage({ type: 'EXPORT_USAGE_CSV', payload: { from, to } });
   if (!res?.ok) { alert(_t('options.usage.exportFailed', { error: res?.error || _t('common.errorUnknown') })); return; }
   const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = buildUsageCsvFilename(from, to);
-  a.click();
-  URL.revokeObjectURL(url);
+  await saveBlob(blob, buildUsageCsvFilename(from, to), { t: _t });
 });
 
 // 清除紀錄
@@ -3305,13 +3296,8 @@ $('log-export').addEventListener('click', () => {
   const filtered = getFilteredLogs();
   const data = filtered.length !== allLogs.length ? filtered : allLogs;
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const ts = formatYmdHms(Date.now());
-  a.href = url;
-  a.download = `shinkansen-log-${ts}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlob(blob, `shinkansen-log-${ts}.json`, { t: _t });
 });
 
 // Data 展開/收合（event delegation）
