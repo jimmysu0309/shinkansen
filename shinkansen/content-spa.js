@@ -373,6 +373,21 @@
   // 更新什麼；nodeValue mutate 把 DOM text 改成中文,fiber 仍記「截斷英文」→
   // reconcile 算出錯誤的 diff → 展開後中間段落消失。在 mousedown(早於 click)
   // 還原,React 看到正確 DOM,reconcile 結果正確。還原後 SPA rescan 會重新翻譯。
+  //
+  // 只在「這次點擊會啟動頁面的點擊行為」時還原：目標在連結 / 按鈕 / 互動 role 內，
+  // 或 computed cursor 為 pointer（頁面把它做成可點擊的結構訊號，X 推文整塊卡片即是）。
+  // 文字游標區（一般內文段落）的點擊與拖曳是閱讀 / 選取文字，不會觸發 framework
+  // re-render；在這裡還原會讓譯文一點就變回原文、拖曳選取的起點就把字換掉，
+  // 根本選不到譯文（Medium 等 React 站內文全段走 nodeValue mutate 注入的實例）。
+  const _CLICKABLE_SELECTOR = 'a[href], button, summary, label, [role="button"], [role="link"], '
+    + '[role="tab"], [role="menuitem"], [role="option"], [onclick]';
+  function isClickActivationTarget(target) {
+    if (target.closest(_CLICKABLE_SELECTOR)) return true;
+    const cs = SK.getCS(target);
+    return !!(cs && cs.cursor === 'pointer');
+  }
+  SK._isClickActivationTarget = isClickActivationTarget;  // 測試 seam
+
   let _preClickListenerAdded = false;
   function addPreClickRestore() {
     if (_preClickListenerAdded) return;
@@ -389,6 +404,8 @@
       // React diff 錯亂的前提不存在)。沒這條的話點一下譯文段就被還原成原文
       // + unmark,編輯模式下 rescan 又排除 contenteditable → 永遠卡原文
       if (nvEl.getAttribute('contenteditable') === 'true') return;
+      // 非可點擊目標（文字游標區）= 閱讀 / 選取手勢，不還原（見上方註解）
+      if (!isClickActivationTarget(target)) return;
       const backup = STATE.nodeValueMutateBackup.get(nvEl);
       if (!backup) return;
       for (const entry of backup) {

@@ -353,7 +353,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.7.0 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.7.1 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

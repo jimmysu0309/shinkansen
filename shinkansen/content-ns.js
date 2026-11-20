@@ -844,6 +844,23 @@ if (window.__shinkansen_loaded) {
     return null;
   };
 
+  // BCP 47 lang code 屬於哪個中文書寫系統：'hant'（繁）/ 'hans'（簡）/ null（非中文或判斷不出）。
+  // 依 subtag 解析，涵蓋兩段（zh-TW / zh-Hant）與三段（zh-Hant-TW / zh-Hans-CN）寫法——
+  // 只比對兩段的舊 regex 會把三段宣告（大型站台繁中介面常用）當成非中文。script subtag
+  //（4 字母）優先於 region；不帶任何 subtag 的 'zh' 沿用既有慣例視為簡體。
+  SK.zhScriptOfLang = function zhScriptOfLang(lang) {
+    if (!lang || typeof lang !== 'string') return null;
+    const parts = lang.toLowerCase().split(/[-_]/);
+    if (parts[0] !== 'zh') return null;
+    if (parts.length === 1) return 'hans';
+    const rest = parts.slice(1);
+    if (rest.includes('hant')) return 'hant';
+    if (rest.includes('hans')) return 'hans';
+    if (rest.some((p) => p === 'tw' || p === 'hk' || p === 'mo')) return 'hant';
+    if (rest.some((p) => p === 'cn' || p === 'sg')) return 'hans';
+    return null;
+  };
+
   // ─── v1.5.0 雙語對照模式常數 ─────────────────────────
   SK.TRANSLATION_WRAPPER_TAG = 'shinkansen-translation';
   SK.DEFAULT_MARK_STYLE = 'tint';
@@ -1077,6 +1094,46 @@ if (window.__shinkansen_loaded) {
     return !!(el.classList && el.classList.contains('notranslate'));
   };
 
+  // (3) 數學公式：MathML `<math>` 本體，以及兩大公式排版器的輸出根節點——MathJax 3/4
+  //     的 `<mjx-container>`、MathJax 2 的 `.MathJax` / `.MathJax_Display` /
+  //     `.MathJax_CHTML` / `.MathJax_SVG`、KaTeX 的 `.katex`。公式內部是一顆一顆的
+  //     符號節點（加上給報讀器用的隱藏 MathML 副本與 LaTeX 原文），攤平成文字送翻會
+  //     被逐字拆行、改寫成 Unicode 純文字或露出 LaTeX；化學式（mhchem）也經這兩個
+  //     排版器輸出，同條規則涵蓋。判準是排版器固定輸出的根節點標記，不綁站點。
+  //     MathML 元素不在 HTML namespace，tagName 不會轉大寫，用 localName 比對
+  const _MATH_ROOT_CLASSES = ['katex', 'MathJax', 'MathJax_Display', 'MathJax_CHTML', 'MathJax_SVG'];
+  SK.isMathElement = function isMathElement(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    const ln = el.localName;
+    if (ln === 'math' || ln === 'mjx-container') return true;
+    const cl = el.classList;
+    if (!cl || cl.length === 0) return false;
+    for (const c of _MATH_ROOT_CLASSES) if (cl.contains(c)) return true;
+    return false;
+  };
+  // 與 isMathElement 同一份判準的 selector 版（querySelector 一次掃子樹用）
+  SK.MATH_ROOT_SELECTOR = ['math', 'mjx-container', ..._MATH_ROOT_CLASSES.map((c) => '.' + c)].join(',');
+  // el 的 textContent，但扣掉公式子樹內的文字。只裝公式的容器（論文的公式表格格子、
+  // 獨佔一行的區塊公式外框）據此判定「沒有可翻文字」，不成為翻譯單位；沒有公式的
+  // 元素直接回 textContent，不多走 walker
+  SK.textExcludingMath = function textExcludingMath(el) {
+    if (!el) return '';
+    if (SK.isMathElement(el)) return '';
+    if (!el.querySelector || !el.querySelector(SK.MATH_ROOT_SELECTOR)) return el.textContent || '';
+    let out = '';
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        if (n.nodeType === Node.ELEMENT_NODE) {
+          return SK.isMathElement(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    let n;
+    while ((n = walker.nextNode())) out += n.nodeValue;
+    return out;
+  };
+
   const _ICON_FONT_RE = /icon|symbol|glyph/i;
   const _LIGATURE_TOKEN_RE = /^[A-Za-z0-9_-]{1,40}$/;
   SK.isIconFontLigature = function isIconFontLigature(el) {
@@ -1131,6 +1188,8 @@ if (window.__shinkansen_loaded) {
     // 保留為 ⟦*N⟧ 不送 LLM（人名、icon 名）。偵測層對同樣訊號整顆 skip，見
     // content-detect.js isInsideExcludedContainer。
     if (SK.isNoTranslateMarked(el) || SK.isIconFontLigature(el)) return true;
+    // 段落內 inline 數學公式整顆保留（偵測層同訊號整顆 skip，見 isInsideExcludedContainer）
+    if (SK.isMathElement(el)) return true;
     if (SK.isIconGlyphElement(el)) return true;
     return false;
   };

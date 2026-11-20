@@ -211,6 +211,7 @@
   //                  (probe 實證:mweb 只 loadModule 不會發 timedtext XHR,必須 setOption
   //                  指定軌才觸發;軌的最終選擇仍由 isolated 端 track chooser 透過
   //                  shinkansen-yt-set-caption-track 修正,這裡只求「讓播放器發出 XHR」)
+  //   op: 'disable' → unloadModule('captions') 關字幕（CC 本來就關則不動）
   //   op: 'reload' → unloadModule + loadModule + setOption 回原軌,強迫重發 XHR
   //                  (等同桌面「CC 關掉再開」)
   // 結果以 shinkansen-yt-cc-control-result 回送 { op, ok, ccOn, error }。
@@ -265,6 +266,11 @@
           kind: track.kind || '',
         });
         ccOn = true;
+        ok = true;
+      } else if (op === 'disable') {
+        // 關 CC：原音已是目標語、只剩配音 ASR 等非目標語軌時用（isolated 端 _turnOffCcIfOn）
+        if (currentTrack) player.unloadModule?.('captions');
+        ccOn = false;
         ok = true;
       } else if (op === 'reload') {
         if (!currentTrack) throw new Error('cc-not-on');

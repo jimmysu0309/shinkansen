@@ -808,6 +808,20 @@
     YT._popupDeferSince = 0;
   }
 
+  // 關掉 CC（若開著）。桌面點 .ytp-subtitles-button；mweb 沒按鈕走 bridge 'disable'
+  async function _turnOffCcIfOn() {
+    const btn = document.querySelector('.ytp-subtitles-button');
+    if (btn) {
+      if (btn.getAttribute('aria-pressed') === 'true') {
+        btn.click();
+        SK.sendLog('info', 'youtube', 'CC turned off (no target-language caption for target-language video)');
+      }
+      return;
+    }
+    const res = await _ccControlViaBridge('disable');
+    SK.sendLog(res.ok ? 'info' : 'warn', 'youtube', 'CC disable via bridge', { ok: res.ok, error: res.error || null });
+  }
+
   async function forceSubtitleReload() {
     if (_deferReloadWhilePopupOpen()) return; // issue #68：播放器選單開著就先不動 CC
     const btn = document.querySelector('.ytp-subtitles-button');
@@ -1471,7 +1485,7 @@
   // activeTrack: { languageCode, kind, translationLanguageCode } | null
   // targetLanguage: 'zh-TW' / 'zh-CN' / 'en' / ...
   // hints: { defaultCaptionTrackIndex?, originalAudioLang? }（見 _pickSourceAsrTrack，可省略）
-  // 回傳： { action: 'skip' | 'switch' | 'switch-to-native' | 'noop', track?: <選中的 track>, reason, sourceVia? }
+  // 回傳： { action: 'skip' | 'switch' | 'switch-to-native' | 'skip-source-is-target' | 'noop', track?: <選中的 track>, reason, sourceVia? }
   function _chooseBestCaptionTrack(tracks, activeTrack, targetLanguage, hints) {
     if (!Array.isArray(tracks) || tracks.length === 0) {
       return { action: 'noop', reason: 'no-tracks' };
@@ -1517,6 +1531,22 @@
           return { action: 'noop', track: p1b, sourceLanguage: p1b.languageCode, reason: 'p1b-ambiguous-native-active' };
         }
         return { action: 'switch', track: p1b, sourceLanguage: p1b.languageCode, reason: 'p1b-ambiguous-native' };
+      }
+    }
+
+    // P1.7: 原音就是目標語（口說語 base 相同，zh-Hant 原音對 zh-TW / zh-CN target 皆算），
+    // 卻沒有任何目標語字幕軌（P1 / P1.5 都沒命中）→ 不翻譯、不開字幕。
+    // 典型：中文影片開了 YouTube 自動配音，字幕軌只剩英文配音的 ASR（實測 yQvJM7PsMnc：
+    // 音軌 zh-Hant 原音 + en-US 自動配音，字幕軌只有 en ASR）。舊行為把唯一 ASR 當原音
+    // 切過去再翻回中文 = 白燒 token 得到二手譯文。
+    // 只認 YouTube 明示（acont=original / 單一音軌）的原音語言：多音軌影片退「預設音軌」時
+    // 會依觀看者語言指向配音，不可據以判斷。
+    const h = hints || {};
+    if (h.originalAudioLangExplicit === true && typeof h.originalAudioLang === 'string' && h.originalAudioLang) {
+      const audioBase = h.originalAudioLang.toLowerCase().split('-')[0];
+      const targetBase = String(targetLanguage || '').toLowerCase().split('-')[0];
+      if (audioBase && audioBase === targetBase) {
+        return { action: 'skip-source-is-target', sourceLanguage: h.originalAudioLang, reason: 'p1c-original-audio-is-target', sourceVia: 'audio-lang' };
       }
     }
 
@@ -4661,6 +4691,14 @@
       //        translateWindowFrom(line 586 自動觸發)→ captionMap 寫入 → _applyBilingualMode
       //        在 caption 非 target 時自動藏 native + 顯示 overlay
       //        順帶 fire 一次提示 toast 告訴使用者「要看雙語請從 CC 選單切」
+      // skip-source-is-target：原音就是目標語、又沒有目標語字幕軌（只剩配音 ASR 等）→
+      // 單雙語都停止，並把開著的字幕關掉（顯示配音 ASR 對看原音的使用者沒用）
+      if (action === 'skip-source-is-target') {
+        SK.sendLog('info', 'youtube', 'activation skipped (original audio already in target, no target caption track)');
+        stopYouTubeTranslation();
+        await _turnOffCcIfOn();
+        return;
+      }
       if (action === 'skip' || action === 'switch-to-native') {
         const isBilingual = config.bilingualMode === true;
         SK.sendLog('info', 'youtube', `activation ${isBilingual ? 'kept-listening-for-bilingual' : 'skipped'} (${action})`, { action, isBilingual });
