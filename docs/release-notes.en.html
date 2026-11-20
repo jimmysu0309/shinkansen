@@ -99,6 +99,23 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, the Mac App Store, and the App Store (iOS / iPadOS). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.7.1 <span class="release-date">Released 2026-11-20</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.7.0</p>
+
+  <p class="lead">Math formulas on web pages are kept intact; fixes for a large blank gap and wrong text in expanded YouTube comment replies, translated text turning back into the original when clicked, and more. <strong>If YouTube comments still show odd translations, clear the translation cache once in Settings.</strong></p>
+
+  <ul>
+    <li><strong>Math formulas kept intact</strong>: formulas typeset with MathML, MathJax or KaTeX (chemical formulas included) are no longer split into individual symbols and sent for translation; inline formulas stay untouched inside the translated paragraph, and table cells or standalone blocks that contain only a formula are not translated.</li>
+
+    <li><strong>YouTube comments</strong>: after expanding replies, replies that start with an @mention no longer show a large blank gap above the translation, and the leading @mention link is no longer replaced with unrelated text. YouTube rebuilds that link when the comment scrolls into view, and it used to be mistaken for a new paragraph and translated on its own.</li>
+
+    <li><strong>Clicking text no longer restores the original</strong>: on some sites, clicking translated text or dragging to select it turned it back into the original, so the translation could not be selected; now only clicks on links, buttons and other elements that trigger a page action restore the original.</li>
+
+    <li><strong>YouTube subtitles</strong>: when a video's original audio is already in your target language (for example a Chinese video with Traditional Chinese as the target) but there are no target-language captions, only auto-dubbed ones, translation is skipped and captions are turned off, so no API cost is spent.</li>
+
+    <li><strong>Language detection for Chinese pages</strong>: pages that declare Traditional or Simplified Chinese with a three-part language tag (language-script-region) used to be treated as foreign-language pages, so even very short English links and tags were translated; they are now handled like other Chinese pages.</li>
+  </ul>
+
   <h2>v2.7.0 <span class="release-date">Released 2026-11-17</span></h2>
   <p class="release-meta">Compared with the previous store version v2.6.0</p>
 

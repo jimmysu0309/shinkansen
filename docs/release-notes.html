@@ -99,6 +99,23 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons、Mac App Store 與 App Store（iOS / iPadOS）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a></p>
 
+  <h2>v2.7.1 <span class="release-date">2026-11-20 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.7.0</p>
+
+  <p class="lead">網頁上的數學公式整顆保留不翻；修正 YouTube 留言回覆展開後的大段空白與錯誤文字、點擊內文時譯文變回原文等問題。<strong>若 YouTube 留言仍顯示怪異譯文，請在設定頁清除一次翻譯快取</strong></p>
+
+  <ul>
+    <li><strong>數學公式完整保留</strong>：以 MathML、MathJax、KaTeX 排版的公式（含化學式）不再拆成一個個符號送翻譯；段落內的行內公式原封不動留在譯文中，只有公式、沒有文字的表格格子或獨立公式區塊不翻</li>
+
+    <li><strong>YouTube 留言</strong>：展開回覆後，以 @ 提及開頭的回覆不再在譯文上方出現大段空白，開頭的 @ 提及連結也不再被換成一段不相干的文字。原因是留言捲進畫面時 YouTube 會重建這個連結，過去會被誤當成新段落單獨送翻</li>
+
+    <li><strong>點擊內文不再還原成原文</strong>：部分網站點一下已翻譯的內文、或拖曳選取文字時，譯文會變回原文、選不到譯文；現在只有點連結、按鈕這類會觸發頁面動作的位置才會還原</li>
+
+    <li><strong>YouTube 字幕</strong>：影片原音已經是目標語言（例如中文影片、目標繁體中文），卻沒有目標語言字幕、只剩自動配音字幕時，不再翻譯並關掉字幕，不浪費 API 費用</li>
+
+    <li><strong>中文網頁的語言判斷</strong>：以「語言-字體-地區」三段寫法宣告為繁體或簡體中文的網頁，過去被當成外語網頁，連很短的英文連結和標籤都拿去翻譯；現在與一般中文網頁的處理一致</li>
+  </ul>
+
   <h2>v2.7.0 <span class="release-date">2026-11-17 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v2.6.0</p>
 
