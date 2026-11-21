@@ -123,6 +123,9 @@ let currentReaderHandle = null;
 // openReader 的 in-flight 守門(比照 parseGeneration):renderReader await 期間
 // currentReaderHandle 為 null,releaseCurrentDoc 摸不到，靠 gen 比對丟棄舊輪
 let readerGeneration = 0;
+// 使用者在閱讀器手動調過的縮放（null = 沒調過）。有值就照它開檔、不自動縮；換檔不清，
+// 同一個分頁內之後開的文件都沿用
+let userReaderZoom = null;
 let currentModelOverride = null;
 let currentEngine = 'gemini';
 let currentOriginalArrayBuffer = null; // W6：留 PDF 原 ArrayBuffer 給 pdf-lib 重組譯文 PDF 用
@@ -1287,6 +1290,7 @@ async function openReader() {
     currentReaderHandle = null;
   }
   const myGen = ++readerGeneration;
+  $('reader-zoom-level').textContent = `${Math.round((userReaderZoom ?? 1.0) * 100)}%`;
   let handle = null;
   try {
     handle = await renderReader(
@@ -1301,6 +1305,12 @@ async function openReader() {
         glossary: injectableArticleGlossary(),
         extraPrompt: currentDocExtraPrompt || null,
         onFontFallback: () => showReaderError(t('doc.reader.fontFallback')),
+        initialZoom: userReaderZoom ?? 1.0,
+        // 沒手動調過才自動縮（直立且兩欄放不下時縮到塞滿欄寬，見 reader.js computeAutoFitZoom）
+        autoFit: userReaderZoom === null,
+        onZoomChange: (z) => {
+          if (myGen === readerGeneration) $('reader-zoom-level').textContent = `${Math.round(z * 100)}%`;
+        },
       },
     );
   } catch (err) {
@@ -1359,6 +1369,7 @@ function stepZoom(delta) {
   if (!currentReaderHandle) return;
   const cur = currentReaderHandle.getZoom();
   const next = currentReaderHandle.setZoom(cur + delta);
+  userReaderZoom = next;
   $('reader-zoom-level').textContent = `${Math.round(next * 100)}%`;
 }
 

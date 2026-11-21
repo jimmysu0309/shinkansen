@@ -6,7 +6,7 @@
 - 建立日期：2026-04-08
 - 最後更新：2026-11-17（v2.7.0）
 - 目標平台：Chrome / Firefox / Safari（macOS）/ Safari（iOS・iPadOS），四平台共用同一份 source（Manifest V3）
-- 目前 Extension 版本：2.7.2
+- 目前 Extension 版本：2.7.3
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款瀏覽器擴充功能（Chrome / Firefox / Safari），將�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.7.2 為止）
+### 2.1 已實作（v2.7.3 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -781,7 +781,8 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 ### 17.6 線上閱讀器
 
 - 左欄：原檔 render 成 canvas；右欄：**譯文 PDF bytes 同樣 render 成 canvas**——所見即所得，畫面即下載檔內容
-- 雙向 scroll sync 以「頁 + 頁內比例」同步；zoom 50%-200%；「同步捲動」可關
+- 雙向 scroll sync 以「頁 + 頁內比例」同步；zoom 25%-200%；「同步捲動」可關
+- 開檔縮放：預設 100%；視窗直立（高大於寬，例如 iPad 直立）且 100% 時兩欄放不下，開檔自動縮到頁面剛好塞滿欄寬。橫放與一般電腦視窗不自動縮。使用者手動按過「−／＋」後，同一個分頁之後開的文件都沿用使用者的縮放
 - Lazy render：離開視窗的頁釋放記憶體（大檔案兩欄全 render 記憶體峰值過高，必須惰性）
 - 「翻譯紀錄」modal：翻譯摘要、失敗段落清單與「重試失敗段落」按鈕、版面 debug 檢視入口
 

@@ -95,6 +95,9 @@ async function main() {
   console.log(`[harness] extensionId: ${extensionId}`);
 
   const page = await context.newPage();
+  // VIEWPORT=834x1194：指定視窗大小（例：模擬 iPad 直立，閱讀器會自動縮放）。沒給就用 Playwright 預設
+  const vpMatch = /^(\d+)x(\d+)$/.exec((process.env.VIEWPORT || '').trim());
+  if (vpMatch) await page.setViewportSize({ width: Number(vpMatch[1]), height: Number(vpMatch[2]) });
 
   // 把 page console 透傳到 stdout 方便 debug
   page.on('console', (msg) => {

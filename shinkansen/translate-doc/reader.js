@@ -25,6 +25,33 @@ import { TRANSLATABLE_TYPES } from './block-types.js';
 import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
 
 const READER_RENDER_SCALE = 1.5;
+// 縮放範圍。下限 0.25：直立 iPad 自動縮到塞滿欄寬約 0.37–0.42（iPad mini 744 / iPad Pro 11 吋 834），
+// 原本的下限 0.5 會擋住，且使用者再按「−」會被夾回 0.5 反而變大
+const READER_ZOOM_MIN = 0.25;
+const READER_ZOOM_MAX = 2.0;
+
+/**
+ * 開檔自動縮放：直立視窗（高 > 寬）且 100% 時頁面放不下欄寬，回傳剛好塞滿欄寬的縮放比例；
+ * 其餘情況回 null（維持呼叫端給的縮放）。橫放與一般電腦視窗刻意不縮——100% 超出欄寬時照舊左右捲
+ *
+ * @param {{viewportWidth:number, viewportHeight:number, columnContentWidth:number, pageBaseWidth:number}} p
+ *   columnContentWidth = 欄寬扣掉左右 padding（兩欄取較窄的）；pageBaseWidth = 100% 時頁面 CSS 寬
+ * @returns {number|null}
+ */
+export function computeAutoFitZoom({ viewportWidth, viewportHeight, columnContentWidth, pageBaseWidth }) {
+  if (!(viewportWidth > 0) || !(viewportHeight > 0) || !(columnContentWidth > 0) || !(pageBaseWidth > 0)) return null;
+  if (viewportHeight <= viewportWidth) return null;          // 橫放 / 一般電腦視窗
+  if (pageBaseWidth <= columnContentWidth) return null;      // 100% 放得下
+  // 無條件捨去到 0.01，確保縮完不會因四捨五入多出 1px 又出現水平捲動
+  const z = Math.floor((columnContentWidth / pageBaseWidth) * 100) / 100;
+  return Math.max(READER_ZOOM_MIN, Math.min(1, z));
+}
+
+// 欄內可放頁面的寬度（clientWidth 扣左右 padding）
+function columnContentWidth(col) {
+  const cs = getComputedStyle(col);
+  return col.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+}
 const SCROLL_SYNC_RESET_MS = 250;
 // review G5:lazy render 預載邊界(相對欄高)。可視區外 ±2 個欄高內先 render
 // (捲到時多半已就緒);離開此區釋放 canvas bitmap。Retina(DPR 2)下 A4 每
@@ -72,6 +99,8 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
   const orCancel = (p) => Promise.race([p, cancelled]);
   const { modelOverride, engine, glossary, extraPrompt = null, onFailedCountChange = () => {}, onFontFallback = null } = opts;
   let currentZoom = opts.initialZoom || 1.0;
+  // autoFit：使用者還沒手動調過縮放（index.js 判斷）→ 第一頁尺寸就位時套 computeAutoFitZoom
+  const { autoFit = false, onZoomChange = null } = opts;
   let syncEnabled = opts.initialSyncEnabled !== false;
 
   originalCol.innerHTML = '';
@@ -250,6 +279,18 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       leftPage.dataset.baseHeight = String(leftViewport.height);
       rightPage.dataset.baseWidth = String(rightViewport.width);
       rightPage.dataset.baseHeight = String(rightViewport.height);
+      if (i === 0 && autoFit) {
+        const fit = computeAutoFitZoom({
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          columnContentWidth: Math.min(columnContentWidth(originalCol), columnContentWidth(translatedCol)),
+          pageBaseWidth: Math.max(leftViewport.width, rightViewport.width),
+        });
+        if (fit !== null) {
+          currentZoom = fit;
+          if (typeof onZoomChange === 'function') onZoomChange(fit);
+        }
+      }
       applyZoomToPage(leftPage, currentZoom);
       applyZoomToPage(rightPage, currentZoom);
       pageMeta.set(leftPage, { idx: i, side: 'left', rendered: false, inZone: false });
@@ -316,7 +357,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       sync.setEnabled(syncEnabled);
     },
     setZoom(zoom) {
-      const z = Math.max(0.5, Math.min(2.0, zoom));
+      const z = Math.max(READER_ZOOM_MIN, Math.min(READER_ZOOM_MAX, zoom));
       currentZoom = z;
       for (const el of originalCol.querySelectorAll('.reader-page-original')) {
         applyZoomToPage(el, z);
