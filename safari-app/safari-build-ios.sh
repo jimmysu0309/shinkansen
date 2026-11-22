@@ -12,8 +12,8 @@
 #
 # iOS 跟 macOS build 的差異(SPEC-PRIVATE §26):
 #   1. manifest patch(event page + nativeMessaging)。translate-doc/ 照常打包——
-#      文件翻譯在 iPad / iOS app 跑在 Mac 上提供,只在 iPhone 隱藏入口(lib/platform.js
-#      isDocTranslateAvailable;2026-11-20 起,之前整組 strip)
+#      文件翻譯全平台提供（iPhone 限橫向，translate-doc body.runtime-phone；2026-11-22 起。
+#      2026-11-20 前整組 strip，11-20～11-22 iPhone 隱藏入口）
 #   2. 簽名走手動 App Store profiles(SPEC-PRIVATE §26.5 第 4 條)
 #   3. 產 .ipa 不產 .pkg
 #

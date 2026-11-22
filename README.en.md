@@ -153,7 +153,7 @@ Notes: you must have view access to the document. Mobile reading view is read-on
 
 Click the Shinkansen toolbar icon → "Translate document" to open a dedicated tab, then drop a PDF, EPUB, Word (.docx), TXT, Markdown, HTML, or subtitle file (SRT / WebVTT / ASS) onto the page to translate the whole file. Files are parsed entirely in your browser — nothing is uploaded anywhere except the text sent to the translation engine. The one exception is PDF translation into Simplified Chinese / Japanese / Korean: the first time, the matching font (about 10–20 MB) is downloaded from the project website, once only and cached for offline use; that request carries no document content.
 
-Document translation works in desktop browsers, on iPad, and in the iOS version installed on a Mac; it is not available on iPhone, whose screen is too small for the side-by-side reader and editor. On iPad, downloading a translation opens the system share sheet — choose "Save to Files" to keep it.
+Document translation works in desktop browsers, on iPhone and iPad, and in the iOS version installed on a Mac; on iPhone, rotate to landscape (the side-by-side reader and editor need a wider screen). On iPhone and iPad, downloading a translation opens the system share sheet — choose "Save to Files" to keep it.
 
 **PDF translation**:
 
@@ -355,7 +355,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.7.3 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.7.4 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

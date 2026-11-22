@@ -11,7 +11,7 @@ import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error co
 // 訊息表 / 分批外層全部收斂到 lib/llm-common.js，與 lib/openai-compat.js 共用單一實作。
 // 本檔只剩 Gemini 專屬：request body 組裝、回應形狀（candidates / usageMetadata）抽取、429 配額維度分類。
 import {
-  FETCH_TIMEOUT_MS, fetchWithRetry, readJsonBody, alignAndFallback, runChunkedBatch,
+  FETCH_TIMEOUT_MS, DEFAULT_TIMEOUT_RETRIES, fetchWithRetry, readJsonBody, alignAndFallback, runChunkedBatch,
   emptyContentError, parseLlmJson, emptyUsage,
 } from './llm-common.js';
 import { modelDropsSamplingParams } from './model-pricing.js';
@@ -185,8 +185,9 @@ function extractQuotaDimension(json) {
   return null;
 }
 
-// 主翻譯 fetch 層級 timeout。15s = Flash 系列慢 case(~8s)留 2x margin,
-// 真正卡死的情境(Gemini 沒回 / 連線吊住)在 15s 後 AbortError,走下面 retry 路徑。
+// 主翻譯 fetch 層級 timeout(FETCH_TIMEOUT_MS,llm-common.js)。原 15s = Flash 系列慢 case(~8s)
+// 留 2x margin;2026-11-22 放寬到 45s + 逾時只重試 1 次(3.8 Flash 一批常 >15s,abort 掉的
+// 請求照樣計費卻不進快取)。真正卡死的情境在 45s 後 AbortError,走下面 retry 路徑。
 // 預設 preset 都是 Flash 系列(storage.js:617-618),Pro thinking 邊緣情境不納入。
 // v2.0.53:這個假設只對「網頁翻譯每批 ~20 段」成立——文件翻譯每批可達 50 段長文,
 // 輸出時間遠超 15s(日文書實例:850 段全因 15s 逾時失敗,且 abort 掉的請求
@@ -667,8 +668,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   const t0 = Date.now();
   const maxRetries = typeof settings?.maxRetries === 'number' ? settings.maxRetries : 3;
   // v2.0.53:文件翻譯路徑(TRANSLATE_DOC_BATCH)經 geminiOverrides 帶
-  // fetchTimeoutMs=120s + timeoutRetries=1;undefined 時 fetchWithRetry 用預設
-  //(15s / maxRetries),網頁翻譯行為不變
+  // fetchTimeoutMs=120s + timeoutRetries=1;undefined 時用網頁預設
+  //(FETCH_TIMEOUT_MS 45s / DEFAULT_TIMEOUT_RETRIES 1 次)
   const resp = await fetchWithRetry(url, body, {
     maxRetries,
     logPrefix: 'gemini',
@@ -676,7 +677,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     headers: { 'x-goog-api-key': apiKey },
     timeoutMs: (typeof geminiConfig.fetchTimeoutMs === 'number' && geminiConfig.fetchTimeoutMs > 0)
       ? geminiConfig.fetchTimeoutMs : undefined,
-    timeoutRetries: (typeof geminiConfig.timeoutRetries === 'number') ? geminiConfig.timeoutRetries : null,
+    timeoutRetries: (typeof geminiConfig.timeoutRetries === 'number') ? geminiConfig.timeoutRetries : DEFAULT_TIMEOUT_RETRIES,
   });
 
   // API 回傳非 JSON 時（HTML 錯誤頁、空回應、CDN 擋下的 502 HTML 頁面等）帶前 200 字 preview 拋 badResponse
@@ -835,7 +836,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
 
   const t0 = Date.now();
 
-  // 跟 fetchWithRetry 一致的 15s headers timeout — 真正卡死(Gemini 不回 response headers)
+  // 跟 fetchWithRetry 一致的 headers timeout（FETCH_TIMEOUT_MS）— 真正卡死(Gemini 不回 response headers)
   // 在 FETCH_TIMEOUT_MS 後 AbortError。headers 收到後 clearTimeout,stream phase 改靠
   // 外部 signal 控制(user 按 × 取消或 background.js inFlightStreams 清掉時 abort)。
   // 用 internal AC + forward external signal,讓 ac.signal 同時 cover headers timeout

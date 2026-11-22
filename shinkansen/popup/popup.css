@@ -116,13 +116,6 @@ footer > * {
   min-width: 0; /* 允許長 label 在欄內 wrap,不撐爆 grid */
 }
 
-/* iOS build 跑在 iPhone：文件翻譯頁是大版面工作頁，手機放不下 → 隱藏入口。
-   body.runtime-no-doc 由 popup.js 依 IS_IOS_BUILD && isPhoneDevice()（lib/platform.js）
-   加上。平台屬性 → iPad 與 iOS build 跑在 Mac 上不加，照常顯示。 */
-body.runtime-no-doc #translate-doc-btn {
-  display: none;
-}
-
 /* iOS popup 放大（sim 實測收斂結果，SPEC-PRIVATE §26.7）。
    平台屬性 → 只在真觸控裝置（body.runtime-ios-touch，popup.js 依
    isTouchScreenDevice() 加）放大；iOS build 跑在 macOS（無觸控）時不放大，

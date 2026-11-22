@@ -32,15 +32,16 @@ const READER_ZOOM_MAX = 2.0;
 
 /**
  * 開檔自動縮放：直立視窗（高 > 寬）且 100% 時頁面放不下欄寬，回傳剛好塞滿欄寬的縮放比例；
- * 其餘情況回 null（維持呼叫端給的縮放）。橫放與一般電腦視窗刻意不縮——100% 超出欄寬時照舊左右捲
+ * 其餘情況回 null（維持呼叫端給的縮放）。橫放與一般電腦視窗刻意不縮——100% 超出欄寬時照舊左右捲。
+ * fitLandscape（手機）：橫向也縮——手機橫向每欄只剩 ~400px，100% 只看得到頁面左半
  *
- * @param {{viewportWidth:number, viewportHeight:number, columnContentWidth:number, pageBaseWidth:number}} p
+ * @param {{viewportWidth:number, viewportHeight:number, columnContentWidth:number, pageBaseWidth:number, fitLandscape?:boolean}} p
  *   columnContentWidth = 欄寬扣掉左右 padding（兩欄取較窄的）；pageBaseWidth = 100% 時頁面 CSS 寬
  * @returns {number|null}
  */
-export function computeAutoFitZoom({ viewportWidth, viewportHeight, columnContentWidth, pageBaseWidth }) {
+export function computeAutoFitZoom({ viewportWidth, viewportHeight, columnContentWidth, pageBaseWidth, fitLandscape = false }) {
   if (!(viewportWidth > 0) || !(viewportHeight > 0) || !(columnContentWidth > 0) || !(pageBaseWidth > 0)) return null;
-  if (viewportHeight <= viewportWidth) return null;          // 橫放 / 一般電腦視窗
+  if (!fitLandscape && viewportHeight <= viewportWidth) return null;   // 橫放 / 一般電腦視窗
   if (pageBaseWidth <= columnContentWidth) return null;      // 100% 放得下
   // 無條件捨去到 0.01，確保縮完不會因四捨五入多出 1px 又出現水平捲動
   const z = Math.floor((columnContentWidth / pageBaseWidth) * 100) / 100;
@@ -100,7 +101,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
   const { modelOverride, engine, glossary, extraPrompt = null, onFailedCountChange = () => {}, onFontFallback = null } = opts;
   let currentZoom = opts.initialZoom || 1.0;
   // autoFit：使用者還沒手動調過縮放（index.js 判斷）→ 第一頁尺寸就位時套 computeAutoFitZoom
-  const { autoFit = false, onZoomChange = null } = opts;
+  const { autoFit = false, fitLandscape = false, onZoomChange = null } = opts;
   let syncEnabled = opts.initialSyncEnabled !== false;
 
   originalCol.innerHTML = '';
@@ -285,6 +286,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
           viewportHeight: window.innerHeight,
           columnContentWidth: Math.min(columnContentWidth(originalCol), columnContentWidth(translatedCol)),
           pageBaseWidth: Math.max(leftViewport.width, rightViewport.width),
+          fitLandscape,
         });
         if (fit !== null) {
           currentZoom = fit;

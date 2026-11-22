@@ -515,7 +515,10 @@
 
   // 每批 API 呼叫逾時門檻：超過此時間視為逾時，以 error 記錄並繼續下一批。
   // 防止 Gemini API 無回應時整頁翻譯永久卡住。
-  const BATCH_TIMEOUT_MS = 90_000;
+  // 2026-11-22 由 90s 放寬到 120s：background 單次 fetch 逾時放寬到 45s + 重試 1 次
+  //（lib/llm-common.js FETCH_TIMEOUT_MS / DEFAULT_TIMEOUT_RETRIES），最壞 ~91s，
+  // 這裡要比它長，否則 content 先放棄、background 那批算完的譯文接不回頁面。
+  const BATCH_TIMEOUT_MS = 120_000;
 
   // v1.6.19: 把 Promise.race 包成 helper,sendMessage 先 settle 時 clearTimeout
   // 釋放 timer。舊版每個 batch 都留一個 90s timer 直到 fire（雖然 race 已 settle

@@ -6,7 +6,7 @@
 - 建立日期：2026-04-08
 - 最後更新：2026-11-17（v2.7.0）
 - 目標平台：Chrome / Firefox / Safari（macOS）/ Safari（iOS・iPadOS），四平台共用同一份 source（Manifest V3）
-- 目前 Extension 版本：2.7.3
+- 目前 Extension 版本：2.7.4
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款瀏覽器擴充功能（Chrome / Firefox / Safari），將�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.7.3 為止）
+### 2.1 已實作（v2.7.4 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -65,7 +65,7 @@ Shinkansen 是一款瀏覽器擴充功能（Chrome / Firefox / Safari），將�
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
 | 文件翻譯（PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；Word（.docx）譯文寫回原檔格式與版面全保留、可輸出雙語對照；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；字幕檔（SRT / WebVTT / ASS）每則字幕為翻譯單位、時間軸原樣保留、可輸出雙語字幕；詳見 §17 |
-| iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；多指輕點觸發（預設四指，可改三指）；popup／options 觸控調整；文件翻譯（§17）在 iPad 與 iOS 版裝在 Mac 上提供，iPhone 不提供（手機螢幕放不下雙欄閱讀器與編輯頁，工具列圖示選單不顯示入口） |
+| iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；多指輕點觸發（預設四指，可改三指）；popup／options 觸控調整；文件翻譯（§17）在 iPhone、iPad 與 iOS 版裝在 Mac 上都提供；iPhone 需橫向使用（直向時頁面顯示「請將手機轉為橫向」提示，閱讀器開檔自動縮到欄寬，編輯頁改整頁捲動讓 Safari 收起網址列） |
 
 ### 2.3 明確不做
 
@@ -760,8 +760,8 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 
 ### 17.3 入口 UI
 
-- popup footer「翻譯文件」→ 開啟 `translate-doc/index.html` 獨立分頁（iOS 版在 iPhone 上不顯示此入口；iPad 與 iOS 版裝在 Mac 上照常顯示）
-- 單頁 SPA：上傳（拖放 / 選檔）→ 解析 → 選 preset 開始翻譯 → 進度視圖（進度條 + 段落數 + 預估剩餘時間 + 累計費用 + 取消）→ 閱讀器。另有譯文編輯頁（支援 `**粗體**` / `[連結](url)` markdown 與搜尋取代）、文章術語表、版面 debug 檢視等支線頁
+- popup footer「翻譯文件」→ 開啟 `translate-doc/index.html` 獨立分頁（iOS 版在 iPhone、iPad 與裝在 Mac 上都顯示；iPhone 需橫向使用）
+- 單頁 SPA：上傳（拖放 / 選檔）→ 解析 → 選 preset 開始翻譯 → 進度視圖（進度條 + 段落數 + 預估剩餘時間 + 累計費用 + 取消）→ 閱讀器。另有譯文編輯頁（支援 `**粗體**` / `[連結](url)` markdown 與搜尋取代；搜尋取代列預設收起，由工具列「搜尋取代」按鈕或 `⌘F` / `Ctrl+F` 開啟）、文章術語表、版面 debug 檢視等支線頁
 - **不載入檔案內的外部資源**：上傳的 HTML / EPUB 檔內指向外部主機的圖片、影音、樣式表與內嵌框架一律不載入（頁面層 Content Security Policy）
 - 檔案結構見 §6 `translate-doc/`；PDF 版面分析與 IR 結構見 SPEC-PRIVATE §32
 

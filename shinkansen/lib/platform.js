@@ -6,9 +6,8 @@
 // (popup 用桌面 popover 尺寸不放大、快速鍵提示用鍵盤而非四指 tap)。
 //
 // 「build 屬性」vs「平台屬性」分離(見 lib/distribution.js):
-//   - 文件翻譯入口只在 iPhone 隱藏(2026-11-20 起 iOS build 照常打包 translate-doc/,
-//     iPad 與 iOS app 跑在 Mac 上可用)→ 平台屬性,用 body.runtime-no-doc
-//     (IS_IOS_BUILD && isPhoneDevice() 才加)
+//   - 文件翻譯頁的手機版面(直向「請轉成橫向」提示、編輯頁整頁捲動)→ 平台屬性,
+//     translate-doc/index.js 依 isPhoneDevice() 加 body.runtime-phone
 //   - popup 放大 / 四指 tap 提示是 **平台屬性** → 只在真觸控裝置套用,Mac 上不套,
 //     用 body.runtime-ios-touch(IS_IOS_BUILD && isTouchScreenDevice() 才加)
 //
@@ -26,8 +25,8 @@ export function isTouchScreenDevice() {
   return typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) >= 1;
 }
 
-// 是否為手機尺寸裝置(iPhone)。文件翻譯頁是大版面工作頁(拖檔、雙欄預覽、譯文編輯),
-// 手機螢幕放不下 → iOS build 只在 iPhone 隱藏入口,iPad / Mac 照常提供。
+// 是否為手機尺寸裝置(iPhone)。文件翻譯頁是大版面工作頁(雙欄預覽、譯文編輯),
+// 手機只能橫向使用 → translate-doc 在手機上套專用版面(見 translate-doc/index.css 手機段)。
 // 兩個訊號擇一成立即判手機:
 //   1. UA 含 iPhone / iPod(iPhone Safari 的擴充功能頁不套「要求桌面版網站」,UA 誠實)
 //   2. 觸控裝置且螢幕短邊 < 600pt(UA 被改時的保底;iPhone 短邊 ≤ 440、iPad mini 744)

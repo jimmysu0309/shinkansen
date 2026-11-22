@@ -13,6 +13,19 @@
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
+  <!-- 手機直向時蓋滿畫面的「請轉成橫向」提示（index.css：body.runtime-phone + orientation: portrait 才顯示；
+       iPhone Safari 不支援鎖定螢幕方向，只能提示） -->
+  <div class="rotate-overlay" aria-live="polite">
+    <svg class="rotate-overlay-icon" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+      <rect x="22" y="6" width="20" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.4"/>
+      <rect x="14" y="34" width="36" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <path d="M50 14 a12 12 0 0 1 4 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M50 29 l4 -1 l1 -4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="rotate-overlay-title" data-i18n="doc.rotate.title">請將手機轉為橫向</div>
+    <div class="rotate-overlay-hint" data-i18n="doc.rotate.hint">文件翻譯的雙欄閱讀與編輯需要橫向畫面</div>
+  </div>
+
   <header class="app-header">
     <h1>
       <img src="../icons/icon-128.png" alt="" class="app-icon">
@@ -333,9 +346,12 @@
 
     <!-- 階段 5：譯文編輯（v1.8.49）——逐段編輯譯文，儲存後重新產生雙頁預覽 -->
     <section id="stage-edit" class="stage" hidden>
+      <!-- 工具列 + 搜尋取代列包成一組：手機版編輯頁改整頁捲動時整組 sticky 凍結頂端（index.css body.runtime-phone） -->
+      <div class="edit-sticky">
       <div class="edit-toolbar">
         <span class="edit-toolbar-title" data-i18n="doc.edit.title">編輯譯文</span>
         <button id="edit-glossary-btn" class="secondary-btn" type="button" title="編輯文章術語表（沒建過會先自動抽取），編輯後會用新術語表重新翻譯整份文件" data-i18n="doc.edit.btn.glossary" data-i18n-attr-title="doc.edit.btn.glossary.title">編輯文章術語表並重新翻譯</button>
+        <button id="edit-find-toggle-btn" class="secondary-btn" type="button" aria-controls="edit-find-bar" aria-expanded="false" data-i18n="doc.edit.btn.find">搜尋取代</button>
         <span class="edit-toolbar-spacer"></span>
         <button id="edit-cancel-btn" class="secondary-btn" type="button" data-i18n="doc.edit.btn.cancel">取消</button>
         <button id="edit-save-btn" class="primary-btn" type="button" data-i18n="doc.edit.btn.save">儲存並重新產生文件</button>
@@ -352,8 +368,9 @@
         <span class="edit-toolbar-spacer"></span>
         <button id="edit-find-close-btn" class="secondary-btn" type="button" title="關閉 (Esc)" data-i18n-attr-title="doc.edit.find.btn.close.title">×</button>
       </div>
+      </div>
       <div class="edit-help" data-i18n-html="doc.edit.help.html">
-        <strong>支援格式</strong>：<code>**粗體**</code>、<code>*斜體*</code>、<code>[連結文字](網址)</code>。其他字元當純文字。譯文留空表示不顯示譯文（保留原文）。儲存後會重新產生雙頁預覽，編輯結果不會跨次保存。<strong>搜尋取代</strong>：<code>⌘F</code> / <code>Ctrl+F</code> 開啟
+        <strong>支援格式</strong>：<code>**粗體**</code>、<code>*斜體*</code>、<code>[連結文字](網址)</code>。其他字元當純文字。譯文留空表示不顯示譯文（保留原文）。儲存後會重新產生雙頁預覽，編輯結果不會跨次保存。<strong>搜尋取代</strong>：按上方「搜尋取代」或 <code>⌘F</code> / <code>Ctrl+F</code> 開啟
       </div>
       <div id="edit-list" class="edit-list"></div>
     </section>

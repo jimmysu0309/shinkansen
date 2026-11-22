@@ -25,10 +25,15 @@ export const MAX_BACKOFF_MS = 8000;
 // MV3 SW 等不到那麼久（30 秒 idle 即可能被回收），無上限等待等於永久卡批次。
 // cap 在 30 秒，等完仍 429 就走 maxRetries 放棄路徑回報錯誤。
 export const RETRY_AFTER_CAP_MS = 30_000;
-// 主翻譯 fetch 層級 timeout 預設值（v1.9.21）：Flash 系列慢 case ~8s 留 2x margin。
+// 主翻譯 fetch 層級 timeout 預設值：v1.9.21 設 15s（Flash 系列慢 case ~8s 留 2x margin）；
+// 2026-11-22 放寬到 45s——3.8 Flash 一批 40 段實測 12.8s、16 段那批穩定 >15s 被中斷，
+// 中斷的請求 Google 端照樣計費、結果卻沒進快取，重翻每次再燒一輪。
 // Gemini 路徑用此預設；OpenAI-compat 路徑由 adapter 傳 90s（reasoning 模型非 streaming
 // 要等整批生成完才回 body）。
-export const FETCH_TIMEOUT_MS = 15_000;
+export const FETCH_TIMEOUT_MS = 45_000;
+// 網頁 / 字幕翻譯的逾時重試上限（2026-11-22）：被 abort 的請求照樣計費，同尺寸請求
+// 重送 3 次等於燒 4 倍錢換同樣的逾時；改為只重試 1 次（文件路徑本來就是 1）。
+export const DEFAULT_TIMEOUT_RETRIES = 1;
 
 export function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));

@@ -68,6 +68,33 @@ export function createTranslatePipeline(deps) {
       cacheTag, glossary, fixedGlossaryEntries, forbiddenTermsList, ...keyParts,
     });
     const cached = await cache.getBatch(texts, cacheKeySuffix);
+    // 網頁路徑術語表 key 補查：網頁翻譯的自動術語表是 fire-and-forget（翻譯前最多等 2 秒），
+    // 首翻時術語表常趕不上 → 譯文存在「無術語表」key；重翻時術語表走快取瞬間就緒 → 改查
+    // 「有術語表」key → 整頁 miss 重新計費（2026-11-22 Jimmy 回報，3.8 flash 實測重翻 0 命中）。
+    // 有術語表但查不到的段，補查「拿掉文章術語表（固定術語表保留）」的 key，命中就沿用並回寫主 key。
+    // 只限網頁路徑（'' / '_oc'）：文件路徑的術語表可由使用者編輯，不可退回無術語表的舊譯文。
+    const articleGlossaryActive = Array.isArray(glossary) && glossary.length > 0;
+    if (articleGlossaryActive && (cacheTag === '' || cacheTag === '_oc') && cached.some(tr => tr == null)) {
+      const altSuffix = await buildCacheKeySuffix({
+        cacheTag, glossary: null, fixedGlossaryEntries, forbiddenTermsList, ...keyParts,
+      });
+      const altIdxs = [];
+      cached.forEach((tr, i) => { if (tr == null) altIdxs.push(i); });
+      const altCached = await cache.getBatch(altIdxs.map(i => texts[i]), altSuffix);
+      const promoteTexts = [];
+      const promoteTrs = [];
+      altCached.forEach((tr, k) => {
+        if (tr != null) {
+          cached[altIdxs[k]] = tr;
+          promoteTexts.push(texts[altIdxs[k]]);
+          promoteTrs.push(tr);
+        }
+      });
+      if (promoteTexts.length) {
+        await cache.setBatch(promoteTexts, promoteTrs, cacheKeySuffix);
+        debugLog('info', 'cache', `${logLabel} batch cache hit via no-glossary key`, { ...logExtra, hits: promoteTexts.length });
+      }
+    }
     const missingIdxs = [];
     const missingTexts = [];
     cached.forEach((tr, i) => {

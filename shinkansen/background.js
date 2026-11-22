@@ -633,7 +633,7 @@ async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
 }
 
 // v2.0.53:文件翻譯批次的 fetch 逾時（TRANSLATE_DOC_BATCH* 兩個 handler 共用）。
-// 網頁翻譯的 15s 假設（gemini.js FETCH_TIMEOUT_MS）對「每批可達 50 段長文」不成立,
+// 網頁翻譯的 45s 預設（llm-common.js FETCH_TIMEOUT_MS，原 15s）對「每批可達 50 段長文」不成立,
 // 詳見兩個 handler 內的註解
 const DOC_FETCH_TIMEOUT_MS = 120_000;
 

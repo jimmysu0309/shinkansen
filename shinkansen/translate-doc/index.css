@@ -1023,6 +1023,9 @@ body:has(#stage-edit:not([hidden])) .app-footer {
   flex-wrap: wrap; /* 視窗太窄時換行,避免按鈕被擠扁 */
 }
 
+/* display:flex 會蓋掉 UA 的 [hidden]（v1.8.49 起搜尋列永遠顯示、× 關不掉）——同 .result-row[hidden] 陷阱 */
+.edit-find-bar[hidden] { display: none; }
+
 /* find-bar 內所有 button 不被 flex 擠壓,文字不換行 */
 .edit-find-bar button {
   flex-shrink: 0;
@@ -1717,3 +1720,69 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
   margin-right: 4px;
   white-space: nowrap;
 }
+
+/* ----- 手機（iPhone）版面（SPEC-PRIVATE §26.15）-----
+   body.runtime-phone 由 index.js 依 isPhoneDevice()（lib/platform.js）加上。
+   1. 直向：蓋滿畫面的「請轉成橫向」提示。iPhone Safari 不支援鎖定螢幕方向，只能提示
+   2. 編輯頁 / 術語表頁：改由整頁捲動。原本固定 100vh + 內部捲動時，Safari 的網址列與分頁列
+      永遠不收（橫向約佔 110pt），能編輯的高度只剩 50–90pt；整頁捲動時 Safari 會收起它們。
+      工具列（含搜尋取代列）維持 sticky 凍結頂端，說明文字跟著內容捲走
+   3. 閱讀器：雙欄同步捲動必須是內部捲動，改用 100dvh 讓版面高度貼合 Safari 當下可視區 */
+.rotate-overlay { display: none; }
+
+@media (orientation: portrait) {
+  body.runtime-phone .rotate-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    background: var(--bg);
+    color: var(--text);
+  }
+}
+
+.rotate-overlay-icon { color: var(--primary); }
+.rotate-overlay-title { font-size: 17px; font-weight: 600; }
+.rotate-overlay-hint { font-size: 14px; color: var(--text-muted); }
+
+body.runtime-phone #app-main:has(#stage-edit:not([hidden])) {
+  max-width: 100%;
+  padding: 0;
+}
+
+body.runtime-phone #stage-edit {
+  display: block;
+  height: auto;
+}
+
+body.runtime-phone .edit-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+body.runtime-phone .edit-toolbar { padding: 6px 12px; }
+body.runtime-phone .edit-toolbar-title { display: none; }
+body.runtime-phone .edit-help { padding: 6px 12px; }
+/* 搜尋取代列橫向擠成一行（原本 flex-wrap 在 874pt 寬折兩行，sticky 區佔掉約 1/3 畫面高） */
+body.runtime-phone .edit-find-bar { flex-wrap: nowrap; padding: 4px 12px; }
+body.runtime-phone .edit-find-input { flex: 1 1 120px; min-width: 60px; }
+body.runtime-phone .edit-find-count { min-width: 40px; }
+
+body.runtime-phone .edit-list {
+  overflow: visible;
+  padding: 12px 12px 40px;
+}
+
+body.runtime-phone #stage-glossary {
+  height: auto;
+  overflow: visible;
+}
+
+body.runtime-phone #stage-reader { height: 100dvh; }

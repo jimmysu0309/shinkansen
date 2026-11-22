@@ -48,6 +48,20 @@ import {
   translatedDocxFilename, DocxParseError, DOCX_MIME,
 } from './docx-engine.js';
 import { getSettings } from '../lib/storage.js';
+import { isPhoneDevice, isTouchScreenDevice } from '../lib/platform.js';
+
+// 手機（iPhone）版面（SPEC-PRIVATE §26.15）：雙欄閱讀器與編輯頁只能橫向使用。
+//   - body.runtime-phone：index.css 依此在直向時蓋「請轉成橫向」提示、編輯頁 / 術語表頁改由整頁捲動
+//     （讓 Safari 捲動時收起網址列與分頁列，固定版面內部捲動時它們永遠不收）
+//   - 閱讀器開檔自動縮放在手機上橫向也套（computeAutoFitZoom fitLandscape）
+// iOS 觸控裝置（iPhone / iPad）：viewport 加 maximum-scale=1，擋掉 Safari「點字級 < 16px 的
+// 輸入框就自動放大整頁、之後不縮回」的行為。iOS 10 起使用者雙指縮放不受這個值限制
+const IS_PHONE = isPhoneDevice();
+if (IS_PHONE) document.body.classList.add('runtime-phone');
+if (isTouchScreenDevice() && /\b(iPhone|iPad|iPod|Macintosh)\b/.test(navigator.userAgent || '')) {
+  const vp = document.querySelector('meta[name="viewport"]');
+  if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0');
+}
 import { saveBlob } from '../lib/download.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -182,6 +196,9 @@ function showStage(name) {
   for (const [key, el] of Object.entries(stages)) {
     el.hidden = key !== name;
   }
+  // 換頁一律回頂端：手機橫向在結果頁捲下去後進閱讀器，整頁會停在原捲動位置，
+  // 閱讀器工具列被 Safari 網址列蓋住（iPhone 17 Pro 模擬器實測）
+  window.scrollTo(0, 0);
 }
 
 function setVersionFooter() {
@@ -1308,6 +1325,8 @@ async function openReader() {
         initialZoom: userReaderZoom ?? 1.0,
         // 沒手動調過才自動縮（直立且兩欄放不下時縮到塞滿欄寬，見 reader.js computeAutoFitZoom）
         autoFit: userReaderZoom === null,
+        // 手機橫向欄寬只有 ~400px，100% 幾乎看不到整頁 → 橫向也自動縮
+        fitLandscape: IS_PHONE,
         onZoomChange: (z) => {
           if (myGen === readerGeneration) $('reader-zoom-level').textContent = `${Math.round(z * 100)}%`;
         },
@@ -1578,6 +1597,8 @@ function openEditor() {
   }
   showStage('edit');
   list.scrollTop = 0;
+  // 手機版編輯頁改由整頁捲動（index.css body.runtime-phone）
+  window.scrollTo(0, 0);
   // showStage 後 textarea 才有實際 layout,此時 scrollHeight 才正確。一次 loop 把
   // 所有 textarea 高度貼合內容(避免內容溢出產生 internal scroll)。read scrollHeight
   // 會 force layout,200 段約 50-150ms blocking,只在 openEditor 一次,可接受
@@ -1859,6 +1880,7 @@ function replaceAll() {
 function openFindBar() {
   const bar = $('edit-find-bar');
   bar.hidden = false;
+  $('edit-find-toggle-btn').setAttribute('aria-expanded', 'true');
   const input = $('edit-find-input');
   input.focus();
   input.select();
@@ -1867,6 +1889,7 @@ function openFindBar() {
 
 function closeFindBar() {
   $('edit-find-bar').hidden = true;
+  $('edit-find-toggle-btn').setAttribute('aria-expanded', 'false');
   findMatches = [];
   findCurrentIndex = -1;
   clearMatchHighlight();
@@ -1897,6 +1920,10 @@ function bindFindReplaceUI() {
   $('edit-replace-btn').addEventListener('click', replaceCurrent);
   $('edit-replace-all-btn').addEventListener('click', replaceAll);
   $('edit-find-close-btn').addEventListener('click', closeFindBar);
+  // 工具列「搜尋取代」按鈕：觸控裝置沒鍵盤按不了 ⌘F，要有可點的入口
+  $('edit-find-toggle-btn').addEventListener('click', () => {
+    if ($('edit-find-bar').hidden) openFindBar(); else closeFindBar();
+  });
 }
 
 // ---------- 翻譯流程(W3) ----------
