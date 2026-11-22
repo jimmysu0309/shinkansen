@@ -175,8 +175,8 @@ export function isValidGlossaryEntry(e) {
 // 門檻三條件（拉丁字母 ≥40 + 空白分詞 ≥8 + CJK 字元 ≤2）只抓「整段拉丁內文、
 // 幾乎零 CJK」的輸出：短句品牌名（Taylor Swift）、URL（無空白，分詞=1）、
 // 數字搆不到；合法譯文含大量英文引用時 CJK 字元遠超 2 也不受影響。
-// 誤判成本僅「不寫快取，下次重送」——例如整段就是一條長英文作品名 / 文獻
-// 條目、模型合法原樣保留時，該段每次翻譯都重打 API，顯示結果不受影響。
+// 誤判成本是「不寫快取，每次重送」——實測不是小事：人名清單類合法譯文被誤判後，
+// 每次重翻 + 每次 SPA rescan 都重打 API（2026-11-22 加第四條件「小寫開頭英文字 ≥4」排除）。
 export function isSuspectEchoTranslation(source, translation, targetLanguage) {
   if (typeof source !== 'string' || typeof translation !== 'string') return false;
   const s = source.trim();
@@ -188,7 +188,12 @@ export function isSuspectEchoTranslation(source, translation, targetLanguage) {
     const tLatin = (t.match(/[A-Za-z]/g) || []).length;
     const tWords = t.split(/\s+/).filter(Boolean).length;
     const tCjk = (t.match(/[぀-ゟ゠-ヿ㐀-䶿一-鿿가-힣]/g) || []).length;
-    if (tLatin >= 40 && tWords >= 8 && tCjk <= 2) return true;
+    // 2026-11-22 第四條件：小寫開頭的英文字 ≥4（沒翻的英文內文必有大量 the / of / and…）。
+    // 人名清單（「Jordan Schneider、Angela Shen…與 Alexa Pan」）、全大寫標題是合法譯文，
+    // 原本三條件全中被誤判 echo → 永遠不進快取，Substack 作者列重繪觸發 rescan 時每次重打 API
+    //（Jimmy 回報 macOS Safari 3.8 flash 每次重翻都扣一筆費用）
+    const tLowerWords = (t.match(/(?:^|[^A-Za-z])[a-z][a-z]+/g) || []).length;
+    if (tLatin >= 40 && tWords >= 8 && tCjk <= 2 && tLowerWords >= 4) return true;
   }
   if (s !== t) return false;
   const kana = (s.match(/[ぁ-ゖァ-ヺ]/g) || []).length;
