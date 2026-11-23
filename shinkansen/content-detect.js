@@ -2224,6 +2224,13 @@
     const win = document.defaultView;
     if (!win) return units;
 
+    // 整顆容器 fragment 升格為 element unit:fragment 在 dual 沒有插 wrapper 的位置,
+    // injectDual 會 fallback 走 single 原地取代 → 雙語模式下原文被譯文蓋掉(YouTube
+    // 留言帶 emoji 圖 / 粗體 / <br> 的 yt-attributed-string host span 實測)。fragment
+    // 範圍若已涵蓋容器全部有內容的子節點(範圍外只剩空白文字 / 註解),整顆容器就是
+    // 這個段落,改當 element unit 走正常 dual wrapper。部分範圍的 fragment 維持原行為。
+    units = promoteWholeContainerFragments(units);
+
     // block ancestor → [index in units]
     const groups = new Map();
     const unitBlockAnc = new Array(units.length);
@@ -2273,6 +2280,47 @@
     });
     return result;
   };
+
+  function promoteWholeContainerFragments(units) {
+    const fragCount = new Map();
+    const elementEls = new Set();
+    for (const u of units) {
+      if (u.kind === 'fragment' && u.el) fragCount.set(u.el, (fragCount.get(u.el) || 0) + 1);
+      else if (u.el) elementEls.add(u.el);
+    }
+    if (fragCount.size === 0) return units;
+    const coversWhole = (u) => {
+      const { el, startNode, endNode } = u;
+      if (!el || !startNode || !endNode || startNode.parentNode !== el) return false;
+      let inRange = false;
+      let reachedEnd = false;
+      for (let n = el.firstChild; n; n = n.nextSibling) {
+        if (n === startNode) inRange = true;
+        if (!inRange || reachedEnd) {
+          if (n.nodeType === 3 && (n.nodeValue || '').trim() === '') continue;
+          if (n.nodeType === 8) continue;
+          return false;
+        }
+        if (n === endNode) reachedEnd = true;
+      }
+      return reachedEnd;
+    };
+    let promoted = 0;
+    const result = [];
+    for (const u of units) {
+      if (u.kind === 'fragment' && fragCount.get(u.el) === 1 && !elementEls.has(u.el) && coversWhole(u)) {
+        const { startNode: _s, endNode: _e, ...rest } = u;
+        result.push({ ...rest, kind: 'element', el: u.el });
+        promoted++;
+        continue;
+      }
+      result.push(u);
+    }
+    if (promoted > 0) {
+      SK.sendLog?.('info', 'detect', 'dual: whole-container fragments promoted to element units', { promoted });
+    }
+    return result;
+  }
 
   // v1.9.13: 找出 root subtree 內所有 open shadow root,遞迴進去再找(shadow 內可能還有
   // shadow)。closed shadow root 受 web spec 安全限制,從 JS 完全不可達,只能跳過。

@@ -1029,6 +1029,7 @@
         // 'afterend' 或舊資料無記錄
         el.insertAdjacentElement('afterend', wrapper);
       }
+      SK._syncDualToAncestorGuard?.(el, wrapper);  // 祖先 single 快照吸收重插（同 injectDual）
       restored++;
     }
     if (restored > 0) {

@@ -1390,6 +1390,18 @@
   SK._neutralizeInheritedFlip = neutralizeInheritedFlip; // 給 spec 測試讀
 
   /** 主入口:把譯文以雙語 wrapper 形式注入 DOM */
+  // 雙語注入改到的 DOM(插 wrapper、原段落標 data-shinkansen-dual-source)若位在某個
+  // single 注入元素的子樹內(STATE.translatedHTML 的 key,例:同一容器裡另有原地取代的
+  // fragment——留言標頭一行),該祖先的 Content Guard 快照沒包含這次變動,下一輪 sweep
+  // 會 `innerHTML = savedHTML` 把 wrapper 抹掉、原段落換成沒標記的新節點 → 譯文消失。
+  // 同 single 路徑的 refreshAncestorSavedHTML,讓祖先快照吸收 dual 注入。
+  function syncDualToAncestorGuard(original, wrapper) {
+    if (!SK.refreshAncestorSavedHTML) return;
+    SK.refreshAncestorSavedHTML(original);
+    if (wrapper && wrapper.parentNode !== original.parentNode) SK.refreshAncestorSavedHTML(wrapper);
+  }
+  SK._syncDualToAncestorGuard = syncDualToAncestorGuard;
+
   SK.injectDual = function injectDual(unit, translation, slots) {
     if (!translation) return;
     // Fragment unit 結構特殊（虛擬段落 = 父容器內的「直接文字節點區段」），
@@ -1433,6 +1445,7 @@
         }
       }
       original.setAttribute('data-shinkansen-dual-source', '1');
+      syncDualToAncestorGuard(original, null);
       return;
     }
 
@@ -1472,6 +1485,7 @@
     const translationStripped = normalizeWs(translationText);
     if (originalText && translationStripped === originalText) {
       original.setAttribute('data-shinkansen-dual-source', '1');
+      syncDualToAncestorGuard(original, null);
       return;
     }
 
@@ -1482,6 +1496,7 @@
     const NUMERIC_METRIC_RE = /^[\d.\s,KMB%+\-]+$/;
     if (originalText.length > 0 && originalText.length < 30 && NUMERIC_METRIC_RE.test(originalText)) {
       original.setAttribute('data-shinkansen-dual-source', '1');
+      syncDualToAncestorGuard(original, null);
       return;
     }
 
@@ -1493,6 +1508,7 @@
     if (originalText.length >= 5 && originalText.length <= 200
         && translationStripped.length > originalText.length * 5) {
       original.setAttribute('data-shinkansen-dual-source', '1');
+      syncDualToAncestorGuard(original, null);
       return;
     }
 
@@ -1609,6 +1625,7 @@
 
     original.setAttribute('data-shinkansen-dual-source', '1');
     STATE.translationCache.set(original, { wrapper, insertMode });
+    syncDualToAncestorGuard(original, wrapper);
     SK._guardObserveEl?.(original); // v1.8.20: dual 路徑也要進 IO subset
   };
 
