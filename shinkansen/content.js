@@ -462,11 +462,26 @@
     return rescanAbortController.signal;
   };
 
+  // 2026-11-23:rescan「翻譯中」登記表。rescanTick 與 spaObserverRescan 是兩條獨立
+  // 觸發的 rescan,翻完後晚載的同一批內容會讓兩者在幾百 ms 內各自 collectParagraphs
+  // 收到同一批元素;兩邊送出前查快取時另一邊尚未寫回 → 同批段落打兩次 API(The
+  // Atlantic 實測:晚載 63 段,rescanTick 與 SPA observer rescan #1 相隔 0.34s 送出
+  // 完全相同的 25 段 stream + 重疊批次)。兩條都經過本 router,在這裡登記單一資料源:
+  // 正在某一輪 rescan 翻譯中的 unit,其他輪先略過(那一輪翻完自會注入),等那一輪
+  // settle 後若仍沒注入(失敗 / 逾時)由略過方補送——見 translateUnitsByProvider。
+  // key:element unit 用 el,fragment unit 用 startNode(同 el 可有多個 fragment)。
+  // abortRescanRuns(還原 / SPA reset)換新 Set:被 abort 的舊輪批次可能晚 settle,
+  // 不能讓它的殘留登記擋住新一輪 rescan。
+  let rescanInFlight = new Map();  // key → 擁有該 unit 的那一輪 run promise
+  const rescanUnitKey = (u) => (u && u.kind === 'fragment' ? u.startNode : u && u.el) || null;
+  SK._getRescanInFlightSize = () => rescanInFlight.size;
+
   SK.abortRescanRuns = function abortRescanRuns() {
     if (rescanAbortController) {
       rescanAbortController.abort();
       rescanAbortController = null;
     }
+    rescanInFlight = new Map();
   };
 
   SK.cancelRescan = function cancelRescan() {
@@ -2370,7 +2385,75 @@
   // 正確判別「純 cache hit 應 silent」。先前回 null 讓 SPA rescan 每次撈 cache
   // 都跳「已翻譯 N 段新內容」success toast,在 X / Threads 等不斷 lazy-load 的
   // 站滑動時被使用者體感為「不斷彈 toast 干擾」。
+  // 略過的 unit 若擁有那一輪失敗(逾時 / API 錯誤)就沒人接手——兩輪各送一次時等於
+  // 意外多一次重試,登記表把它拿掉了。所以略過方等擁有方 settle 後檢查自己略過的 unit
+  // 是否真的注入;沒注入的自己補送(擁有方成功 = 零額外請求)。
+  // 「已處理」判定:element unit 看 data-shinkansen-translated(echo 也會標);fragment
+  // unit 注入成功時 startNode 會被移出 el,仍在原位 = 沒注入。
+  const isRescanUnitPending = (u) => {
+    if (!u) return false;
+    if (u.kind === 'fragment') {
+      return !!(u.el && u.el.isConnected && u.startNode && u.startNode.parentNode === u.el);
+    }
+    return !!(u.el && u.el.isConnected && !u.el.hasAttribute('data-shinkansen-translated'));
+  };
+
   SK.translateUnitsByProvider = async function translateUnitsByProvider(units, opts = {}) {
+    const registry = rescanInFlight;  // 宣告見「延遲 Rescan 機制」段
+    const claimed = [];
+    const free = [];
+    const skipped = [];
+    const ownerRuns = new Set();
+    for (const u of units) {
+      const key = rescanUnitKey(u);
+      if (key && registry.has(key)) {
+        skipped.push(u);
+        ownerRuns.add(registry.get(key));
+        continue;
+      }
+      if (key) claimed.push(key);
+      free.push(u);
+    }
+    if (skipped.length > 0) {
+      SK.sendLog?.('info', 'translate', 'rescan skipped units already in flight', {
+        skipped: skipped.length, kept: free.length,
+      });
+    }
+
+    let result = { done: 0, total: 0, failures: [], pageUsage: { cacheHits: 0 } };
+    if (free.length > 0) {
+      const run = translateUnitsByProviderInner(free, opts);
+      for (const key of claimed) registry.set(key, run);
+      try {
+        result = await run;
+      } finally {
+        for (const key of claimed) if (registry.get(key) === run) registry.delete(key);
+      }
+    }
+
+    if (skipped.length > 0) {
+      await Promise.allSettled([...ownerRuns]);
+      // 等待期間被還原 / SPA reset(登記表已換新)→ 不補送
+      if (registry !== rescanInFlight || opts.signal?.aborted) return result;
+      const leftover = skipped.filter(isRescanUnitPending);
+      if (leftover.length > 0) {
+        SK.sendLog?.('info', 'translate', 'rescan retry units left untranslated by in-flight owner', {
+          leftover: leftover.length, skipped: skipped.length,
+        });
+        const r2 = await SK.translateUnitsByProvider(leftover, opts);
+        result = {
+          ...result,
+          done: (result.done || 0) + (r2.done || 0),
+          total: (result.total || 0) + (r2.total || 0),
+          failures: [...(result.failures || []), ...(r2.failures || [])],
+          pageUsage: result.pageUsage || r2.pageUsage,
+        };
+      }
+    }
+    return result;
+  };
+
+  async function translateUnitsByProviderInner(units, opts) {
     // v1.10.46(批次 2-4):rescan 呼叫端(rescanTick / spaObserverRescan / SPA nav
     // fallback)都不自帶 signal——統一在這個 router 掛 rescan AbortController,
     // restorePage / SPA reset abort 它之後,晚到批次的注入前 `signal?.aborted` guard
