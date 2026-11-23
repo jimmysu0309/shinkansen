@@ -99,6 +99,23 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons、Mac App Store 與 App Store（iOS / iPadOS）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a></p>
 
+  <h2>v2.7.7 <span class="release-date">2026-11-23 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.7.1</p>
+
+  <p class="lead">重翻與晚載內容不再重複計費、慢模型不再被中斷後白付費；雙語對照模式下原文被蓋掉、譯文過幾秒消失的問題修正；iPad 與 iPhone（橫向）開放文件翻譯</p>
+
+  <ul>
+    <li><strong>重翻更省錢</strong>：開了術語表時，還原後再翻不再整頁重新計費；網頁晚一點才載入的區塊不再被同時送翻兩次；作者列這類翻完幾乎都是英文名字的人名清單，翻一次後就從快取取用，不再每次重翻都計費</li>
+
+    <li><strong>慢模型不再白付費</strong>：網頁翻譯單批等待上限從 15 秒放寬到 45 秒，逾時後只重試 1 次。原本較慢的模型遇到長段落常被中斷，中斷的請求照樣計費、譯文卻沒存進快取</li>
+
+    <li><strong>雙語對照修正</strong>：文字裡夾著 emoji 圖片、粗體字或換行的段落（例如 YouTube 留言）不再被譯文直接蓋掉原文，改為原文加下方譯文；同一區塊內另有原地翻譯的文字（例如留言標頭的作者、時間）時，雙語譯文不再過幾秒就消失。區塊內只有一部分是這類文字時（例如多段留言的第一段），仍會以譯文取代原文</li>
+
+    <li><strong>譯文編輯頁「搜尋取代」按鈕</strong>：文件翻譯的編輯頁工具列新增按鈕，搜尋取代列預設收起，<code>⌘F</code> / <code>Ctrl+F</code> 照常可開</li>
+
+    <li><strong>iPad 與 iPhone 文件翻譯</strong>（App Store 版）：工具列圖示選單新增「翻譯文件」，功能與電腦版相同；iPhone 需橫向使用。下載譯文檔、術語表等檔案時改開系統分享面板，選「儲存到檔案」即可。iPad 直立時閱讀器自動縮到螢幕寬度</li>
+  </ul>
+
   <h2>v2.7.1 <span class="release-date">2026-11-20 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v2.7.0</p>
 

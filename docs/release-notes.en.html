@@ -99,6 +99,23 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, the Mac App Store, and the App Store (iOS / iPadOS). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.7.7 <span class="release-date">Released 2026-11-23</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.7.1</p>
+
+  <p class="lead">Re-translation and late-loading content are no longer billed twice, and slow models are no longer cut off and billed for nothing; fixes for bilingual mode replacing the original text and translations disappearing after a few seconds; document translation on iPad and iPhone (in landscape).</p>
+
+  <ul>
+    <li><strong>Cheaper re-translation</strong>: with the glossary on, translating again after restoring no longer re-bills the whole page; sections a page loads later are no longer sent for translation twice at the same time; author-name lists, which come back almost entirely as English names, are now served from the cache after the first translation instead of being billed on every re-translation.</li>
+
+    <li><strong>No more paying for nothing on slow models</strong>: the per-batch wait limit for web translation goes from 15 to 45 seconds, with only one retry after a timeout. Slower models used to be cut off on long paragraphs, and the interrupted requests were still billed while the translation never reached the cache.</li>
+
+    <li><strong>Bilingual mode fixes</strong>: paragraphs with emoji images, bold text or line breaks (such as YouTube comments) no longer have their original text replaced by the translation — the translation now appears below the original. When the same block also contains text translated in place (such as the author and time in a comment header), bilingual translations no longer disappear after a few seconds. When only part of a block is this kind of text (such as the first paragraph of a multi-paragraph comment), the translation still replaces the original.</li>
+
+    <li><strong>Find &amp; Replace button in the translation editor</strong>: the document translation editor toolbar has a new button; the find-and-replace bar starts collapsed, and <code>⌘F</code> / <code>Ctrl+F</code> still opens it.</li>
+
+    <li><strong>Document translation on iPad and iPhone</strong> (App Store version): the toolbar icon menu adds "Translate document" with the same features as the desktop version; iPhone requires landscape. Downloads of translated files, glossaries and other files open the system share sheet — choose "Save to Files". On iPad in portrait, the reader automatically fits the screen width.</li>
+  </ul>
+
   <h2>v2.7.1 <span class="release-date">Released 2026-11-20</span></h2>
   <p class="release-meta">Compared with the previous store version v2.7.0</p>
 

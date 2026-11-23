@@ -10,12 +10,12 @@
 
 ## 近期重大更新
 
+- **重翻更省錢**，還原後再翻、網頁晚載入的內容、作者列人名清單不再重複計費；慢模型單批等待放寬到 45 秒，不再中斷後白付費
 - **數學公式完整保留**，網頁上以 MathML、MathJax、KaTeX 排版的公式（含化學式）不送翻譯，段落內的行內公式原樣留在譯文中
 - **X（Twitter）影片字幕翻譯**，帶自動產生字幕的影片開聲音播放時自動翻成目標語言，樣式與位置同 X 原生字幕；時間軸上靜音自動播放的影片不翻、不花費用
-- **自訂模型相容更多端點**，API 格式可選 Chat Completions 或 Responses，並可加自訂 request headers，給除了 API Key 還要求額外 header 的服務使用
 - **PDF 翻譯版面與穩定性改善**，表格、目錄與圖文頁的版面大幅修正；檔案上限 50 MB / 300 頁，可指定翻譯頁數範圍
 - **懸停翻譯**，按住修飾鍵、游標停在段落上即只翻譯那一段，譯文原地注入；設定頁「翻譯快速鍵」區塊可選修飾鍵與雙語 / 單語顯示，預設關閉
-- **iOS / iPadOS 版**正式登陸 [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298)，Safari 擴充功能搭配多指觸控翻譯與懸浮按鈕，開箱即用
+- **iOS / iPadOS 版**正式登陸 [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298)，Safari 擴充功能搭配多指觸控翻譯與懸浮按鈕，開箱即用；iPad 與 iPhone 橫向也能翻譯文件
 
 ## 為什麼做這個專案
 

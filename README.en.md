@@ -10,12 +10,12 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
+- **Cheaper re-translation** — translating again after restoring, content a page loads later, and author-name lists are no longer billed twice; slow models now get up to 45 seconds per batch instead of being cut off and billed for nothing.
 - **Math formulas kept intact** — formulas typeset with MathML, MathJax or KaTeX on web pages (chemical formulas included) are not sent for translation; inline formulas stay in place inside the translated paragraph.
 - **X (Twitter) video subtitles** — videos with auto-generated captions are translated into your target language when played with sound, styled and positioned like X's native captions; muted autoplay videos in the timeline are skipped and cost nothing.
-- **Custom models work with more endpoints** — choose Chat Completions or Responses as the API format, and add custom request headers for services that need more than an API key.
 - **PDF translation: better layout and stability** — major layout fixes for tables, tables of contents and pages that mix figures with text; files up to 50 MB / 300 pages, with an optional page range.
 - **Hover translation** — hold a modifier key and rest the cursor on a paragraph to translate just that one, in place; pick the modifier and bilingual / monolingual display under "Translation shortcuts" in Settings (off by default).
-- **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with multi-finger touch translate and the floating button, ready out of the box.
+- **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with multi-finger touch translate and the floating button, ready out of the box. iPad and iPhone (in landscape) can also translate documents.
 
 ## Why Shinkansen
 
