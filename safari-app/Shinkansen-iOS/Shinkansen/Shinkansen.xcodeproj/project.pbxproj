@@ -542,7 +542,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Shinkansen Extension/Shinkansen Extension.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.7.7;
+				CURRENT_PROJECT_VERSION = 2.7.8;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
@@ -554,7 +554,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.7.7;
+				MARKETING_VERSION = 2.7.8;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -578,7 +578,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Shinkansen Extension/Shinkansen Extension.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.7.7;
+				CURRENT_PROJECT_VERSION = 2.7.8;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
@@ -590,7 +590,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.7.7;
+				MARKETING_VERSION = 2.7.8;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -616,7 +616,7 @@
 				CODE_SIGN_ENTITLEMENTS = Shinkansen/Shinkansen.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.7.7;
+				CURRENT_PROJECT_VERSION = 2.7.8;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
@@ -631,7 +631,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.7.7;
+				MARKETING_VERSION = 2.7.8;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -659,7 +659,7 @@
 				CODE_SIGN_ENTITLEMENTS = Shinkansen/Shinkansen.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.7.7;
+				CURRENT_PROJECT_VERSION = 2.7.8;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
@@ -674,7 +674,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.7.7;
+				MARKETING_VERSION = 2.7.8;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
