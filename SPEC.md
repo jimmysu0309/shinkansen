@@ -6,7 +6,7 @@
 - 建立日期：2026-04-08
 - 最後更新：2026-11-17（v2.7.0）
 - 目標平台：Chrome / Firefox / Safari（macOS）/ Safari（iOS・iPadOS），四平台共用同一份 source（Manifest V3）
-- 目前 Extension 版本：2.7.7
+- 目前 Extension 版本：2.7.8
 
 ---
 
@@ -31,7 +31,7 @@ Shinkansen 是一款瀏覽器擴充功能（Chrome / Firefox / Safari），將�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.7.7 為止）
+### 2.1 已實作（v2.7.8 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 

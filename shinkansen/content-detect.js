@@ -331,6 +331,19 @@
   }
   SK._langHintDecision = langHintDecision;
 
+  // 文字本身是否有「相反中文變體」的實證（見 isCandidateText）。detectTextLang 判 zh-Hans
+  // 的每條分支都要求簡體獨有字（單邊乾淨或佔 CJK ≥ 20%），是實證；判 zh-Hant 則可能是
+  // 「沒有任何變體特徵字」的預設 fallback，不算實證——zh-CN target 另要求繁體獨有字 > 0
+  function hasOppositeZhVariantEvidence(text, target) {
+    if (target === 'zh-TW') return SK.detectTextLang(text) === 'zh-Hans';
+    if (target === 'zh-CN') {
+      if (SK.detectTextLang(text) !== 'zh-Hant') return false;
+      for (const ch of text) if (TRADITIONAL_ONLY_CHARS.has(ch)) return true;
+    }
+    return false;
+  }
+  SK._hasOppositeZhVariantEvidence = hasOppositeZhVariantEvidence;
+
   function isCandidateText(el) {
     // v1.6.9: textContent 取代 innerText——innerText 觸發 layout 重算（每呼叫一次
     // 都 force layout reflow，在 leaf div/span 全頁掃描路徑會被呼叫上千次）。
@@ -350,7 +363,12 @@
     //   明確 lang attribute 信號比 SIMP 統計強得多,優先使用。沒 lang 的站維持純文字 detect。
     const langHint = getElementLangHint(el);
     const decision = langHintDecision(langHint, target);
-    if (decision === 'skip') return false;
+    // lang 宣告「已是 target 中文變體」但文字有相反變體實證（變體特徵字）→ 以文字為準。
+    // 站點對未知語言常 fallback 標成自己介面語系（例：繁中介面閱讀器把簡中文章包在
+    // lang="zh-TW" 容器裡），lang 這時是錯誤訊號；變體特徵字比 lang 宣告強。只放寬
+    // 這一種，其他 skip（en / ja / ko、或文字無變體特徵）維持信任 lang
+    if (decision === 'skip' && !hasOppositeZhVariantEvidence(text, target)) return false;
+    if (decision === 'skip') return true;
     if (decision === 'translate') return true;
     // unknown(沒 lang 或 lang 不對應)→ fallback 到純文字 detect
     if (SK.isAlreadyInTarget(text, target)) return false;
