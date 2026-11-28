@@ -271,6 +271,13 @@
             out += gtTok('*', idx);
             continue;
           }
+          // 表單控制項、<style>、只包控制項的無字外框 → atomic + reuseNode，同 LLM path
+          if (SK.isLiveNonProseCarrier(child)) {
+            const idx = slots.length;
+            slots.push({ atomic: true, reuseNode: true, node: child });
+            out += gtTok('*', idx);
+            continue;
+          }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
           if (child.tagName === 'BR') { out += '\u0001'; continue; }
           // Atomic 元素（footnote sup 等）→ 單一標記，不翻內容
@@ -491,6 +498,36 @@
     return codeSlots.some((s) => /[\p{L}\p{N}]/u.test(s.node.textContent || ''));
   }
 
+  // ─── 被元素切開的首字（drop cap）────────────────────────────
+  // `<p><span class="cap">T</span>hey were born…</p>`：段落開頭的行內元素只包 1–3 個字母，
+  // 後面緊接著同一個單字的其餘字母（中間沒有空白）。照一般 paired 送出是
+  // `⟦0⟧T⟦/0⟧hey were born`，模型把「T」當成要保留的內容原樣留下 → 譯文「T他們出生…」。
+  // 改成把整個單字放進佔位符（`⟦0⟧They⟦/0⟧ were born`），模型翻掉整個字；回填時元素裡
+  // 只留譯文第一個字（首字樣式照舊套在第一個字上），其餘字移到元素後面。
+  // 判斷只看結構（開頭位置 + 元素內只有短字母 + 緊接字母），不看 class / 站點。
+  // 只認用空白分詞的文字（拉丁 / 希臘 / 西里爾字母）：中日文沒有字間空白，
+  // `<a>東京</a>都の…` 會被誤判成首字，而且「緊接的字母」會一路吞到句尾。
+  // 連結不算（首字放大不會做成連結，把連結字縮成一個字會改到連結範圍）。
+  const _splitInitialShells = new WeakSet();
+  const RE_SHORT_LETTERS = /^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]{1,3}$/u;
+  const RE_LEADING_LETTERS = /^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}]+/u;
+  function splitInitialTail(child) {
+    if (child.tagName === 'A' || child.children.length > 0) return '';
+    if (!RE_SHORT_LETTERS.test(child.textContent || '')) return '';
+    const next = child.nextSibling;
+    if (!next || next.nodeType !== Node.TEXT_NODE) return '';
+    const m = RE_LEADING_LETTERS.exec(next.nodeValue || '');
+    return m ? m[0] : '';
+  }
+  // 反序列化端：首字元素只留譯文第一個字，回傳要接在元素後面的其餘文字
+  function trimSplitInitialShell(shell) {
+    if (shell.childNodes.length !== 1 || shell.firstChild.nodeType !== Node.TEXT_NODE) return '';
+    const chars = Array.from((shell.firstChild.nodeValue || '').replace(/^\s+/, ''));
+    if (chars.length <= 1) return '';
+    shell.firstChild.nodeValue = chars[0];
+    return chars.slice(1).join('');
+  }
+
   function serializeNodeIterable(topLevelNodes, opts) {
     const first = serializeNodeIterableOnce(topLevelNodes, opts);
     if (allTextLockedInCodeSlots(first, RE_PH_TOKEN_G)) {
@@ -505,14 +542,18 @@
     const preserveNewlines = !!(opts && opts.preserveNewlines);
     const imgAsSlot = !!(opts && opts.imgAsSlot);
     const codeAsPaired = !!(opts && opts.codeAsPaired);
+    const splitSkip = { node: null, len: 0 };
     function walk(nodeList) {
       for (const child of nodeList) {
         if (child.nodeType === Node.TEXT_NODE) {
           // pre/pre-wrap/pre-line:textNode 內 \n 是視覺換行,轉  跟 BR 共用 sentinel,
           // 避開後續 /\s+/g collapse 把 \n 壓成 space。
+          // 首字元素已把這個文字節點開頭的字母併進佔位符，這裡跳過那幾個字
+          let tv = child.nodeValue;
+          if (child === splitSkip.node) { tv = tv.slice(splitSkip.len); splitSkip.node = null; }
           out += preserveNewlines
-            ? child.nodeValue.replace(/\n/g, "")
-            : child.nodeValue;
+            ? tv.replace(/\n/g, "")
+            : tv;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           // Inline <code> 在 HARD_EXCLUDE_TAGS 是給 walker 擋整個 code 區塊用的,
           // 但段落內 inline <code> 走到 serialize 已是另一條路徑,必須當 atomic
@@ -567,6 +608,16 @@
             out += PH_OPEN + '*' + idx + PH_CLOSE;
             continue;
           }
+          // 表單控制項（段落內的勾選框等）、段落內的 <style>、「只包控制項、沒有實質文字」
+          // 的外框（勾選框 + sr-only「▢」的 label 容器）：atomic + reuseNode 放回活的原節點，
+          // 保留勾選狀態、listener 與樣式表。這些 tag 在 HARD_EXCLUDE_TAGS，必須先於排除檢查——
+          // 原本整顆丟掉，clean-slate 後勾選框 / 整頁隱藏規則消失、sr-only 文字被攤平成看得見的字
+          if (SK.isLiveNonProseCarrier(child)) {
+            const idx = slots.length;
+            slots.push({ atomic: true, reuseNode: true, node: child });
+            out += PH_OPEN + '*' + idx + PH_CLOSE;
+            continue;
+          }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
           if (child.tagName === 'PRE' && child.querySelector('code')) continue;
           if (child.tagName === 'BR') {
@@ -614,6 +665,15 @@
             const idx = slots.length;
             const shell = child.cloneNode(false);
             slots.push(shell);
+            // 段落開頭、被元素切開的首字：整個單字進佔位符（見 splitInitialTail）
+            const tail = !out.trim() ? splitInitialTail(child) : '';
+            if (tail) {
+              _splitInitialShells.add(shell);
+              splitSkip.node = child.nextSibling;
+              splitSkip.len = tail.length;
+              out += PH_OPEN + idx + PH_CLOSE + child.textContent + tail + PH_OPEN + '/' + idx + PH_CLOSE;
+              continue;
+            }
             out += PH_OPEN + idx + PH_CLOSE;
             walk(child.childNodes);
             out += PH_OPEN + '/' + idx + PH_CLOSE;
@@ -1085,8 +1145,11 @@
           const shell = slot.cloneNode(false);
           const innerFrag = parseSegment(inner, slots, matchedRef, cloneReuse);
           shell.appendChild(innerFrag);
+          // 被切開的首字：元素只留第一個字，其餘接在後面（見 splitInitialTail）
+          const splitRest = _splitInitialShells.has(slot) ? trimSplitInitialShell(shell) : '';
           _maybePadCjkLatinSpace(frag, shell);
           frag.appendChild(shell);
+          if (splitRest) frag.appendChild(document.createTextNode(splitRest));
           matchedRef.count++;
         } else if (slot && slot.atomic && slot.node) {
           // 同上 m[3] 臂：atomic + reuseNode 在非 cloneReuse 用途放活節點

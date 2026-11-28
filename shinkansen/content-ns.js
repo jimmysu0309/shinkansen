@@ -1179,6 +1179,56 @@ if (window.__shinkansen_loaded) {
     return false;
   };
 
+  // ─── 不帶可翻文字的「非正文載體」──────────────────────────────
+  // 四種結構：表單控制項（勾選清單的 <input type=checkbox>）、段落內的 <style>（維基把
+  // `.cs1-maint{display:none}` 這類整頁規則放在參考文獻段落裡，丟了整頁隱藏規則跟著消失）、
+  // 只有符號的連結（腳註回跳「↩」、hover 才顯示的標題錨點「¶」）、視覺隱藏的報讀器文字
+  //（sr-only「▢」）。
+  // 這些外框原本在序列化時被當透明層攤平（控制項更是整顆丟掉），clean-slate 注入後
+  // 元素消失，裡面的符號變成看得見的一般文字、勾選框不見。改成整顆保留為 ⟦*N⟧ 不送翻。
+  // 判斷只看結構（控制項 tag、href、computed 隱藏樣式），不看站點 class。
+  // 有實質文字的照舊走 paired / 翻譯（sr-only「(opens in new tab)」這類要翻）。
+  // 一律整顆原樣保留的 tag（都在 HARD_EXCLUDE_TAGS：偵測不進去，但段落內的不能丟）
+  SK.KEEP_AS_IS_TAGS = new Set(['INPUT', 'SELECT', 'TEXTAREA', 'STYLE']);
+  SK.FORM_CONTROL_SELECTOR = 'input, select, textarea';
+
+  // 視覺隱藏：display:none / visibility:hidden / opacity:0（hover 才顯示）/ sr-only
+  //（absolute + 1×1 裁切，同 isVisible 的判斷）。離線節點（docx / epub run）沒有渲染，一律否
+  function isVisuallyHiddenInline(el) {
+    if (!el.isConnected) return false;
+    const cs = SK.getCS(el);
+    if (!cs) return false;
+    if (cs.display === 'none' || cs.visibility === 'hidden') return true;
+    if (parseFloat(cs.opacity) === 0) return true;
+    if (cs.position === 'absolute' || cs.position === 'fixed') {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 1 && r.height <= 1) return true;
+    }
+    return false;
+  }
+
+  SK.isNonProseCarrier = function isNonProseCarrier(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (SK.KEEP_AS_IS_TAGS.has(el.tagName)) return true;
+    // 用 textContent（含隱藏文字）判斷：只要有實質文字就交給既有的翻譯路徑
+    const txt = el.textContent || '';
+    if (SK.hasSubstantiveText(txt)) return false;
+    if (el.querySelector(SK.FORM_CONTROL_SELECTOR)) return true;
+    // 完全沒字的外框（圖片連結、媒體外框）走既有的媒體保留路徑，不在這裡接
+    if (!txt.trim()) return false;
+    if (el.tagName === 'A' ? el.hasAttribute('href') : !!el.querySelector('a[href]')) return true;
+    return isVisuallyHiddenInline(el);
+  };
+
+  // 要放回活的原節點、不能 clone 的載體：KEEP_AS_IS_TAGS 本身（勾選狀態、listener、
+  // 已套用的樣式表），以及只包表單控制項的無字外框。這些 tag 在 HARD_EXCLUDE_TAGS，
+  // 序列化端必須在排除檢查之前接住
+  SK.isLiveNonProseCarrier = function isLiveNonProseCarrier(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (SK.KEEP_AS_IS_TAGS.has(el.tagName)) return true;
+    return SK.isNonProseCarrier(el) && !!el.querySelector(SK.FORM_CONTROL_SELECTOR);
+  };
+
   // 「原子保留」子樹
   SK.isAtomicPreserve = function isAtomicPreserve(el) {
     if (el.tagName === 'SUP' && el.classList && el.classList.contains('reference')) return true;
@@ -1191,6 +1241,7 @@ if (window.__shinkansen_loaded) {
     // 段落內 inline 數學公式整顆保留（偵測層同訊號整顆 skip，見 isInsideExcludedContainer）
     if (SK.isMathElement(el)) return true;
     if (SK.isIconGlyphElement(el)) return true;
+    if (SK.isNonProseCarrier(el)) return true;
     return false;
   };
 
@@ -1228,6 +1279,8 @@ if (window.__shinkansen_loaded) {
       // BUTTON 在 HARD_EXCLUDE_TAGS 擋 form / dialog widget,inline 用法必須開洞保留。
       // 必須先於 HARD_EXCLUDE 檢查。
       if (n.tagName === 'BUTTON' && SK.hasSubstantiveContent(n)) return true;
+      // 表單控制項 / <style> 在 HARD_EXCLUDE_TAGS，段落內的要整顆保留（isNonProseCarrier），先於排除檢查
+      if (SK.KEEP_AS_IS_TAGS.has(n.tagName)) return true;
       if (SK.HARD_EXCLUDE_TAGS.has(n.tagName)) continue;
       if (SK.isAtomicPreserve(n)) return true;
       if (SK.isPreservableInline(n)) return true;
